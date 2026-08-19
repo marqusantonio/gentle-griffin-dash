@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useWevids } from '../../context/WevidsContext';
 import { 
   Search, 
@@ -26,7 +26,6 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => 
   const [searchQuery, setSearchQuery] = useState('');
   const isCloudConnected = isSupabaseConfigured();
   
-  // FIX: Add null check for cart before using reduce
   const totalCartCount = cart ? cart.reduce((acc, i) => acc + i.quantity, 0) : 0;
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -65,7 +64,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => 
           }`}
           title="Manage Supabase Online Database & Auth"
         >
-          <Database className={`w-3.5 h-3.5 ${isCloudConnected ? 'text-[#3ecf8e]' : 'text-[#8a8aa8]'`} />
+          <Database className={`w-3.5 h-3.5 ${isCloudConnected ? 'text-[#3ecf8e]' : 'text-[#8a8aa8]'}`} />
           <span className="hidden md:inline">{isCloudConnected ? 'Cloud Online' : 'Link Cloud'}</span>
         </button>
 
@@ -101,6 +100,13 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => 
           }}
           className="relative p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-[#8a8aa8] hover:text-white transition-colors"
           title="Open Cart"
+        >
+          <ShoppingBag className="w-4 h-4 text-[#fbbf24]" />
+          {totalCartCount > 0 && (
+            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#ff2d95] text-slate-900 font-bold text-[9px] flex items-center justify-center">
+              {totalCartCount}
+            </span>
+          )}
         </button>
 
         {/* Wallet Token Badge */}

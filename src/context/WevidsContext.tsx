@@ -1,6 +1,29 @@
 import React, { createContext, useContext, useReducer, useState, useEffect, ReactNode } from 'react';
-import { PostItem, ShortClipItem, LongVideoItem, RomItem, ProductItem, Conversation, UserProfile, CartItem, SavedCollection, SharedFileItem, ViewName } from '../types/wevids';
-import { supabase, isSupabaseConfigured, getStoredSession } from '../lib/supabase';
+import { 
+  PostItem, 
+  ShortClipItem, 
+  LongVideoItem, 
+  RomItem, 
+  ProductItem, 
+  Conversation, 
+  UserProfile, 
+  CartItem, 
+  SavedCollection, 
+  SharedFileItem, 
+  ViewName 
+} from '../types/wevids';
+import { 
+  CURRENT_USER, 
+  MOCK_USERS, 
+  INITIAL_POSTS, 
+  INITIAL_CLIPS, 
+  INITIAL_LONG_VIDEOS, 
+  INITIAL_ROMS, 
+  INITIAL_PRODUCTS, 
+  INITIAL_CONVERSATIONS, 
+  INITIAL_BOOKMARKS 
+} from '../data/initialData';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { sounds } from '../lib/soundFx';
 import { toast } from 'sonner';
 
@@ -13,10 +36,12 @@ interface WevidsState {
   roms: RomItem[];
   products: ProductItem[];
   files: SharedFileItem[];
+  conversations: Conversation[];
   
   // UI state
   activeView: ViewName;
   activeConvId: string | null;
+  activeCallUser: string | null;
   isCartOpen: boolean;
   isVideoCallOpen: boolean;
   activeShare: { title: string; url: string } | null;
@@ -33,149 +58,56 @@ interface WevidsState {
   collections: SavedCollection[];
 }
 
-interface WevidsActions {
-  // Content actions
-  addPost: (post: PostItem) => Promise<void>;
-  addClip: (clip: ShortClipItem) => void;
-  addLongVideo: (video: LongVideoItem) => void;
-  addRom: (rom: RomItem) => void;
-  addProduct: (product: ProductItem) => void;
-  addSharedFile: (file: SharedFileItem) => void;
-  
-  // UI actions
-  setActiveView: (view: ViewName) => void;
-  setActiveConvId: (id: string | null) => void;
-  setIsCartOpen: (open: boolean) => void;
-  setIsVideoCallOpen: (open: boolean) => void;
-  openShareModal: (title: string, url: string) => void;
-  closeShareModal: () => void;
-  openUserProfileModal: (user: UserProfile) => void;
-  closeUserProfileModal: () => void;
-  setIsSupabaseModalOpen: (open: boolean) => void;
-  
-  // User actions
-  updateCurrentUser: (updates: Partial<UserProfile>) => void;
-  toggleFollowUser: (userId: string) => void;
-  toggleClipLike: (clipId: string) => void;
-  toggleClipDislike: (clipId: string) => void;
-  toggleClipBookmark: (clipId: string) => void;
-  addClipComment: (clipId: string, comment: any) => void;
-  startOrOpenChatWithUser: (userId: string) => void;
-  sendMessage: (convId: string, message: any) => void;
-  acceptMessageRequest: (convId: string) => void;
-  declineMessageRequest: (convId: string) => void;
-  openVideoCall: (userName: string) => void;
-  closeVideoCall: () => void;
-  
-  // Cart actions
-  addToCart: (product: ProductItem) => void;
-  removeFromCart: (productId: string) => void;
-  updateCartQuantity: (productId: string, quantity: number) => void;
-  clearCart: () => void;
-  
-  // Sound
-  setSoundEnabled: (enabled: boolean) => void;
-}
-
-// Initial state
-const initialUser: UserProfile = {
-  id: 'you',
-  name: 'Alex Vance',
-  handle: '@alex_vance',
-  avatar: 'A',
-  color: 'linear-gradient(135deg, #ff2d95, #00e5ff)',
-  location: 'Neo Tokyo & Global',
-  pronouns: 'they/them',
-  bio: 'Creative dev & XR animator. Exploring borderless streaming, HyperOS ports, and AI video rendering. Building WEVIDS ecosystem!',
-  followers: 1842,
-  following: 340,
-  videos: 14,
-  likes: 8940,
-  views: '84.2K',
-  joined: 'July 2026',
-  verified: true,
-  walletBalance: 420.50,
-  isCreator: true,
-};
+const initialFiles: SharedFileItem[] = [
+  {
+    id: 'f-1',
+    title: 'Snapdragon 8 Gen 3 Thermal & FPS Governor',
+    fileName: 'sd8gen3_thermal_bypass.zip',
+    fileSize: '18.4 MB',
+    category: 'ROM / Kernel',
+    uploaderId: 'carlos',
+    uploaderName: 'Carlos Mendez',
+    downloadUrl: '#',
+    checksum: 'e8f7a932b14c90d6e42a19ff88b643ce219f01ab92',
+    downloads: 1420,
+    uploadedAt: '2 days ago'
+  },
+  {
+    id: 'f-2',
+    title: 'Cyberpunk Neon LUT Preset Pack (.cube)',
+    fileName: 'wevids_neon_v3_lut.cube',
+    fileSize: '4.2 MB',
+    category: 'LUTs / Preset',
+    uploaderId: 'aiko',
+    uploaderName: 'Aiko Tanaka',
+    downloadUrl: '#',
+    checksum: '5a6bc3128dfa910bc4e2',
+    downloads: 3820,
+    uploadedAt: '5 days ago'
+  }
+];
 
 const initialState: WevidsState = {
-  posts: [],
-  clips: [],
-  longVideos: [],
-  roms: [],
-  products: [],
-  files: [],
-  activeView: 'feed',
-  activeConvId: null,
+  posts: INITIAL_POSTS,
+  clips: INITIAL_CLIPS,
+  longVideos: INITIAL_LONG_VIDEOS,
+  roms: INITIAL_ROMS,
+  products: INITIAL_PRODUCTS,
+  files: initialFiles,
+  conversations: INITIAL_CONVERSATIONS,
+  activeView: 'clips',
+  activeConvId: 'conv-group-1',
+  activeCallUser: null,
   isCartOpen: false,
   isVideoCallOpen: false,
   activeShare: null,
   viewingProfileUser: null,
   isSupabaseModalOpen: false,
-  currentUser: initialUser,
-  allUsers: {
-    you: initialUser,
-    sara: {
-      id: 'sara',
-      name: 'Sara from Tehran',
-      handle: '@sara_tehran',
-      avatar: 'S',
-      color: 'linear-gradient(135deg, #ff2d95, #00e5ff)',
-      location: 'Tehran, Iran',
-      pronouns: 'she/her',
-      bio: 'Sharing culture, poetry, and tea moments with the world. Borderless connection forever!',
-      followers: 12400,
-      following: 156,
-      videos: 52,
-      likes: 64200,
-      views: '420K',
-      joined: 'Mar 2026',
-      verified: true,
-      walletBalance: 1250,
-      isCreator: true,
-    },
-    carlos: {
-      id: 'carlos',
-      name: 'Carlos Mendez (ROM Dev)',
-      handle: '@carlos_modder',
-      avatar: 'C',
-      color: 'linear-gradient(135deg, #00e5ff, #7c3aed)',
-      location: 'Mexico City',
-      pronouns: 'he/him',
-      bio: 'Mainline Kernel porter & Xiaomi HyperOS China ROM builder. Snapdragon 8 Gen 3 enthusiast ⚡',
-      followers: 8930,
-      following: 204,
-      videos: 38,
-      likes: 31200,
-      views: '210K',
-      joined: 'Apr 2026',
-      verified: true,
-      walletBalance: 840,
-      isCreator: true,
-    },
-    aiko: {
-      id: 'aiko',
-      name: 'Aiko Tanaka',
-      handle: '@aiko_visuals',
-      avatar: 'A',
-      color: 'linear-gradient(135deg, #ff2d95, #fbbf24)',
-      location: 'Tokyo, Japan',
-      pronouns: 'she/they',
-      bio: 'UI/UX futurist, Minecraft voxel artist, and cyberpunk 3D generator.',
-      followers: 24500,
-      following: 89,
-      videos: 91,
-      likes: 184000,
-      views: '1.2M',
-      joined: 'Jan 2026',
-      verified: true,
-      walletBalance: 3200,
-      isCreator: true,
-    },
-  },
+  currentUser: CURRENT_USER,
+  allUsers: MOCK_USERS,
   soundEnabled: true,
   cart: [],
-  collections: [],
+  collections: INITIAL_BOOKMARKS,
 };
 
 // Reducer
@@ -185,6 +117,8 @@ const reducer = (state: WevidsState, action: any): WevidsState => {
       return { ...state, activeView: action.payload };
     case 'SET_ACTIVE_CONV_ID':
       return { ...state, activeConvId: action.payload };
+    case 'SET_ACTIVE_CALL_USER':
+      return { ...state, activeCallUser: action.payload };
     case 'SET_IS_CART_OPEN':
       return { ...state, isCartOpen: action.payload };
     case 'SET_IS_VIDEO_CALL_OPEN':
@@ -201,25 +135,42 @@ const reducer = (state: WevidsState, action: any): WevidsState => {
       return { ...state, isSupabaseModalOpen: action.payload };
     case 'UPDATE_CURRENT_USER':
       return { ...state, currentUser: { ...state.currentUser, ...action.payload } };
-    case 'TOGGLE_FOLLOW_USER':
+    case 'TOGGLE_FOLLOW_USER': {
+      const { userId, isFollowing } = action.payload;
+      const targetUser = state.allUsers[userId];
+      if (!targetUser) return state;
+      const currentFollowingIds = state.currentUser.followingIds || [];
+      const newFollowingIds = isFollowing 
+        ? currentFollowingIds.filter(id => id !== userId)
+        : [...currentFollowingIds, userId];
+
       return {
         ...state,
+        currentUser: {
+          ...state.currentUser,
+          following: isFollowing ? state.currentUser.following - 1 : state.currentUser.following + 1,
+          followingIds: newFollowingIds
+        },
         allUsers: {
           ...state.allUsers,
-          [action.payload.userId]: {
-            ...state.allUsers[action.payload.userId],
-            followers: action.payload.isFollowing
-              ? state.allUsers[action.payload.userId].followers + 1
-              : state.allUsers[action.payload.userId].followers - 1,
+          [userId]: {
+            ...targetUser,
+            followers: isFollowing ? targetUser.followers - 1 : targetUser.followers + 1,
           },
         },
       };
+    }
     case 'TOGGLE_CLIP_LIKE':
       return {
         ...state,
         clips: state.clips.map(clip =>
           clip.id === action.payload.clipId
-            ? { ...clip, likes: clip.isLiked ? clip.likes - 1 : clip.likes + 1, isLiked: !clip.isLiked }
+            ? { 
+                ...clip, 
+                likes: clip.isLiked ? clip.likes - 1 : clip.likes + 1, 
+                isLiked: !clip.isLiked,
+                isDisliked: false 
+              }
             : clip
         ),
       };
@@ -228,7 +179,12 @@ const reducer = (state: WevidsState, action: any): WevidsState => {
         ...state,
         clips: state.clips.map(clip =>
           clip.id === action.payload.clipId
-            ? { ...clip, dislikes: action.payload.isDisliked ? clip.dislikes - 1 : clip.dislikes + 1, isDisliked: !clip.isDisliked }
+            ? { 
+                ...clip, 
+                dislikes: clip.isDisliked ? (clip.dislikes || 1) - 1 : (clip.dislikes || 0) + 1, 
+                isDisliked: !clip.isDisliked,
+                isLiked: false 
+              }
             : clip
         ),
       };
@@ -246,11 +202,58 @@ const reducer = (state: WevidsState, action: any): WevidsState => {
         ...state,
         clips: state.clips.map(clip =>
           clip.id === action.payload.clipId
-            ? { ...clip, comments: [...clip.comments, action.payload.comment] }
+            ? { 
+                ...clip, 
+                comments: [
+                  {
+                    id: `comm-${Date.now()}`,
+                    user: action.payload.comment.user,
+                    userName: action.payload.comment.userName,
+                    userAvatar: action.payload.comment.userAvatar,
+                    userColor: action.payload.comment.userColor,
+                    text: action.payload.comment.text,
+                    timestamp: 'Just now',
+                    likes: 0
+                  },
+                  ...clip.comments
+                ] 
+              }
             : clip
         ),
       };
-    case 'ADD_TO_CART':
+    case 'ADD_MESSAGE': {
+      const { convId, message } = action.payload;
+      return {
+        ...state,
+        conversations: state.conversations.map(c => 
+          c.id === convId 
+            ? {
+                ...c,
+                lastMsg: `${message.senderName}: ${message.text || 'media'}`,
+                time: 'Just now',
+                messages: [...c.messages, message]
+              }
+            : c
+        )
+      };
+    }
+    case 'SET_CONVERSATION_STATUS': {
+      const { convId, status } = action.payload;
+      return {
+        ...state,
+        conversations: state.conversations.map(c => 
+          c.id === convId ? { ...c, status } : c
+        )
+      };
+    }
+    case 'REMOVE_CONVERSATION': {
+      return {
+        ...state,
+        conversations: state.conversations.filter(c => c.id !== action.payload.convId),
+        activeConvId: state.activeConvId === action.payload.convId ? null : state.activeConvId
+      };
+    }
+    case 'ADD_TO_CART': {
       const existingItem = state.cart.find(item => item.product.id === action.payload.product.id);
       if (existingItem) {
         return {
@@ -263,6 +266,7 @@ const reducer = (state: WevidsState, action: any): WevidsState => {
         };
       }
       return { ...state, cart: [...state.cart, { product: action.payload.product, quantity: 1 }] };
+    }
     case 'REMOVE_FROM_CART':
       return { ...state, cart: state.cart.filter(item => item.product.id !== action.payload.productId) };
     case 'UPDATE_CART_QUANTITY':
@@ -297,91 +301,97 @@ const reducer = (state: WevidsState, action: any): WevidsState => {
 
 // Context
 const WevidsContext = createContext<{
-  state: WevidsState;
-  dispatch: React.Dispatch<any>;
+  posts: PostItem[];
+  clips: ShortClipItem[];
+  longVideos: LongVideoItem[];
+  roms: RomItem[];
+  products: ProductItem[];
+  files: SharedFileItem[];
+  conversations: Conversation[];
+  activeView: ViewName;
+  activeConvId: string | null;
+  activeCallUser: string | null;
+  isCartOpen: boolean;
+  isVideoCallOpen: boolean;
+  activeShare: { title: string; url: string } | null;
+  viewingProfileUser: UserProfile | null;
+  isSupabaseModalOpen: boolean;
+  currentUser: UserProfile;
+  allUsers: Record<string, UserProfile>;
+  soundEnabled: boolean;
+  cart: CartItem[];
+  collections: SavedCollection[];
+  
+  // Actions
+  addPost: (post: Partial<PostItem>) => Promise<void>;
+  addClip: (clip: ShortClipItem) => void;
+  addLongVideo: (video: LongVideoItem) => void;
+  addRom: (rom: Partial<RomItem>) => void;
+  addProduct: (product: ProductItem) => void;
+  addSharedFile: (file: Partial<SharedFileItem>) => void;
+  setActiveView: (view: ViewName) => void;
+  setActiveConvId: (id: string | null) => void;
+  setIsCartOpen: (open: boolean) => void;
+  setIsVideoCallOpen: (open: boolean) => void;
+  openShareModal: (title: string, url: string) => void;
+  closeShareModal: () => void;
+  openUserProfileModal: (user: UserProfile) => void;
+  closeUserProfileModal: () => void;
+  setIsSupabaseModalOpen: (open: boolean) => void;
+  updateCurrentUser: (updates: Partial<UserProfile>) => void;
+  toggleFollowUser: (userId: string) => void;
+  isFollowing: (userId?: string) => boolean;
+  isMutualFriend: (userId?: string) => boolean;
+  toggleClipLike: (clipId: string) => void;
+  toggleClipDislike: (clipId: string) => void;
+  toggleClipBookmark: (clipId: string) => void;
+  addClipComment: (clipId: string, comment: any) => void;
+  startOrOpenChatWithUser: (userId: string) => void;
+  sendMessage: (convId: string, message: any) => void;
+  acceptMessageRequest: (convId: string) => void;
+  declineMessageRequest: (convId: string) => void;
+  openVideoCall: (userName: string) => void;
+  closeVideoCall: () => void;
+  addToCart: (product: ProductItem) => void;
+  removeFromCart: (productId: string) => void;
+  updateCartQuantity: (productId: string, quantity: number) => void;
+  clearCart: () => void;
+  setSoundEnabled: (enabled: boolean) => void;
 } | undefined>(undefined);
 
 // Provider
 export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const [isInitialized, setIsInitialized] = useState(false);
 
-  // Initialize data from localStorage and Supabase
+  // Sync sound manager enabled flag
   useEffect(() => {
-    const initializeData = async () => {
-      try {
-        // Load from localStorage as fallback
-        const savedPosts = localStorage.getItem('wevids_posts');
-        const savedClips = localStorage.getItem('wevids_clips');
-        const savedVideos = localStorage.getItem('wevids_videos');
-        
-        if (savedPosts) {
-          dispatch({ type: 'ADD_POST', payload: JSON.parse(savedPosts) });
-        }
-        if (savedClips) {
-          dispatch({ type: 'ADD_CLIP', payload: JSON.parse(savedClips) });
-        }
-        if (savedVideos) {
-          dispatch({ type: 'ADD_LONG_VIDEO', payload: JSON.parse(savedVideos) });
-        }
-
-        // Try to load from Supabase if configured
-        if (isSupabaseConfigured()) {
-          try {
-            const { data: supabasePosts } = await supabase
-              .from('posts')
-              .select('*')
-              .order('created_at', { ascending: false });
-            
-            if (supabasePosts?.length) {
-              supabasePosts.forEach(post => {
-                dispatch({ type: 'ADD_POST', payload: post });
-              });
-            }
-          } catch (err) {
-            console.log('Supabase posts load failed, using localStorage:', err);
-          }
-        }
-
-        setIsInitialized(true);
-      } catch (err) {
-        console.error('Initialization failed:', err);
-        setIsInitialized(true);
-      }
-    };
-
-    initializeData();
-  }, []);
-
-  // Save to localStorage when posts change
-  useEffect(() => {
-    if (isInitialized) {
-      localStorage.setItem('wevids_posts', JSON.stringify(state.posts));
-    }
-  }, [state.posts, isInitialized]);
+    sounds.enabled = state.soundEnabled;
+  }, [state.soundEnabled]);
 
   // Actions
-  const addPost = async (post: PostItem) => {
+  const addPost = async (post: Partial<PostItem>) => {
+    const fullPost: PostItem = {
+      id: `post-${Date.now()}`,
+      userId: post.userId || state.currentUser.id,
+      authorName: post.authorName || state.currentUser.name,
+      authorHandle: post.authorHandle || state.currentUser.handle,
+      authorAvatar: post.authorAvatar || state.currentUser.avatar,
+      authorColor: post.authorColor || state.currentUser.color,
+      location: post.location || state.currentUser.location,
+      time: 'Just now',
+      content: post.content || '',
+      mediaUrl: post.mediaUrl,
+      mediaType: post.mediaType || 'image',
+      likes: 0,
+      dislikes: 0,
+      shares: 0,
+      comments: [],
+      tags: post.tags || []
+    };
+
     sounds.success();
     toast.success('Post created successfully!');
-    
-    if (isSupabaseConfigured()) {
-      try {
-        const { data, error } = await supabase
-          .from('posts')
-          .insert([post])
-          .select();
-        if (error) throw error;
-        if (data) {
-          dispatch({ type: 'ADD_POST', payload: data[0] });
-        }
-      } catch (err) {
-        console.error('Supabase post failed, using localStorage:', err);
-        dispatch({ type: 'ADD_POST', payload: post });
-      }
-    } else {
-      dispatch({ type: 'ADD_POST', payload: post });
-    }
+    dispatch({ type: 'ADD_POST', payload: fullPost });
   };
 
   const addClip = (clip: ShortClipItem) => {
@@ -396,10 +406,29 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     dispatch({ type: 'ADD_LONG_VIDEO', payload: video });
   };
 
-  const addRom = (rom: RomItem) => {
+  const addRom = (rom: Partial<RomItem>) => {
+    const fullRom: RomItem = {
+      id: `rom-${Date.now()}`,
+      title: rom.title || 'New ROM Build',
+      device: rom.device || 'Generic Device',
+      brand: rom.brand || 'Xiaomi / Redmi',
+      romType: rom.romType || 'China ROM Port',
+      status: rom.status || 'Official',
+      maintainer: rom.maintainer || state.currentUser.name,
+      maintainerHandle: rom.maintainerHandle || state.currentUser.handle,
+      version: rom.version || 'v1.0',
+      androidVersion: rom.androidVersion || 'Android 15',
+      fileSize: rom.fileSize || '4.5 GB',
+      checksum: rom.checksum || '8f92ab1c09',
+      downloadCount: 0,
+      downloadUrl: rom.downloadUrl || '#',
+      githubUrl: rom.githubUrl,
+      releaseDate: 'Today',
+      changelog: rom.changelog || ['Initial release build']
+    };
     sounds.success();
-    toast.success('ROM added!');
-    dispatch({ type: 'ADD_ROM', payload: rom });
+    toast.success('ROM package submitted to Vault!');
+    dispatch({ type: 'ADD_ROM', payload: fullRom });
   };
 
   const addProduct = (product: ProductItem) => {
@@ -408,10 +437,23 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     dispatch({ type: 'ADD_PRODUCT', payload: product });
   };
 
-  const addSharedFile = (file: SharedFileItem) => {
+  const addSharedFile = (file: Partial<SharedFileItem>) => {
+    const fullFile: SharedFileItem = {
+      id: `file-${Date.now()}`,
+      title: file.title || 'Shared File',
+      fileName: file.fileName || 'archive.zip',
+      fileSize: file.fileSize || '10.0 MB',
+      category: file.category || 'ROM / Kernel',
+      uploaderId: file.uploaderId || state.currentUser.id,
+      uploaderName: file.uploaderName || state.currentUser.name,
+      downloadUrl: file.downloadUrl || '#',
+      checksum: file.checksum || 'sha256_mock_hash',
+      downloads: 0,
+      uploadedAt: 'Just now'
+    };
     sounds.success();
-    toast.success('File added!');
-    dispatch({ type: 'ADD_SHARED_FILE', payload: file });
+    toast.success('File package shared to Vault!');
+    dispatch({ type: 'ADD_SHARED_FILE', payload: fullFile });
   };
 
   const setActiveView = (view: ViewName) => {
@@ -458,28 +500,40 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     dispatch({ type: 'UPDATE_CURRENT_USER', payload: updates });
   };
 
+  const isFollowing = (userId?: string) => {
+    if (!userId || userId === state.currentUser.id) return false;
+    return (state.currentUser.followingIds || []).includes(userId);
+  };
+
+  const isMutualFriend = (userId?: string) => {
+    if (!userId || userId === state.currentUser.id) return false;
+    const targetUser = state.allUsers[userId];
+    const followingThem = (state.currentUser.followingIds || []).includes(userId);
+    const theyFollowMe = (targetUser?.followingIds || []).includes(state.currentUser.id);
+    return followingThem && theyFollowMe;
+  };
+
   const toggleFollowUser = (userId: string) => {
     sounds.click();
-    const user = state.allUsers[userId];
-    const isFollowing = user.followers > 0;
-    dispatch({ type: 'TOGGLE_FOLLOW_USER', payload: { userId, isFollowing } });
+    const currentlyFollowing = isFollowing(userId);
+    dispatch({ type: 'TOGGLE_FOLLOW_USER', payload: { userId, isFollowing: currentlyFollowing } });
+    toast.success(currentlyFollowing ? 'Unfollowed user' : 'Following user!');
   };
 
   const toggleClipLike = (clipId: string) => {
-    sounds.click();
+    sounds.like();
     dispatch({ type: 'TOGGLE_CLIP_LIKE', payload: { clipId } });
   };
 
   const toggleClipDislike = (clipId: string) => {
-    sounds.click();
-    const clip = state.clips.find(c => c.id === clipId);
-    const isDisliked = clip?.isDisliked;
-    dispatch({ type: 'TOGGLE_CLIP_DISLIKE', payload: { clipId, isDisliked } });
+    sounds.pop();
+    dispatch({ type: 'TOGGLE_CLIP_DISLIKE', payload: { clipId } });
   };
 
   const toggleClipBookmark = (clipId: string) => {
     sounds.click();
     dispatch({ type: 'TOGGLE_CLIP_BOOKMARK', payload: { clipId } });
+    toast.success('Saved to your Library collections!');
   };
 
   const addClipComment = (clipId: string, comment: any) => {
@@ -495,41 +549,40 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     
     if (existingConv) {
       setActiveConvId(existingConv.id);
+      setActiveView('messages');
     } else {
       const otherUser = state.allUsers[userId];
       const newConv: Conversation = {
         id: `conv-${userId}`,
         isGroup: false,
-        avatar: otherUser.avatar,
-        color: otherUser.color,
+        avatar: otherUser?.avatar || 'U',
+        color: otherUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
         members: [state.currentUser.id, userId],
-        lastMsg: 'Start conversation...',
+        lastMsg: 'Started conversation',
         time: 'Just now',
         unread: 0,
         messages: [],
         status: 'active',
       };
       setActiveConvId(newConv.id);
+      setActiveView('messages');
     }
   };
 
   const sendMessage = (convId: string, message: any) => {
     sounds.pop();
-    const conv = state.conversations.find(c => c.id === convId);
-    if (conv) {
-      const newMessage: any = {
-        id: `msg-${Date.now()}`,
-        fromId: state.currentUser.id,
-        senderName: state.currentUser.name,
-        senderAvatar: state.currentUser.avatar,
-        senderColor: state.currentUser.color,
-        text: message.text,
-        type: message.type,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      
-      dispatch({ type: 'ADD_MESSAGE', payload: { convId, message: newMessage } });
-    }
+    const newMessage = {
+      id: `msg-${Date.now()}`,
+      fromId: state.currentUser.id,
+      senderName: state.currentUser.name,
+      senderAvatar: state.currentUser.avatar,
+      senderColor: state.currentUser.color,
+      text: message.text,
+      type: message.type || 'text',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    
+    dispatch({ type: 'ADD_MESSAGE', payload: { convId, message: newMessage } });
   };
 
   const acceptMessageRequest = (convId: string) => {
@@ -546,14 +599,14 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const openVideoCall = (userName: string) => {
     sounds.success();
+    dispatch({ type: 'SET_ACTIVE_CALL_USER', payload: userName });
     setIsVideoCallOpen(true);
-    toast.success(`Starting video call with ${userName}`);
   };
 
   const closeVideoCall = () => {
     sounds.pop();
     setIsVideoCallOpen(false);
-    toast.info('Video call ended');
+    dispatch({ type: 'SET_ACTIVE_CALL_USER', payload: null });
   };
 
   const addToCart = (product: ProductItem) => {
@@ -575,7 +628,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const clearCart = () => {
     sounds.click();
-    toast.info('Cart cleared');
     dispatch({ type: 'CLEAR_CART' });
   };
 
@@ -584,9 +636,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const value = {
-    state,
-    dispatch,
-    // Actions
+    ...state,
     addPost,
     addClip,
     addLongVideo,
@@ -604,6 +654,8 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setIsSupabaseModalOpen,
     updateCurrentUser,
     toggleFollowUser,
+    isFollowing,
+    isMutualFriend,
     toggleClipLike,
     toggleClipDislike,
     toggleClipBookmark,

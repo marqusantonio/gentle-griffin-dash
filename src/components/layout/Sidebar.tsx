@@ -1,5 +1,6 @@
 import React from 'react';
 import { useWevids } from '../../context/WevidsContext';
+import { ViewName } from '../../types/wevids';
 import { 
   PlaySquare, 
   Flame,
@@ -13,7 +14,8 @@ import {
   UserCheck, 
   Volume2, 
   VolumeX,
-  Video
+  Video,
+  Bookmark
 } from 'lucide-react';
 
 interface NavItem {
@@ -40,15 +42,15 @@ const mainNavItems: NavItem[] = [
     isLive: false
   },
   {
-    id: 'explore',
-    label: 'Explore',
-    icon: Sparkles,
+    id: 'files',
+    label: 'File Vault',
+    icon: FolderDown,
     isLive: false
   },
   {
     id: 'aihub',
     label: 'AI Hub',
-    icon: Gamepad2,
+    icon: Sparkles,
     isLive: false
   },
   {
@@ -59,7 +61,7 @@ const mainNavItems: NavItem[] = [
   },
   {
     id: 'roms',
-    label: 'ROMs',
+    label: 'ROMs & Kernels',
     icon: FileCode2,
     isLive: false
   },
@@ -76,21 +78,18 @@ const mainNavItems: NavItem[] = [
     isLive: false
   },
   {
+    id: 'bookmarks',
+    label: 'Saved Vault',
+    icon: Bookmark,
+    isLive: false
+  },
+  {
     id: 'profile',
     label: 'Profile',
     icon: UserCheck,
     isLive: false
   }
 ];
-
-interface NavItem {
-  id: ViewName;
-  label: string;
-  icon: React.ElementType;
-  badge?: string;
-  badgeColor?: string;
-  isLive?: boolean;
-}
 
 export const Sidebar: React.FC = () => {
   const { 
@@ -103,7 +102,6 @@ export const Sidebar: React.FC = () => {
     cart
   } = useWevids();
 
-  // FIX: Add null checks for conversations and cart before using reduce
   const totalUnread = conversations ? conversations.reduce((acc, c) => acc + (c.unread || 0), 0) : 0;
   const totalCartCount = cart ? cart.reduce((acc, item) => acc + item.quantity, 0) : 0;
 
@@ -148,9 +146,9 @@ export const Sidebar: React.FC = () => {
                 <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-4 rounded-r-full bg-gradient-to-b from-[#ff2d95] to-[#00e5ff]" />
               )}
               <Icon 
-                className="w-4 h-4 transition-transform group-hover:scale-110 ${
+                className={`w-4 h-4 transition-transform group-hover:scale-110 ${
                   isActive ? 'text-[#ff2d95]' : 'text-[#8a8aa8] group-hover:text-[#00e5ff]'
-                }" 
+                }`} 
               />
               <span className="flex-1 text-left tracking-wide font-semibold">{item.label}</span>
               
@@ -162,11 +160,11 @@ export const Sidebar: React.FC = () => {
               )}
 
               {item.badge && !item.isLive && (
-                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
                   item.badgeColor 
                     ? `${item.badgeColor} text-white` 
                     : 'bg-white/10 text-[#00e5ff] border border-[#00e5ff]/30'
-                }">
+                }`}>
                   {item.badge}
                 </span>
               )}
