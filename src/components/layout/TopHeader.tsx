@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useWevids } from '../../context/WevidsContext';
 import { 
   Search, 
@@ -25,7 +25,9 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => 
   
   const [searchQuery, setSearchQuery] = useState('');
   const isCloudConnected = isSupabaseConfigured();
-  const totalCartCount = cart.reduce((acc, i) => acc + i.quantity, 0);
+  
+  // FIX: Add null check for cart before using reduce
+  const totalCartCount = cart ? cart.reduce((acc, i) => acc + i.quantity, 0) : 0;
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,7 +65,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => 
           }`}
           title="Manage Supabase Online Database & Auth"
         >
-          <Database className={`w-3.5 h-3.5 ${isCloudConnected ? 'text-[#3ecf8e]' : 'text-[#8a8aa8]'}`} />
+          <Database className={`w-3.5 h-3.5 ${isCloudConnected ? 'text-[#3ecf8e]' : 'text-[#8a8aa8]'`} />
           <span className="hidden md:inline">{isCloudConnected ? 'Cloud Online' : 'Link Cloud'}</span>
         </button>
 
@@ -99,13 +101,6 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => 
           }}
           className="relative p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-[#8a8aa8] hover:text-white transition-colors"
           title="Open Cart"
-        >
-          <ShoppingBag className="w-4 h-4" />
-          {totalCartCount > 0 && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-[#ff2d95] text-slate-900 font-bold text-[10px] flex items-center justify-center shadow-lg animate-bounce">
-              {totalCartCount}
-            </span>
-          )}
         </button>
 
         {/* Wallet Token Badge */}
@@ -114,7 +109,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => 
           className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#ff2d95]/15 to-[#00e5ff]/15 border border-[#ff2d95]/30 cursor-pointer hover:border-[#00e5ff] transition-all"
         >
           <span className="text-xs font-bold text-[#ff2d95] font-orbitron">
-            ⚡ {currentUser.walletBalance.toFixed(0)} <span className="text-[10px] text-[#00e5ff]">WVDS</span>
+            ⚡ {currentUser?.walletBalance?.toFixed(0) || '0'} <span className="text-[10px] text-[#00e5ff]">WVDS</span>
           </span>
         </div>
       </div>
