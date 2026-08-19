@@ -198,20 +198,20 @@ export const Sidebar: React.FC = () => {
         >
           <div 
             className="w-8 h-8 rounded-full flex items-center justify-center text-slate-900 font-bold text-xs shadow-md flex-shrink-0"
-            style={{ background: currentUser.color }}
+            style={{ background: currentUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
           >
-            {currentUser.avatarImage ? (
+            {currentUser?.avatarImage ? (
               <img src={currentUser.avatarImage} alt="Avatar" className="w-full h-full object-cover rounded-full" />
             ) : (
-              currentUser.avatar
+              currentUser?.avatar || 'A'
             )}
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-xs font-bold text-white truncate flex items-center gap-1">
-              {currentUser.name}
+              {currentUser?.name || 'Loading...'}
             </div>
             <div className="text-[10px] text-[#00e5ff] font-orbitron truncate">
-              {currentUser.handle}
+              {currentUser?.handle || '@loading'}
             </div>
           </div>
         </div>
