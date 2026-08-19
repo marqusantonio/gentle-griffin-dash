@@ -25,6 +25,73 @@ interface NavItem {
   isLive?: boolean;
 }
 
+// Define main navigation items
+const mainNavItems: NavItem[] = [
+  {
+    id: 'clips',
+    label: 'Clips',
+    icon: Video,
+    isLive: false
+  },
+  {
+    id: 'feed',
+    label: 'Feed',
+    icon: MessageSquareText,
+    isLive: false
+  },
+  {
+    id: 'explore',
+    label: 'Explore',
+    icon: Sparkles,
+    isLive: false
+  },
+  {
+    id: 'aihub',
+    label: 'AI Hub',
+    icon: Gamepad2,
+    isLive: false
+  },
+  {
+    id: 'gaming',
+    label: 'Gaming',
+    icon: Gamepad2,
+    isLive: false
+  },
+  {
+    id: 'roms',
+    label: 'ROMs',
+    icon: FileCode2,
+    isLive: false
+  },
+  {
+    id: 'mall',
+    label: 'Mall',
+    icon: ShoppingBag,
+    isLive: false
+  },
+  {
+    id: 'messages',
+    label: 'Messages',
+    icon: MessageSquareText,
+    isLive: false
+  },
+  {
+    id: 'profile',
+    label: 'Profile',
+    icon: UserCheck,
+    isLive: false
+  }
+];
+
+interface NavItem {
+  id: ViewName;
+  label: string;
+  icon: React.ElementType;
+  badge?: string;
+  badgeColor?: string;
+  isLive?: boolean;
+}
+
 export const Sidebar: React.FC = () => {
   const { 
     activeView, 
@@ -40,8 +107,6 @@ export const Sidebar: React.FC = () => {
   const totalUnread = conversations ? conversations.reduce((acc, c) => acc + (c.unread || 0), 0) : 0;
   const totalCartCount = cart ? cart.reduce((acc, item) => acc + item.quantity, 0) : 0;
 
-  // ... rest of the component remains the same ...
-  
   return (
     <aside className="w-64 fixed top-0 left-0 bottom-0 z-40 flex flex-col liquid-glass border-r border-white/10 p-4 transition-all duration-300">
       {/* Brand Header */}
