@@ -91,6 +91,63 @@ export interface ShortClipItem {
   comments: CommentItem[];
 }
 
+export interface VideoChapter {
+  time: number;
+  label: string;
+}
+
+export interface LongVideoItem {
+  id: string;
+  userId: string;
+  title: string;
+  description: string;
+  videoUrl: string;
+  thumbnail: string;
+  duration: string;
+  views: string;
+  timestamp: string;
+  category: string;
+  likes: number;
+  dislikes: number;
+  chapters: VideoChapter[];
+  comments: CommentItem[];
+}
+
+export interface RomItem {
+  id: string;
+  title: string;
+  device: string;
+  brand: 'Xiaomi / Redmi' | 'Pixel' | 'Samsung' | 'Honor' | 'GSI Generic' | 'Kernel / Module';
+  romType: 'China ROM Port' | 'Global Official' | 'Custom Kernel' | 'Magisk Module' | 'HyperOS Port';
+  status: 'Official' | 'Beta' | 'Port';
+  maintainer: string;
+  maintainerHandle: string;
+  version: string;
+  androidVersion: string;
+  fileSize: string;
+  checksum: string;
+  downloadCount: number;
+  downloadUrl: string;
+  githubUrl?: string;
+  releaseDate: string;
+  changelog: string[];
+}
+
+export interface SavedCollectionItem {
+  id: string;
+  type: 'rom' | 'clip' | 'long_video' | 'file' | 'product';
+  title: string;
+  preview: string;
+  addedAt: string;
+}
+
+export interface SavedCollection {
+  id: string;
+  name: string;
+  icon: string;
+  items: SavedCollectionItem[];
+}
+
 export interface SharedFileItem {
   id: string;
   title: string;
@@ -121,6 +178,7 @@ export interface Conversation {
   id: string;
   isGroup: boolean;
   groupName?: string;
+  groupTopic?: string;
   avatar: string;
   color: string;
   members: string[]; // user IDs

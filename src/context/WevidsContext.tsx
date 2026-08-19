@@ -8,7 +8,10 @@ import {
   ProductItem, 
   CartItem, 
   Conversation, 
-  CommentItem
+  CommentItem,
+  RomItem,
+  LongVideoItem,
+  SavedCollection
 } from '../types/wevids';
 import { 
   CURRENT_USER, 
@@ -16,6 +19,9 @@ import {
   INITIAL_CLIPS, 
   INITIAL_PRODUCTS, 
   INITIAL_CONVERSATIONS, 
+  INITIAL_ROMS,
+  INITIAL_LONG_VIDEOS,
+  INITIAL_BOOKMARKS,
   MOCK_USERS 
 } from '../data/initialData';
 import { sounds } from '../lib/soundFx';
@@ -73,8 +79,15 @@ interface WevidsContextType {
   clips: ShortClipItem[];
   toggleClipLike: (clipId: string) => void;
   toggleClipDislike: (clipId: string) => void;
+  toggleClipBookmark: (clipId: string) => void;
   addClipComment: (clipId: string, comment: Omit<CommentItem, 'id' | 'timestamp' | 'likes'>) => void;
   
+  // Long Videos & ROMs
+  longVideos: LongVideoItem[];
+  roms: RomItem[];
+  addRom: (rom: Omit<RomItem, 'id' | 'downloadCount' | 'releaseDate'>) => void;
+  collections: SavedCollection[];
+
   // Shared Files Hub
   files: SharedFileItem[];
   addSharedFile: (file: Omit<SharedFileItem, 'id' | 'downloads' | 'uploadedAt'>) => void;
@@ -158,6 +171,14 @@ export const WevidsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return saved ? JSON.parse(saved) : INITIAL_CLIPS;
   });
 
+  const [roms, setRoms] = useState<RomItem[]>(() => {
+    const saved = localStorage.getItem('wevids_roms_v32');
+    return saved ? JSON.parse(saved) : INITIAL_ROMS;
+  });
+
+  const [longVideos] = useState<LongVideoItem[]>(INITIAL_LONG_VIDEOS);
+  const [collections] = useState<SavedCollection[]>(INITIAL_BOOKMARKS);
+
   const [files, setFiles] = useState<SharedFileItem[]>(() => {
     const saved = localStorage.getItem('wevids_files_v32');
     return saved ? JSON.parse(saved) : INITIAL_FILES;
@@ -220,6 +241,10 @@ export const WevidsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     localStorage.setItem('wevids_clips_v32', JSON.stringify(clips));
   }, [clips]);
+
+  useEffect(() => {
+    localStorage.setItem('wevids_roms_v32', JSON.stringify(roms));
+  }, [roms]);
 
   useEffect(() => {
     localStorage.setItem('wevids_files_v32', JSON.stringify(files));
@@ -379,6 +404,21 @@ export const WevidsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }));
   };
 
+  const toggleClipBookmark = (clipId: string) => {
+    sounds.pop();
+    setClips(prev => prev.map(c => {
+      if (c.id === clipId) {
+        const wasSaved = c.isBookmarked;
+        if (!wasSaved) toast.success('Saved to your bookmarks collection!');
+        return {
+          ...c,
+          isBookmarked: !wasSaved
+        };
+      }
+      return c;
+    }));
+  };
+
   const addClipComment = (clipId: string, commentData: Omit<CommentItem, 'id' | 'timestamp' | 'likes'>) => {
     sounds.pop();
     const newComment: CommentItem = {
@@ -388,6 +428,19 @@ export const WevidsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       likes: 0,
     };
     setClips(prev => prev.map(c => c.id === clipId ? { ...c, comments: [...c.comments, newComment] } : c));
+  };
+
+  // ROMs
+  const addRom = (romData: Omit<RomItem, 'id' | 'downloadCount' | 'releaseDate'>) => {
+    sounds.success();
+    const newRom: RomItem = {
+      ...romData,
+      id: `rom-${Date.now()}`,
+      downloadCount: 1,
+      releaseDate: 'Today'
+    };
+    setRoms(prev => [newRom, ...prev]);
+    toast.success(`Published "${romData.title}" to Developer ROM Vault!`);
   };
 
   // Files Hub
@@ -559,7 +612,12 @@ export const WevidsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         clips,
         toggleClipLike,
         toggleClipDislike,
+        toggleClipBookmark,
         addClipComment,
+        longVideos,
+        roms,
+        addRom,
+        collections,
         files,
         addSharedFile,
         conversations,
