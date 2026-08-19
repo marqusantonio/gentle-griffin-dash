@@ -4,18 +4,19 @@ import {
   MessageSquareText, 
   Send, 
   Mic, 
-  Image as ImageIcon, 
   Video, 
   Phone, 
   Users, 
-  Plus, 
-  FileCode, 
-  Paperclip,
-  Smile,
-  Search,
-  CheckCheck
+  CheckCheck, 
+  ShieldAlert, 
+  UserCheck, 
+  Check, 
+  X,
+  FileCode,
+  Music2
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
+import { toast } from 'sonner';
 
 export const MessagesView: React.FC = () => {
   const { 
@@ -23,21 +24,34 @@ export const MessagesView: React.FC = () => {
     activeConvId, 
     setActiveConvId, 
     sendMessage, 
-    createGroupChat, 
+    acceptMessageRequest, 
+    declineMessageRequest,
     currentUser, 
-    openVideoCall 
+    allUsers,
+    openVideoCall,
+    isMutualFriend
   } = useWevids();
 
   const [messageText, setMessageText] = useState('');
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
-  const [showGroupModal, setShowGroupModal] = useState(false);
-  const [groupName, setGroupName] = useState('');
 
   const activeConv = conversations.find(c => c.id === activeConvId) || conversations[0];
+  const otherMemberId = activeConv?.members?.find(id => id !== currentUser.id) || 'sara';
+  const otherUser = allUsers[otherMemberId];
+  const isFriend = otherUser ? isMutualFriend(otherUser.id) : false;
+
+  const isPendingMyAcceptance = activeConv?.status === 'pending_request' && activeConv?.requestedBy !== 'you';
+  const isPendingOtherAcceptance = activeConv?.status === 'pending_request' && activeConv?.requestedBy === 'you';
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!messageText.trim() || !activeConv) return;
+
+    if (isPendingOtherAcceptance && activeConv.messages.length >= 1) {
+      toast.error('You can only send 1 initial request message until they accept your chat!');
+      return;
+    }
+
     sendMessage(activeConv.id, {
       text: messageText.trim(),
       type: 'text',
@@ -47,52 +61,39 @@ export const MessagesView: React.FC = () => {
 
   const handleSendVoiceNote = () => {
     if (!activeConv) return;
+    if (isPendingOtherAcceptance) {
+      toast.error('Voice messages unlocked once request is accepted!');
+      return;
+    }
     setIsRecordingVoice(true);
     sounds.pop();
     setTimeout(() => {
       setIsRecordingVoice(false);
       sendMessage(activeConv.id, {
         type: 'audio',
-        text: 'Voice note (0:08s)',
-        mediaUrl: 'https://actions.google.com/sounds/v1/alarms/beep_short.ogg'
+        text: '🎤 Voice message (0:09s)',
       });
       sounds.success();
-    }, 2000);
-  };
-
-  const handleCreateGroup = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!groupName.trim()) return;
-    createGroupChat(groupName.trim(), ['carlos', 'aiko', 'sara']);
-    setGroupName('');
-    setShowGroupModal(false);
+      toast.success('Voice message sent!');
+    }, 1800);
   };
 
   return (
     <div className="space-y-6 pb-20">
       <div className="liquid-glass rounded-3xl border border-white/10 h-[640px] flex overflow-hidden shadow-2xl">
-        {/* Left Conversation List */}
+        {/* Left List */}
         <div className="w-80 border-r border-white/10 flex flex-col liquid-glass-card">
-          <div className="p-4 border-b border-white/10 flex items-center justify-between">
+          <div className="p-4 border-b border-white/10">
             <h2 className="font-orbitron font-bold text-sm text-white flex items-center gap-2">
               <MessageSquareText className="w-4 h-4 text-[#ff2d95]" />
-              Direct & Groups
+              Conversations & Requests
             </h2>
-            <button
-              onClick={() => {
-                sounds.pop();
-                setShowGroupModal(true);
-              }}
-              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white"
-              title="Create New Group"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-1 p-2">
             {conversations.map((conv) => {
               const isActive = conv.id === activeConvId;
+              const isReq = conv.status === 'pending_request';
               return (
                 <div
                   key={conv.id}
@@ -107,19 +108,27 @@ export const MessagesView: React.FC = () => {
                   }`}
                 >
                   <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-900 text-sm shadow-md flex-shrink-0"
+                    className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-900 text-sm shadow-md flex-shrink-0 relative"
                     style={{ background: conv.color }}
                   >
                     {conv.avatar}
+                    {isReq && (
+                      <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-[#fbbf24] border-2 border-black animate-ping" />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between text-xs mb-0.5">
                       <span className="font-bold text-white truncate">
-                        {conv.isGroup ? conv.groupName : 'Direct Chat'}
+                        {conv.isGroup ? conv.groupName : (allUsers[conv.members.find(m => m !== 'you') || '']?.name || 'Direct Chat')}
                       </span>
                       <span className="text-[10px] text-[#8a8aa8]">{conv.time}</span>
                     </div>
                     <p className="text-[11px] text-[#8a8aa8] truncate">{conv.lastMsg}</p>
+                    {isReq && (
+                      <span className="text-[9px] font-bold text-[#fbbf24] bg-[#fbbf24]/10 px-2 py-0.5 rounded-full mt-1 inline-block border border-[#fbbf24]/30">
+                        1-Message Request Gate
+                      </span>
+                    )}
                   </div>
                 </div>
               );
@@ -127,10 +136,10 @@ export const MessagesView: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Active Chat Pane */}
+        {/* Right Active Pane */}
         {activeConv ? (
           <div className="flex-1 flex flex-col justify-between bg-black/40">
-            {/* Top Chat Header */}
+            {/* Header */}
             <div className="p-4 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
               <div className="flex items-center gap-3">
                 <div
@@ -140,27 +149,60 @@ export const MessagesView: React.FC = () => {
                   {activeConv.avatar}
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-white">
-                    {activeConv.isGroup ? activeConv.groupName : 'Direct Chat'}
+                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                    {activeConv.isGroup ? activeConv.groupName : (otherUser?.name || 'Direct Chat')}
+                    {isFriend && (
+                      <span className="px-2 py-0.5 rounded-full bg-[#10b981]/20 text-[#10b981] text-[9px] font-bold border border-[#10b981]/40">
+                        Friends 🤝
+                      </span>
+                    )}
                   </div>
                   <div className="text-[10px] text-[#00e5ff] flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#10b981] animate-pulse" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#10b981]" />
                     <span>Real-time Broadcast Node Online</span>
                   </div>
                 </div>
               </div>
 
-              {/* Call triggers */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => openVideoCall(activeConv.groupName || 'Direct Call')}
-                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white transition-colors"
-                  title="Video Call"
-                >
-                  <Video className="w-4 h-4 text-[#00e5ff]" />
-                </button>
-              </div>
+              <button
+                onClick={() => openVideoCall(otherUser?.name || 'Friend')}
+                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white transition-colors"
+                title="Launch Video Call"
+              >
+                <Video className="w-4 h-4 text-[#00e5ff]" />
+              </button>
             </div>
+
+            {/* Request Gate Banner if Pending */}
+            {isPendingMyAcceptance && (
+              <div className="p-4 bg-gradient-to-r from-[#fbbf24]/20 to-[#ff2d95]/20 border-b border-[#fbbf24]/40 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs text-white">
+                  <ShieldAlert className="w-4 h-4 text-[#fbbf24] flex-shrink-0" />
+                  <span><strong>{otherUser?.name}</strong> sent a 1-message connection request. Accept to enable full chat?</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => acceptMessageRequest(activeConv.id)}
+                    className="px-3 py-1.5 rounded-xl bg-[#10b981] text-slate-900 font-bold text-xs flex items-center gap-1 shadow-md hover:scale-105"
+                  >
+                    <Check className="w-3.5 h-3.5" /> Accept
+                  </button>
+                  <button
+                    onClick={() => declineMessageRequest(activeConv.id)}
+                    className="px-3 py-1.5 rounded-xl bg-white/10 text-white text-xs hover:bg-red-500/30"
+                  >
+                    <X className="w-3.5 h-3.5" /> Decline
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {isPendingOtherAcceptance && (
+              <div className="p-3 bg-white/5 border-b border-white/10 text-xs text-[#fbbf24] flex items-center gap-2">
+                <ShieldAlert className="w-3.5 h-3.5" />
+                <span>You sent 1 message request. Awaiting acceptance from {otherUser?.name}.</span>
+              </div>
+            )}
 
             {/* Chat Stream */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -191,18 +233,7 @@ export const MessagesView: React.FC = () => {
                         <div className="font-bold text-[10px] text-[#00e5ff]">{m.senderName}</div>
                       )}
 
-                      {m.type === 'text' && <p>{m.text}</p>}
-
-                      {m.type === 'gif' && m.mediaUrl && (
-                        <img src={m.mediaUrl} alt="GIF" className="rounded-xl max-h-44 object-cover" />
-                      )}
-
-                      {m.type === 'audio' && (
-                        <div className="flex items-center gap-2 p-2 rounded-xl bg-black/40">
-                          <Mic className="w-4 h-4 text-[#00e5ff]" />
-                          <span>🎤 Voice Note (0:08s)</span>
-                        </div>
-                      )}
+                      <p>{m.text}</p>
 
                       <div className="flex items-center justify-end gap-1 text-[9px] opacity-70">
                         <span>{m.timestamp}</span>
@@ -224,7 +255,7 @@ export const MessagesView: React.FC = () => {
                     ? 'bg-red-500 text-white animate-pulse'
                     : 'bg-white/5 hover:bg-white/10 text-[#8a8aa8] hover:text-white'
                 }`}
-                title="Hold to Record Voice"
+                title="Voice Note"
               >
                 <Mic className="w-4 h-4" />
               </button>
@@ -233,8 +264,9 @@ export const MessagesView: React.FC = () => {
                 type="text"
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
-                placeholder="Type a message or share a ROM build..."
-                className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:outline-none focus:border-[#00e5ff]"
+                placeholder={isPendingOtherAcceptance ? 'Request sent (waiting for approval)...' : 'Type a message...'}
+                disabled={isPendingOtherAcceptance && activeConv.messages.length >= 1}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:outline-none focus:border-[#00e5ff] disabled:opacity-50"
               />
 
               <button
@@ -247,40 +279,6 @@ export const MessagesView: React.FC = () => {
           </div>
         ) : null}
       </div>
-
-      {/* Group Create Modal */}
-      {showGroupModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="liquid-glass rounded-3xl p-6 border border-white/20 max-w-md w-full space-y-4 shadow-2xl">
-            <h3 className="font-orbitron font-bold text-base text-white">Create Modding Group</h3>
-            <form onSubmit={handleCreateGroup} className="space-y-3">
-              <input
-                type="text"
-                value={groupName}
-                onChange={(e) => setGroupName(e.target.value)}
-                placeholder="Group Name (e.g. Xiaomi 14 Kernel Lab)"
-                className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white"
-                required
-              />
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowGroupModal(false)}
-                  className="px-4 py-2 rounded-xl bg-white/5 text-[#8a8aa8] text-xs"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold text-xs"
-                >
-                  Create Group
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

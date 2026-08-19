@@ -4,27 +4,51 @@ import {
   UserProfile, 
   PostItem, 
   ShortClipItem, 
-  LongVideoItem, 
-  RomItem, 
+  SharedFileItem, 
   ProductItem, 
   CartItem, 
   Conversation, 
-  SavedCollection,
   CommentItem
 } from '../types/wevids';
 import { 
   CURRENT_USER, 
   INITIAL_POSTS, 
   INITIAL_CLIPS, 
-  INITIAL_LONG_VIDEOS, 
-  INITIAL_ROMS, 
   INITIAL_PRODUCTS, 
   INITIAL_CONVERSATIONS, 
-  INITIAL_BOOKMARKS,
   MOCK_USERS 
 } from '../data/initialData';
 import { sounds } from '../lib/soundFx';
 import { toast } from 'sonner';
+
+export const INITIAL_FILES: SharedFileItem[] = [
+  {
+    id: 'file-1',
+    title: 'HyperOS 2.0 Fastboot Overclock Script',
+    fileName: 'hyperos2_fastboot_gpu_fix.zip',
+    fileSize: '48.6 MB',
+    category: 'ROM / Kernel',
+    uploaderId: 'carlos',
+    uploaderName: 'Carlos Mendez',
+    downloadUrl: '#',
+    checksum: '8fa9284bc7102e88a',
+    downloads: 1420,
+    uploadedAt: 'Today'
+  },
+  {
+    id: 'file-2',
+    title: 'Cyberpunk Neon Lightroom & Premiere LUTs Pack',
+    fileName: 'tokyo_neon_luts_2026.cube',
+    fileSize: '12.4 MB',
+    category: 'LUTs / Preset',
+    uploaderId: 'aiko',
+    uploaderName: 'Aiko Tanaka',
+    downloadUrl: '#',
+    checksum: 'c2b489ef01a8893d',
+    downloads: 3840,
+    uploadedAt: 'Yesterday'
+  }
+];
 
 interface WevidsContextType {
   activeView: ViewName;
@@ -33,6 +57,11 @@ interface WevidsContextType {
   updateCurrentUser: (updates: Partial<UserProfile>) => void;
   allUsers: Record<string, UserProfile>;
   
+  // Follow / Friends System
+  toggleFollowUser: (targetUserId: string) => void;
+  isFollowing: (targetUserId: string) => boolean;
+  isMutualFriend: (targetUserId: string) => boolean;
+  
   // Posts & Feed
   posts: PostItem[];
   addPost: (post: Omit<PostItem, 'id' | 'likes' | 'dislikes' | 'shares' | 'comments'>) => void;
@@ -40,16 +69,24 @@ interface WevidsContextType {
   togglePostDislike: (postId: string) => void;
   addPostComment: (postId: string, comment: Omit<CommentItem, 'id' | 'timestamp' | 'likes'>) => void;
   
-  // Clips & Long Videos
+  // Clips / Shorts
   clips: ShortClipItem[];
-  longVideos: LongVideoItem[];
   toggleClipLike: (clipId: string) => void;
-  toggleClipBookmark: (clipId: string) => void;
+  toggleClipDislike: (clipId: string) => void;
   addClipComment: (clipId: string, comment: Omit<CommentItem, 'id' | 'timestamp' | 'likes'>) => void;
   
-  // ROM Vault
-  roms: RomItem[];
-  addRom: (rom: Omit<RomItem, 'id' | 'downloadCount' | 'releaseDate'>) => void;
+  // Shared Files Hub
+  files: SharedFileItem[];
+  addSharedFile: (file: Omit<SharedFileItem, 'id' | 'downloads' | 'uploadedAt'>) => void;
+  
+  // Direct Messaging & 1-Message Request Gate
+  conversations: Conversation[];
+  activeConvId: string;
+  setActiveConvId: (id: string) => void;
+  sendMessage: (convId: string, message: { text?: string; type: 'text' | 'image' | 'gif' | 'video' | 'audio' | 'file'; mediaUrl?: string }) => void;
+  startOrOpenChatWithUser: (targetUserId: string) => void;
+  acceptMessageRequest: (convId: string) => void;
+  declineMessageRequest: (convId: string) => void;
   
   // Marketplace & Cart
   products: ProductItem[];
@@ -61,18 +98,7 @@ interface WevidsContextType {
   isCartOpen: boolean;
   setIsCartOpen: (open: boolean) => void;
   
-  // Messaging
-  conversations: Conversation[];
-  activeConvId: string;
-  setActiveConvId: (id: string) => void;
-  sendMessage: (convId: string, message: { text?: string; type: 'text' | 'image' | 'gif' | 'video' | 'audio' | 'rom_file'; mediaUrl?: string }) => void;
-  createGroupChat: (name: string, members: string[]) => void;
-  
-  // Bookmarks & Playlists
-  collections: SavedCollection[];
-  toggleBookmark: (item: { id: string; type: 'post' | 'clip' | 'long_video' | 'rom' | 'product'; title: string; preview: string }) => void;
-  
-  // Sound & Modals
+  // Modals & Calls
   soundEnabled: boolean;
   setSoundEnabled: (enabled: boolean) => void;
   openShareModal: (title: string, url: string) => void;
@@ -90,51 +116,93 @@ interface WevidsContextType {
 const WevidsContext = createContext<WevidsContextType | undefined>(undefined);
 
 export const WevidsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [activeView, setActiveViewRaw] = useState<ViewName>('feed');
+  const [activeView, setActiveViewRaw] = useState<ViewName>('clips');
   const [currentUser, setCurrentUser] = useState<UserProfile>(() => {
-    const saved = localStorage.getItem('wevids_user_v31');
-    return saved ? JSON.parse(saved) : CURRENT_USER;
+    const saved = localStorage.getItem('wevids_user_v32');
+    if (saved) return JSON.parse(saved);
+    return {
+      ...CURRENT_USER,
+      followingIds: ['sara'],
+      followerIds: ['sara', 'carlos'],
+      bioAudioTitle: 'Cyber Tokyo Ambient Synth Beat',
+      bioAudioUrl: 'https://actions.google.com/sounds/v1/science_fiction/alien_spaceship_hum.ogg'
+    };
   });
-  const [allUsers, setAllUsers] = useState<Record<string, UserProfile>>(MOCK_USERS);
-  
+
+  const [allUsers, setAllUsers] = useState<Record<string, UserProfile>>(() => {
+    const base = { ...MOCK_USERS };
+    base.sara.followingIds = ['you'];
+    base.sara.followerIds = ['you'];
+    base.sara.bioAudioTitle = 'Persian Ney & Saffron Wind';
+    base.sara.bioAudioUrl = 'https://actions.google.com/sounds/v1/ambiences/tea_pour.ogg';
+
+    base.carlos.followingIds = ['you'];
+    base.carlos.followerIds = [];
+    base.carlos.bioAudioTitle = '8-Bit Modder Chiptune';
+    base.carlos.bioAudioUrl = 'https://actions.google.com/sounds/v1/alarms/beep_short.ogg';
+
+    base.aiko.followingIds = [];
+    base.aiko.followerIds = [];
+    base.aiko.bioAudioTitle = 'Shibuya Rain 3D Audio';
+    base.aiko.bioAudioUrl = 'https://actions.google.com/sounds/v1/weather/rain_heavy.ogg';
+    return base;
+  });
+
   const [posts, setPosts] = useState<PostItem[]>(() => {
-    const saved = localStorage.getItem('wevids_posts_v31');
+    const saved = localStorage.getItem('wevids_posts_v32');
     return saved ? JSON.parse(saved) : INITIAL_POSTS;
   });
-  
+
   const [clips, setClips] = useState<ShortClipItem[]>(() => {
-    const saved = localStorage.getItem('wevids_clips_v31');
+    const saved = localStorage.getItem('wevids_clips_v32');
     return saved ? JSON.parse(saved) : INITIAL_CLIPS;
   });
-  
-  const [longVideos, setLongVideos] = useState<LongVideoItem[]>(() => {
-    const saved = localStorage.getItem('wevids_long_videos_v31');
-    return saved ? JSON.parse(saved) : INITIAL_LONG_VIDEOS;
+
+  const [files, setFiles] = useState<SharedFileItem[]>(() => {
+    const saved = localStorage.getItem('wevids_files_v32');
+    return saved ? JSON.parse(saved) : INITIAL_FILES;
   });
-  
-  const [roms, setRoms] = useState<RomItem[]>(() => {
-    const saved = localStorage.getItem('wevids_roms_v31');
-    return saved ? JSON.parse(saved) : INITIAL_ROMS;
-  });
-  
+
   const [products] = useState<ProductItem[]>(INITIAL_PRODUCTS);
-  const [cart, setCart] = useState<CartItem[]>(() => {
-    const saved = localStorage.getItem('wevids_cart_v31');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  
+
   const [conversations, setConversations] = useState<Conversation[]>(() => {
-    const saved = localStorage.getItem('wevids_convs_v31');
-    return saved ? JSON.parse(saved) : INITIAL_CONVERSATIONS;
+    const saved = localStorage.getItem('wevids_convs_v32');
+    if (saved) return JSON.parse(saved);
+    return [
+      ...INITIAL_CONVERSATIONS.map(c => ({
+        ...c,
+        status: 'active' as const
+      })),
+      {
+        id: 'conv-req-reza',
+        isGroup: false,
+        avatar: 'R',
+        color: 'linear-gradient(135deg, #fbbf24, #ff2d95)',
+        members: ['you', 'reza'],
+        lastMsg: 'Reza: Salam! I would love to collaborate on your podcast poetry project!',
+        time: '5m',
+        unread: 1,
+        status: 'pending_request',
+        requestedBy: 'reza',
+        messages: [
+          {
+            id: 'm-req-1',
+            fromId: 'reza',
+            senderName: 'Reza Ahmadi',
+            senderAvatar: 'R',
+            senderColor: 'linear-gradient(135deg, #fbbf24, #ff2d95)',
+            text: 'Salam! I would love to collaborate on your podcast poetry project! Can we connect?',
+            type: 'text',
+            timestamp: '11:15 AM'
+          }
+        ]
+      }
+    ];
   });
-  const [activeConvId, setActiveConvId] = useState<string>(conversations[0]?.id || 'conv-group-1');
-  
-  const [collections, setCollections] = useState<SavedCollection[]>(() => {
-    const saved = localStorage.getItem('wevids_bookmarks_v31');
-    return saved ? JSON.parse(saved) : INITIAL_BOOKMARKS;
-  });
-  
+
+  const [activeConvId, setActiveConvId] = useState<string>(conversations[0]?.id || 'conv-sara');
   const [soundEnabled, setSoundEnabledRaw] = useState<boolean>(true);
   const [activeShare, setActiveShare] = useState<{ title: string; url: string } | null>(null);
   const [viewingProfileUser, setViewingProfileUser] = useState<UserProfile | null>(null);
@@ -142,36 +210,24 @@ export const WevidsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [activeCallUser, setActiveCallUser] = useState<string | null>(null);
 
   useEffect(() => {
-    localStorage.setItem('wevids_user_v31', JSON.stringify(currentUser));
+    localStorage.setItem('wevids_user_v32', JSON.stringify(currentUser));
   }, [currentUser]);
 
   useEffect(() => {
-    localStorage.setItem('wevids_posts_v31', JSON.stringify(posts));
+    localStorage.setItem('wevids_posts_v32', JSON.stringify(posts));
   }, [posts]);
 
   useEffect(() => {
-    localStorage.setItem('wevids_clips_v31', JSON.stringify(clips));
+    localStorage.setItem('wevids_clips_v32', JSON.stringify(clips));
   }, [clips]);
 
   useEffect(() => {
-    localStorage.setItem('wevids_long_videos_v31', JSON.stringify(longVideos));
-  }, [longVideos]);
+    localStorage.setItem('wevids_files_v32', JSON.stringify(files));
+  }, [files]);
 
   useEffect(() => {
-    localStorage.setItem('wevids_roms_v31', JSON.stringify(roms));
-  }, [roms]);
-
-  useEffect(() => {
-    localStorage.setItem('wevids_cart_v31', JSON.stringify(cart));
-  }, [cart]);
-
-  useEffect(() => {
-    localStorage.setItem('wevids_convs_v31', JSON.stringify(conversations));
+    localStorage.setItem('wevids_convs_v32', JSON.stringify(conversations));
   }, [conversations]);
-
-  useEffect(() => {
-    localStorage.setItem('wevids_bookmarks_v31', JSON.stringify(collections));
-  }, [collections]);
 
   const setActiveView = (view: ViewName) => {
     sounds.click();
@@ -185,6 +241,42 @@ export const WevidsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (enabled) sounds.pop();
   };
 
+  // Follow / Mutual Friends System
+  const isFollowing = (targetUserId: string): boolean => {
+    return (currentUser.followingIds || []).includes(targetUserId);
+  };
+
+  const isMutualFriend = (targetUserId: string): boolean => {
+    const follows = (currentUser.followingIds || []).includes(targetUserId);
+    const followedBack = (allUsers[targetUserId]?.followingIds || []).includes('you') || (currentUser.followerIds || []).includes(targetUserId);
+    return follows && followedBack;
+  };
+
+  const toggleFollowUser = (targetUserId: string) => {
+    sounds.like();
+    const currentlyFollowing = isFollowing(targetUserId);
+    
+    let updatedFollowing: string[];
+    if (currentlyFollowing) {
+      updatedFollowing = (currentUser.followingIds || []).filter(id => id !== targetUserId);
+      toast.info(`Unfollowed ${allUsers[targetUserId]?.name || 'user'}`);
+    } else {
+      updatedFollowing = [...(currentUser.followingIds || []), targetUserId];
+      const targetFollowsMe = (currentUser.followerIds || []).includes(targetUserId);
+      if (targetFollowsMe) {
+        toast.success(`🎉 You and ${allUsers[targetUserId]?.name || 'user'} are now Mutual Friends!`);
+      } else {
+        toast.success(`Following ${allUsers[targetUserId]?.name || 'user'}!`);
+      }
+    }
+
+    setCurrentUser(prev => ({
+      ...prev,
+      followingIds: updatedFollowing,
+      following: updatedFollowing.length
+    }));
+  };
+
   const updateCurrentUser = (updates: Partial<UserProfile>) => {
     setCurrentUser(prev => {
       const updated = { ...prev, ...updates };
@@ -195,6 +287,7 @@ export const WevidsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     toast.success('Profile updated successfully!');
   };
 
+  // Post & Feed Actions
   const addPost = (newPostData: Omit<PostItem, 'id' | 'likes' | 'dislikes' | 'shares' | 'comments'>) => {
     const newPost: PostItem = {
       ...newPostData,
@@ -206,7 +299,7 @@ export const WevidsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setPosts(prev => [newPost, ...prev]);
     sounds.success();
-    toast.success('Post published to global feed!');
+    toast.success('Shared to Global Feed!');
   };
 
   const togglePostLike = (postId: string) => {
@@ -218,7 +311,7 @@ export const WevidsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           ...p,
           isLiked: !wasLiked,
           likes: wasLiked ? p.likes - 1 : p.likes + 1,
-          isDisliked: false,
+          isDisliked: false
         };
       }
       return p;
@@ -234,7 +327,7 @@ export const WevidsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           ...p,
           isDisliked: !wasDisliked,
           dislikes: (p.dislikes || 0) + (wasDisliked ? -1 : 1),
-          isLiked: false,
+          isLiked: false
         };
       }
       return p;
@@ -249,18 +342,11 @@ export const WevidsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       timestamp: 'Just now',
       likes: 0,
     };
-    setPosts(prev => prev.map(p => {
-      if (p.id === postId) {
-        return {
-          ...p,
-          comments: [...p.comments, newComment],
-        };
-      }
-      return p;
-    }));
-    toast.success('Comment added!');
+    setPosts(prev => prev.map(p => p.id === postId ? { ...p, comments: [...p.comments, newComment] } : p));
+    toast.success('Comment posted!');
   };
 
+  // Clips Actions
   const toggleClipLike = (clipId: string) => {
     sounds.like();
     setClips(prev => prev.map(c => {
@@ -270,23 +356,27 @@ export const WevidsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           ...c,
           isLiked: !wasLiked,
           likes: wasLiked ? c.likes - 1 : c.likes + 1,
+          isDisliked: false
         };
       }
       return c;
     }));
   };
 
-  const toggleClipBookmark = (clipId: string) => {
+  const toggleClipDislike = (clipId: string) => {
     sounds.pop();
-    const clip = clips.find(c => c.id === clipId);
-    if (!clip) return;
-    toggleBookmark({
-      id: clip.id,
-      type: 'clip',
-      title: clip.title,
-      preview: clip.description,
-    });
-    setClips(prev => prev.map(c => c.id === clipId ? { ...c, isBookmarked: !c.isBookmarked } : c));
+    setClips(prev => prev.map(c => {
+      if (c.id === clipId) {
+        const wasDisliked = c.isDisliked;
+        return {
+          ...c,
+          isDisliked: !wasDisliked,
+          dislikes: (c.dislikes || 0) + (wasDisliked ? -1 : 1),
+          isLiked: false
+        };
+      }
+      return c;
+    }));
   };
 
   const addClipComment = (clipId: string, commentData: Omit<CommentItem, 'id' | 'timestamp' | 'likes'>) => {
@@ -297,29 +387,100 @@ export const WevidsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       timestamp: 'Just now',
       likes: 0,
     };
-    setClips(prev => prev.map(c => {
-      if (c.id === clipId) {
+    setClips(prev => prev.map(c => c.id === clipId ? { ...c, comments: [...c.comments, newComment] } : c));
+  };
+
+  // Files Hub
+  const addSharedFile = (fileData: Omit<SharedFileItem, 'id' | 'downloads' | 'uploadedAt'>) => {
+    sounds.success();
+    const newFile: SharedFileItem = {
+      ...fileData,
+      id: `file-${Date.now()}`,
+      downloads: 1,
+      uploadedAt: 'Just now'
+    };
+    setFiles(prev => [newFile, ...prev]);
+    toast.success(`Uploaded "${fileData.fileName}" to File Vault!`);
+  };
+
+  // Direct Messaging with 1-Message Request Gate
+  const startOrOpenChatWithUser = (targetUserId: string) => {
+    const existing = conversations.find(c => !c.isGroup && c.members.includes(targetUserId));
+    if (existing) {
+      setActiveConvId(existing.id);
+      setActiveView('messages');
+      return;
+    }
+
+    const targetUser = allUsers[targetUserId];
+    if (!targetUser) return;
+
+    const areFriends = isMutualFriend(targetUserId);
+
+    const newConv: Conversation = {
+      id: `conv-${targetUserId}-${Date.now()}`,
+      isGroup: false,
+      avatar: targetUser.avatar,
+      color: targetUser.color,
+      members: ['you', targetUserId],
+      lastMsg: areFriends ? 'Chat started' : 'Sent connection message request',
+      time: 'now',
+      unread: 0,
+      status: areFriends ? 'active' : 'pending_request',
+      requestedBy: 'you',
+      messages: []
+    };
+
+    setConversations(prev => [newConv, ...prev]);
+    setActiveConvId(newConv.id);
+    setActiveView('messages');
+    
+    if (!areFriends) {
+      toast.info(`You must send 1 message request to ${targetUser.name} before full chat is accepted.`);
+    }
+  };
+
+  const acceptMessageRequest = (convId: string) => {
+    sounds.success();
+    setConversations(prev => prev.map(c => c.id === convId ? { ...c, status: 'active' } : c));
+    toast.success('Connection request accepted! You can now chat freely.');
+  };
+
+  const declineMessageRequest = (convId: string) => {
+    sounds.click();
+    setConversations(prev => prev.filter(c => c.id !== convId));
+    toast.info('Message request declined.');
+  };
+
+  const sendMessage = (convId: string, msgData: { text?: string; type: 'text' | 'image' | 'gif' | 'video' | 'audio' | 'file'; mediaUrl?: string }) => {
+    sounds.pop();
+    const newMsg: ChatMessage = {
+      id: `m-${Date.now()}`,
+      fromId: currentUser.id,
+      senderName: currentUser.name,
+      senderAvatar: currentUser.avatar,
+      senderColor: currentUser.color,
+      text: msgData.text,
+      type: msgData.type,
+      mediaUrl: msgData.mediaUrl,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    setConversations(prev => prev.map(c => {
+      if (c.id === convId) {
+        const last = msgData.type === 'audio' ? '🎤 [Voice note]' : msgData.type === 'file' ? '📁 [File shared]' : msgData.text || '[Media]';
         return {
           ...c,
-          comments: [...c.comments, newComment],
+          lastMsg: `${currentUser.name}: ${last}`,
+          time: 'now',
+          messages: [...c.messages, newMsg]
         };
       }
       return c;
     }));
   };
 
-  const addRom = (newRomData: Omit<RomItem, 'id' | 'downloadCount' | 'releaseDate'>) => {
-    const newRom: RomItem = {
-      ...newRomData,
-      id: `rom-${Date.now()}`,
-      downloadCount: 1,
-      releaseDate: 'Today',
-    };
-    setRoms(prev => [newRom, ...prev]);
-    sounds.success();
-    toast.success('ROM submitted to Developer Vault!');
-  };
-
+  // Cart
   const addToCart = (product: ProductItem) => {
     sounds.pop();
     setCart(prev => {
@@ -345,121 +506,7 @@ export const WevidsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setCart(prev => prev.map(item => item.product.id === productId ? { ...item, quantity } : item));
   };
 
-  const clearCart = () => {
-    setCart([]);
-  };
-
-  const sendMessage = (convId: string, msgData: { text?: string; type: 'text' | 'image' | 'gif' | 'video' | 'audio' | 'rom_file'; mediaUrl?: string }) => {
-    sounds.pop();
-    const newMsg: ChatMessage = {
-      id: `m-${Date.now()}`,
-      fromId: currentUser.id,
-      senderName: currentUser.name,
-      senderAvatar: currentUser.avatar,
-      senderColor: currentUser.color,
-      text: msgData.text,
-      type: msgData.type,
-      mediaUrl: msgData.mediaUrl,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    setConversations(prev => prev.map(c => {
-      if (c.id === convId) {
-        const last = msgData.type === 'audio' ? '🎤 [Voice message]' : msgData.type === 'gif' ? '🖼️ [GIF]' : msgData.text || '[Attachment]';
-        return {
-          ...c,
-          lastMsg: `${currentUser.name}: ${last}`,
-          time: 'now',
-          messages: [...c.messages, newMsg]
-        };
-      }
-      return c;
-    }));
-
-    // Auto simulated bot/member response in group
-    setTimeout(() => {
-      const botReplies = [
-        "That's high quality! Testing it right now 🚀",
-        "Confirmed working with no errors on Snapdragon 8 Gen 3!",
-        "Love the fluidity and responsiveness ✨",
-        "Bookmarked this for our weekend livestream!",
-        "Thanks for sharing with the group!"
-      ];
-      const randomReply = botReplies[Math.floor(Math.random() * botReplies.length)];
-      const replyMsg: ChatMessage = {
-        id: `m-rep-${Date.now()}`,
-        fromId: 'carlos',
-        senderName: 'Carlos Mendez',
-        senderAvatar: 'C',
-        senderColor: 'linear-gradient(135deg, #00e5ff, #7c3aed)',
-        text: randomReply,
-        type: 'text',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-
-      setConversations(p => p.map(c => {
-        if (c.id === convId) {
-          return {
-            ...c,
-            lastMsg: `Carlos: ${randomReply}`,
-            time: 'now',
-            messages: [...c.messages, replyMsg]
-          };
-        }
-        return c;
-      }));
-    }, 1400);
-  };
-
-  const createGroupChat = (name: string, members: string[]) => {
-    sounds.success();
-    const newGroup: Conversation = {
-      id: `conv-group-${Date.now()}`,
-      isGroup: true,
-      groupName: name,
-      groupTopic: 'Open developer and creator channel',
-      avatar: name.charAt(0).toUpperCase(),
-      color: 'linear-gradient(135deg, #00e5ff, #ff2d95)',
-      members: ['you', ...members],
-      lastMsg: 'Group created. Start chatting!',
-      time: 'now',
-      unread: 0,
-      messages: [
-        {
-          id: `gm-init-${Date.now()}`,
-          fromId: 'you',
-          senderName: currentUser.name,
-          senderAvatar: currentUser.avatar,
-          senderColor: currentUser.color,
-          text: `Welcome to ${name}!`,
-          type: 'text',
-          timestamp: 'Just now'
-        }
-      ]
-    };
-    setConversations(prev => [newGroup, ...prev]);
-    setActiveConvId(newGroup.id);
-    toast.success(`Created group "${name}"`);
-  };
-
-  const toggleBookmark = (item: { id: string; type: 'post' | 'clip' | 'long_video' | 'rom' | 'product'; title: string; preview: string }) => {
-    sounds.pop();
-    setCollections(prev => {
-      const defaultCol = prev[0] || { id: 'col-default', name: '📌 Saved Vault', icon: '⭐', items: [] };
-      const exists = defaultCol.items.some(i => i.id === item.id);
-      
-      let updatedItems;
-      if (exists) {
-        updatedItems = defaultCol.items.filter(i => i.id !== item.id);
-        toast.info('Removed from Bookmarks');
-      } else {
-        updatedItems = [{ ...item, addedAt: 'Just now' }, ...defaultCol.items];
-        toast.success('Saved to Bookmarks!');
-      }
-
-      return prev.map((col, idx) => idx === 0 ? { ...col, items: updatedItems } : col);
-    });
-  };
+  const clearCart = () => setCart([]);
 
   const openShareModal = (title: string, url: string) => {
     sounds.click();
@@ -501,18 +548,27 @@ export const WevidsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         currentUser,
         updateCurrentUser,
         allUsers,
+        toggleFollowUser,
+        isFollowing,
+        isMutualFriend,
         posts,
         addPost,
         togglePostLike,
         togglePostDislike,
         addPostComment,
         clips,
-        longVideos,
         toggleClipLike,
-        toggleClipBookmark,
+        toggleClipDislike,
         addClipComment,
-        roms,
-        addRom,
+        files,
+        addSharedFile,
+        conversations,
+        activeConvId,
+        setActiveConvId,
+        sendMessage,
+        startOrOpenChatWithUser,
+        acceptMessageRequest,
+        declineMessageRequest,
         products,
         cart,
         addToCart,
@@ -521,13 +577,6 @@ export const WevidsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         clearCart,
         isCartOpen,
         setIsCartOpen,
-        conversations,
-        activeConvId,
-        setActiveConvId,
-        sendMessage,
-        createGroupChat,
-        collections,
-        toggleBookmark,
         soundEnabled,
         setSoundEnabled,
         openShareModal,
@@ -549,8 +598,6 @@ export const WevidsProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
 export const useWevids = () => {
   const context = useContext(WevidsContext);
-  if (!context) {
-    throw new Error('useWevids must be used within a WevidsProvider');
-  }
+  if (!context) throw new Error('useWevids must be used within WevidsProvider');
   return context;
 };

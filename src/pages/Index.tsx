@@ -2,7 +2,9 @@ import React from 'react';
 import { WevidsProvider, useWevids } from '../context/WevidsContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { TopHeader } from '../components/layout/TopHeader';
+import { ShortsFeedView } from '../components/clips/ShortsFeedView';
 import { DualFeedView } from '../components/feed/DualFeedView';
+import { FileDropVaultView } from '../components/files/FileDropVaultView';
 import { AiHubView } from '../components/ai/AiHubView';
 import { GamingHubView } from '../components/gaming/GamingHubView';
 import { RomVaultView } from '../components/roms/RomVaultView';
@@ -13,26 +15,27 @@ import { ProfileView } from '../components/profile/ProfileView';
 import { BookmarksView } from '../components/bookmarks/BookmarksView';
 import { VideoCallModal } from '../components/modals/VideoCallModal';
 import { ShareModal } from '../components/modals/ShareModal';
+import { UserProfileModal } from '../components/modals/UserProfileModal';
 
 const MainContent: React.FC = () => {
   const { activeView } = useWevids();
 
   return (
     <div className="min-h-screen bg-[#0a0a1a] text-[#e8e8f4] relative overflow-x-hidden">
-      {/* Background ambient lighting effects */}
+      {/* Glow lights */}
       <div className="fixed top-[-10vw] left-[-10vw] w-[45vw] h-[45vw] rounded-full bg-gradient-to-br from-[#ff2d95]/15 to-transparent blur-[120px] pointer-events-none z-0" />
       <div className="fixed bottom-[-10vw] right-[-10vw] w-[45vw] h-[45vw] rounded-full bg-gradient-to-tl from-[#00e5ff]/15 to-transparent blur-[120px] pointer-events-none z-0" />
 
-      {/* Fixed Sidebar */}
       <Sidebar />
 
-      {/* Main Column */}
       <div className="relative z-10">
         <TopHeader />
 
         <main className="ml-64 p-6 md:p-8 max-w-7xl mx-auto">
+          {activeView === 'clips' && <ShortsFeedView />}
           {activeView === 'feed' && <DualFeedView />}
-          {activeView === 'explore' && <DualFeedView />}
+          {activeView === 'files' && <FileDropVaultView />}
+          {activeView === 'explore' && <ShortsFeedView />}
           {activeView === 'aihub' && <AiHubView />}
           {activeView === 'gaming' && <GamingHubView />}
           {activeView === 'roms' && <RomVaultView />}
@@ -44,9 +47,9 @@ const MainContent: React.FC = () => {
         </main>
       </div>
 
-      {/* Modals & Overlays */}
       <VideoCallModal />
       <ShareModal />
+      <UserProfileModal />
     </div>
   );
 };

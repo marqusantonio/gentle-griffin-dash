@@ -1,6 +1,8 @@
 export type ViewName = 
   | 'feed' 
+  | 'clips'
   | 'explore' 
+  | 'files'
   | 'aihub' 
   | 'gaming' 
   | 'live' 
@@ -8,8 +10,7 @@ export type ViewName =
   | 'mall' 
   | 'messages' 
   | 'bookmarks' 
-  | 'profile' 
-  | 'studio';
+  | 'profile';
 
 export interface UserProfile {
   id: string;
@@ -22,8 +23,12 @@ export interface UserProfile {
   location: string;
   bio: string;
   pronouns?: string;
+  bioAudioUrl?: string;
+  bioAudioTitle?: string;
   followers: number;
   following: number;
+  followingIds?: string[];
+  followerIds?: string[];
   videos: number;
   likes: number;
   views: string;
@@ -38,7 +43,6 @@ export interface CommentItem {
   user: string;
   userName: string;
   userAvatar: string;
-  userAvatarImg?: string;
   userColor: string;
   text: string;
   media?: string;
@@ -46,7 +50,6 @@ export interface CommentItem {
   timestamp: string;
   likes: number;
   isLiked?: boolean;
-  replies?: CommentItem[];
 }
 
 export interface PostItem {
@@ -55,13 +58,13 @@ export interface PostItem {
   authorName: string;
   authorHandle: string;
   authorAvatar: string;
-  authorAvatarImg?: string;
   authorColor: string;
   location: string;
   time: string;
   content: string;
   mediaUrl?: string;
-  mediaType?: 'image' | 'video' | 'gif';
+  mediaType?: 'image' | 'video' | 'gif' | 'file';
+  fileMeta?: { name: string; size: string; type: string };
   likes: number;
   dislikes?: number;
   shares: number;
@@ -85,51 +88,48 @@ export interface ShortClipItem {
   isLiked?: boolean;
   isDisliked?: boolean;
   isBookmarked?: boolean;
-  isFollowed?: boolean;
-  comments: CommentItem[];
-  isTikTok?: boolean;
-  tiktokId?: string;
-}
-
-export interface LongVideoItem {
-  id: string;
-  userId: string;
-  title: string;
-  description: string;
-  videoUrl: string;
-  thumbnail: string;
-  duration: string;
-  views: string;
-  timestamp: string;
-  category: string;
-  likes: number;
-  dislikes: number;
-  isSubscribed?: boolean;
-  isBookmarked?: boolean;
-  isLiked?: boolean;
-  isDisliked?: boolean;
-  chapters: { time: number; label: string }[];
   comments: CommentItem[];
 }
 
-export interface RomItem {
+export interface SharedFileItem {
   id: string;
   title: string;
-  device: string;
-  brand: 'Xiaomi / Redmi' | 'Pixel' | 'Samsung' | 'Honor' | 'GSI Generic' | 'Kernel / Module';
-  romType: 'China ROM Port' | 'Global Official' | 'Custom Kernel' | 'Magisk Module' | 'HyperOS Port';
-  status: 'Official' | 'Beta' | 'Port' | 'Experimental';
-  maintainer: string;
-  maintainerHandle: string;
-  version: string;
-  androidVersion: string;
+  fileName: string;
   fileSize: string;
-  checksum: string;
-  downloadCount: number;
+  category: 'ROM / Kernel' | 'APK / Mod' | 'LUTs / Preset' | '3D Model / Shader' | 'Document';
+  uploaderId: string;
+  uploaderName: string;
   downloadUrl: string;
-  githubUrl?: string;
-  releaseDate: string;
-  changelog: string[];
+  checksum: string;
+  downloads: number;
+  uploadedAt: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  fromId: string;
+  senderName: string;
+  senderAvatar: string;
+  senderColor: string;
+  text?: string;
+  type: 'text' | 'image' | 'gif' | 'video' | 'audio' | 'file';
+  mediaUrl?: string;
+  timestamp: string;
+}
+
+export interface Conversation {
+  id: string;
+  isGroup: boolean;
+  groupName?: string;
+  avatar: string;
+  color: string;
+  members: string[]; // user IDs
+  lastMsg: string;
+  time: string;
+  unread: number;
+  messages: ChatMessage[];
+  status: 'active' | 'pending_request';
+  requestedBy?: string;
 }
 
 export interface ProductItem {
@@ -144,52 +144,11 @@ export interface ProductItem {
   salesCount: number;
   previewUrl: string;
   description: string;
-  affiliateCommission: number; // e.g. 15%
+  affiliateCommission: number;
   isDigital: boolean;
 }
 
 export interface CartItem {
   product: ProductItem;
   quantity: number;
-}
-
-export interface ChatMessage {
-  id: string;
-  fromId: string;
-  senderName: string;
-  senderAvatar: string;
-  senderColor: string;
-  text?: string;
-  type: 'text' | 'image' | 'gif' | 'video' | 'audio' | 'rom_file';
-  mediaUrl?: string;
-  audioDuration?: string;
-  timestamp: string;
-  read?: boolean;
-}
-
-export interface Conversation {
-  id: string;
-  isGroup: boolean;
-  groupName?: string;
-  groupTopic?: string;
-  avatar: string;
-  color: string;
-  members: string[]; // user IDs
-  lastMsg: string;
-  time: string;
-  unread: number;
-  messages: ChatMessage[];
-}
-
-export interface SavedCollection {
-  id: string;
-  name: string;
-  icon: string;
-  items: {
-    id: string;
-    type: 'post' | 'clip' | 'long_video' | 'rom' | 'product';
-    title: string;
-    preview: string;
-    addedAt: string;
-  }[];
 }
