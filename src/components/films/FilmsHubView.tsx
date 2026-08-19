@@ -12,14 +12,25 @@ import {
   Bookmark, 
   Info,
   Maximize2,
-  Tv
+  Tv,
+  RefreshCw,
+  Database
 } from 'lucide-react';
 import { FilmItem } from '../../types/wevids';
+import { isSupabaseConfigured } from '../../lib/supabase';
 import { sounds } from '../../lib/soundFx';
 import { toast } from 'sonner';
 
 export const FilmsHubView: React.FC = () => {
-  const { films, addFilm, openShareModal, currentUser } = useWevids();
+  const { 
+    films, 
+    addFilm, 
+    openShareModal, 
+    syncWithSupabase, 
+    isCloudSyncing, 
+    lastCloudSync, 
+    currentUser 
+  } = useWevids();
   
   const [selectedFilmId, setSelectedFilmId] = useState<string>(films[0]?.id || 'film-1');
   const [selectedGenre, setSelectedGenre] = useState<string>('All');
@@ -36,6 +47,7 @@ export const FilmsHubView: React.FC = () => {
   const [videoUrl, setVideoUrl] = useState('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4');
   const [posterUrl, setPosterUrl] = useState('https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=800&q=80');
 
+  const isCloudLinked = isSupabaseConfigured();
   const genres = ['All', 'Cyberpunk Sci-Fi', 'Anime Cinema', 'Tech Documentary', 'Gaming Lore', 'Open Source Action'];
 
   const selectedFilm = films.find(f => f.id === selectedFilmId) || films[0];
@@ -86,6 +98,21 @@ export const FilmsHubView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Cloud Sync Button */}
+          <button
+            onClick={() => syncWithSupabase()}
+            disabled={isCloudSyncing}
+            className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl border text-xs font-orbitron font-bold transition-all ${
+              isCloudLinked
+                ? 'bg-[#3ecf8e]/15 border-[#3ecf8e]/40 text-[#3ecf8e] hover:bg-[#3ecf8e]/25'
+                : 'bg-white/5 border-white/10 text-[#8a8aa8] hover:text-white'
+            }`}
+            title="Sync with Supabase public.films table"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isCloudSyncing ? 'animate-spin text-[#3ecf8e]' : ''}`} />
+            <span>{isCloudSyncing ? 'Syncing...' : 'Sync Supabase'}</span>
+          </button>
+
           <button
             onClick={() => {
               sounds.pop();
@@ -96,7 +123,7 @@ export const FilmsHubView: React.FC = () => {
             }`}
           >
             <Tv className="w-4 h-4 inline mr-1.5" />
-            {isCinemaMode ? 'Exit Cinema Mode' : 'Theater Mode'}
+            {isCinemaMode ? 'Exit Cinema' : 'Theater Mode'}
           </button>
 
           <button
@@ -104,12 +131,28 @@ export const FilmsHubView: React.FC = () => {
               sounds.pop();
               setIsUploadOpen(true);
             }}
-            className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold text-xs shadow-lg hover:scale-105 transition-transform"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold text-xs shadow-lg hover:scale-105 transition-transform"
           >
             <Upload className="w-4 h-4" />
-            <span>PREMIERE A FILM</span>
+            <span>PREMIERE FILM</span>
           </button>
         </div>
+      </div>
+
+      {/* Cloud Sync Status Indicator */}
+      <div className="px-4 py-2.5 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-between text-xs text-[#8a8aa8]">
+        <div className="flex items-center gap-2">
+          <Database className={`w-3.5 h-3.5 ${isCloudLinked ? 'text-[#3ecf8e]' : 'text-[#fbbf24]'}`} />
+          <span>
+            Database Status:{' '}
+            <strong className={isCloudLinked ? 'text-[#3ecf8e]' : 'text-[#fbbf24]'}>
+              {isCloudLinked ? 'Supabase Table "films" Connected' : 'Local Storage Cache (Link Cloud in header)'}
+            </strong>
+          </span>
+        </div>
+        {lastCloudSync && (
+          <span className="text-[11px] font-mono text-[#00e5ff]">Last synced at {lastCloudSync}</span>
+        )}
       </div>
 
       {/* Hero Cinema Feature Player */}

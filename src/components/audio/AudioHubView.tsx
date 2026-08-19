@@ -15,13 +15,23 @@ import {
   Plus, 
   Check, 
   Disc,
+  RefreshCw,
+  Database,
   X 
 } from 'lucide-react';
+import { isSupabaseConfigured } from '../../lib/supabase';
 import { sounds } from '../../lib/soundFx';
 import { toast } from 'sonner';
 
 export const AudioHubView: React.FC = () => {
-  const { audioTracks, addAudioTrack, currentUser } = useWevids();
+  const { 
+    audioTracks, 
+    addAudioTrack, 
+    syncWithSupabase, 
+    isCloudSyncing, 
+    lastCloudSync, 
+    currentUser 
+  } = useWevids();
   
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -39,6 +49,7 @@ export const AudioHubView: React.FC = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const isCloudLinked = isSupabaseConfigured();
   const currentTrack = audioTracks[currentTrackIndex] || audioTracks[0];
 
   const handleTogglePlay = () => {
@@ -120,16 +131,49 @@ export const AudioHubView: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            sounds.pop();
-            setIsUploadModalOpen(true);
-          }}
-          className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-[#00e5ff] to-[#ff2d95] text-slate-900 font-orbitron font-bold text-xs shadow-lg hover:scale-105 transition-transform"
-        >
-          <Upload className="w-4 h-4" />
-          <span>UPLOAD MP3 STEM</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Cloud Sync Button */}
+          <button
+            onClick={() => syncWithSupabase()}
+            disabled={isCloudSyncing}
+            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-2xl border text-xs font-orbitron font-bold transition-all ${
+              isCloudLinked
+                ? 'bg-[#3ecf8e]/15 border-[#3ecf8e]/40 text-[#3ecf8e] hover:bg-[#3ecf8e]/25'
+                : 'bg-white/5 border-white/10 text-[#8a8aa8] hover:text-white'
+            }`}
+            title="Pull/Push updates with Supabase public.audio_tracks table"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isCloudSyncing ? 'animate-spin text-[#3ecf8e]' : ''}`} />
+            <span>{isCloudSyncing ? 'Syncing Cloud...' : isCloudLinked ? 'Sync Supabase' : 'Local Mode'}</span>
+          </button>
+
+          <button
+            onClick={() => {
+              sounds.pop();
+              setIsUploadModalOpen(true);
+            }}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-[#00e5ff] to-[#ff2d95] text-slate-900 font-orbitron font-bold text-xs shadow-lg hover:scale-105 transition-transform"
+          >
+            <Upload className="w-4 h-4" />
+            <span>UPLOAD MP3 STEM</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Cloud Sync Status Indicator */}
+      <div className="px-4 py-2.5 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-between text-xs text-[#8a8aa8]">
+        <div className="flex items-center gap-2">
+          <Database className={`w-3.5 h-3.5 ${isCloudLinked ? 'text-[#3ecf8e]' : 'text-[#fbbf24]'}`} />
+          <span>
+            Database Status:{' '}
+            <strong className={isCloudLinked ? 'text-[#3ecf8e]' : 'text-[#fbbf24]'}>
+              {isCloudLinked ? 'Supabase Table "audio_tracks" Connected' : 'Local Storage Cache (Link Cloud in header)'}
+            </strong>
+          </span>
+        </div>
+        {lastCloudSync && (
+          <span className="text-[11px] font-mono text-[#00e5ff]">Last synced at {lastCloudSync}</span>
+        )}
       </div>
 
       {/* Main Music Deck */}
@@ -201,7 +245,7 @@ export const AudioHubView: React.FC = () => {
                 <Music2 className="w-4 h-4 text-[#00e5ff]" />
                 Deck Playlist ({audioTracks.length} tracks)
               </h3>
-              <span className="text-[10px] text-[#10b981] font-bold">☁️ Live Supabase Synced</span>
+              <span className="text-[10px] text-[#10b981] font-bold">☁️ Live Cloud Synced</span>
             </div>
 
             <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
@@ -299,7 +343,6 @@ export const AudioHubView: React.FC = () => {
             </div>
 
             <form onSubmit={handleSubmitTrack} className="space-y-3 text-xs">
-              {/* File input */}
               <div className="p-4 rounded-2xl bg-white/5 border border-dashed border-white/20 text-center space-y-2">
                 <input
                   type="file"

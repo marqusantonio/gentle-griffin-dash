@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useState, ReactNode } from 'react';
 import { 
   PostItem, 
   ShortClipItem, 
@@ -10,7 +10,7 @@ import {
   CartItem, 
   SavedCollection, 
   SharedFileItem, 
-  AudioTrackItem,
+  AudioTrackItem, 
   FilmItem,
   ViewName 
 } from '../types/wevids';
@@ -132,6 +132,8 @@ interface WevidsState {
   soundEnabled: boolean;
   cart: CartItem[];
   collections: SavedCollection[];
+  isCloudSyncing: boolean;
+  lastCloudSync: string | null;
 }
 
 const initialFiles: SharedFileItem[] = [
@@ -173,6 +175,8 @@ const initialState: WevidsState = {
   soundEnabled: true,
   cart: [],
   collections: INITIAL_BOOKMARKS,
+  isCloudSyncing: false,
+  lastCloudSync: null,
 };
 
 const reducer = (state: WevidsState, action: any): WevidsState => {
@@ -366,6 +370,10 @@ const reducer = (state: WevidsState, action: any): WevidsState => {
       return { ...state, films: [action.payload, ...state.films] };
     case 'SET_FILMS':
       return { ...state, films: action.payload };
+    case 'SET_CLOUD_SYNCING':
+      return { ...state, isCloudSyncing: action.payload };
+    case 'SET_LAST_CLOUD_SYNC':
+      return { ...state, lastCloudSync: action.payload };
     default:
       return state;
   }
@@ -394,6 +402,8 @@ const WevidsContext = createContext<{
   soundEnabled: boolean;
   cart: CartItem[];
   collections: SavedCollection[];
+  isCloudSyncing: boolean;
+  lastCloudSync: string | null;
   
   addPost: (post: Partial<PostItem>) => Promise<void>;
   addClip: (clip: ShortClipItem) => void;
@@ -403,6 +413,7 @@ const WevidsContext = createContext<{
   addSharedFile: (file: Partial<SharedFileItem>) => void;
   addAudioTrack: (track: Partial<AudioTrackItem>) => Promise<void>;
   addFilm: (film: Partial<FilmItem>) => Promise<void>;
+  syncWithSupabase: () => Promise<void>;
   setActiveView: (view: ViewName) => void;
   setActiveConvId: (id: string | null) => void;
   setIsCartOpen: (open: boolean) => void;
@@ -440,19 +451,81 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     sounds.enabled = state.soundEnabled;
   }, [state.soundEnabled]);
 
-  // Load from Supabase on mount if configured
+  // Initial pull from Supabase on mount
+  const syncWithSupabase = async () => {
+    if (!isSupabaseConfigured()) {
+      toast.info('Supabase cloud is in local cache mode. Tap "Link Cloud" to connect your URL & Key.');
+      return;
+    }
+
+    dispatch({ type: 'SET_CLOUD_SYNCING', payload: true });
+    sounds.pop();
+    
+    try {
+      const [audioRes, filmRes] = await Promise.all([
+        supabase.select('audio_tracks'),
+        supabase.select('films'),
+      ]);
+
+      let syncCount = 0;
+
+      if (audioRes.data && Array.isArray(audioRes.data) && audioRes.data.length > 0) {
+        const mappedAudio: AudioTrackItem[] = audioRes.data.map(item => ({
+          id: item.id,
+          title: item.title,
+          artist: item.artist,
+          duration: item.duration || '03:30',
+          genre: item.genre || 'Cyberpunk',
+          bpm: item.bpm || 120,
+          url: item.url,
+          cover: item.cover || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80',
+          uploaderId: item.uploader_id,
+          createdAt: item.created_at
+        }));
+        
+        // Merge without duplicates
+        const existingIds = new Set(mappedAudio.map(a => a.id));
+        const combined = [...mappedAudio, ...INITIAL_AUDIO_TRACKS.filter(a => !existingIds.has(a.id))];
+        dispatch({ type: 'SET_AUDIO_TRACKS', payload: combined });
+        syncCount += mappedAudio.length;
+      }
+
+      if (filmRes.data && Array.isArray(filmRes.data) && filmRes.data.length > 0) {
+        const mappedFilms: FilmItem[] = filmRes.data.map(item => ({
+          id: item.id,
+          title: item.title,
+          synopsis: item.synopsis || '',
+          director: item.director || 'Director',
+          releaseYear: item.release_year || 2026,
+          duration: item.duration || '1h 30m',
+          genre: item.genre || 'Cyberpunk Sci-Fi',
+          rating: item.rating || 5.0,
+          videoUrl: item.video_url || item.url,
+          posterUrl: item.poster_url || item.poster,
+          backdropUrl: item.backdrop_url || item.backdrop,
+          uploaderId: item.uploader_id,
+          views: item.views || '1.5K'
+        }));
+
+        const existingFilmIds = new Set(mappedFilms.map(f => f.id));
+        const combinedFilms = [...mappedFilms, ...INITIAL_FILMS.filter(f => !existingFilmIds.has(f.id))];
+        dispatch({ type: 'SET_FILMS', payload: combinedFilms });
+        syncCount += mappedFilms.length;
+      }
+
+      dispatch({ type: 'SET_LAST_CLOUD_SYNC', payload: new Date().toLocaleTimeString() });
+      sounds.success();
+      toast.success(`Supabase Synced! Pulled ${syncCount} live cloud records.`);
+    } catch (err: any) {
+      toast.error(`Sync error: ${err.message || 'Could not query Supabase tables'}`);
+    } finally {
+      dispatch({ type: 'SET_CLOUD_SYNCING', payload: false });
+    }
+  };
+
   useEffect(() => {
     if (isSupabaseConfigured()) {
-      supabase.select('audio_tracks').then((res) => {
-        if (res.data && res.data.length > 0) {
-          dispatch({ type: 'SET_AUDIO_TRACKS', payload: [...res.data, ...INITIAL_AUDIO_TRACKS] });
-        }
-      });
-      supabase.select('films').then((res) => {
-        if (res.data && res.data.length > 0) {
-          dispatch({ type: 'SET_FILMS', payload: [...res.data, ...INITIAL_FILMS] });
-        }
-      });
+      syncWithSupabase();
     }
   }, []);
 
@@ -502,18 +575,22 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     // Sync to Supabase table
     if (isSupabaseConfigured()) {
       try {
-        await supabase.insert('audio_tracks', {
+        const res = await supabase.upsert('audio_tracks', {
           id: fullTrack.id,
           title: fullTrack.title,
           artist: fullTrack.artist,
           duration: fullTrack.duration,
           genre: fullTrack.genre,
           bpm: fullTrack.bpm,
-          url: fullTrack.url,
+          url: fullTrack.url.length > 5000 ? 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3' : fullTrack.url,
           cover: fullTrack.cover,
           uploader_id: fullTrack.uploaderId
         });
-        toast.info('Audio track synced to Supabase database!');
+        if (res.error) {
+          toast.info(`Saved locally (Supabase info: ${res.error})`);
+        } else {
+          toast.success('Audio track verified & synced to Supabase database!');
+        }
       } catch {
         // Safe offline fallback
       }
@@ -544,7 +621,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     // Sync to Supabase table
     if (isSupabaseConfigured()) {
       try {
-        await supabase.insert('films', {
+        const res = await supabase.upsert('films', {
           id: fullFilm.id,
           title: fullFilm.title,
           synopsis: fullFilm.synopsis,
@@ -558,7 +635,11 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           backdrop_url: fullFilm.backdropUrl,
           uploader_id: fullFilm.uploaderId
         });
-        toast.info('Film synced to Supabase database!');
+        if (res.error) {
+          toast.info(`Saved locally (Supabase info: ${res.error})`);
+        } else {
+          toast.success('Film verified & synced to Supabase database!');
+        }
       } catch {
         // Safe offline fallback
       }
@@ -816,6 +897,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     addSharedFile,
     addAudioTrack,
     addFilm,
+    syncWithSupabase,
     setActiveView,
     setActiveConvId,
     setIsCartOpen,

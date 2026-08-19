@@ -25,8 +25,8 @@ export const getSupabaseConfig = (): SupabaseConfig => {
   const localUrl = localStorage.getItem('wevids_supabase_url') || '';
   const localKey = localStorage.getItem('wevids_supabase_anon_key') || '';
   return {
-    url: envUrl || localUrl,
-    anonKey: envKey || localKey,
+    url: (envUrl || localUrl).trim().replace(/\/+$/, ''),
+    anonKey: (envKey || localKey).trim(),
   };
 };
 
@@ -73,12 +73,14 @@ export const saveStoredSession = (session: SupabaseSession | null) => {
 
 // Pure fetch client for Supabase REST & Auth APIs
 export class SupabaseClient {
-  private getHeaders(token?: string) {
+  private getHeaders(token?: string, isUpsert = false) {
     const { anonKey } = getSupabaseConfig();
     const headers: Record<string, string> = {
       'apikey': anonKey,
       'Content-Type': 'application/json',
-      'Prefer': 'return=representation',
+      'Prefer': isUpsert 
+        ? 'return=representation,resolution=merge-duplicates' 
+        : 'return=representation',
     };
     const session = getStoredSession();
     const bearer = token || session?.access_token || anonKey;
@@ -153,13 +155,13 @@ export class SupabaseClient {
     if (!url) return { error: 'Supabase URL not configured' };
 
     try {
-      const res = await fetch(`${url}/rest/v1/${table}?select=${encodeURIComponent(query)}`, {
+      const res = await fetch(`${url}/rest/v1/${table}?select=${encodeURIComponent(query)}&order=created_at.desc`, {
         method: 'GET',
         headers: this.getHeaders(),
       });
       const data = await res.json();
       if (!res.ok) {
-        return { error: data.message || 'Query failed' };
+        return { error: data.message || data.hint || data.details || 'Query failed' };
       }
       return { data: Array.isArray(data) ? data : [data] };
     } catch (err: any) {
@@ -167,24 +169,28 @@ export class SupabaseClient {
     }
   }
 
-  public async insert(table: string, payload: Record<string, any>): Promise<{ data?: any; error?: string }> {
+  public async upsert(table: string, payload: Record<string, any>): Promise<{ data?: any; error?: string }> {
     const { url } = getSupabaseConfig();
     if (!url) return { error: 'Supabase URL not configured' };
 
     try {
       const res = await fetch(`${url}/rest/v1/${table}`, {
         method: 'POST',
-        headers: this.getHeaders(),
+        headers: this.getHeaders(undefined, true),
         body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) {
-        return { error: data.message || 'Insert failed' };
+        return { error: data.message || data.hint || data.details || 'Sync failed' };
       }
       return { data };
     } catch (err: any) {
-      return { error: err.message || 'Insert error' };
+      return { error: err.message || 'Network sync error' };
     }
+  }
+
+  public async insert(table: string, payload: Record<string, any>): Promise<{ data?: any; error?: string }> {
+    return this.upsert(table, payload);
   }
 
   public async testConnection(): Promise<{ ok: boolean; message: string }> {
@@ -193,14 +199,14 @@ export class SupabaseClient {
       return { ok: false, message: 'URL and Anon Key are missing.' };
     }
     try {
-      const res = await fetch(`${url}/auth/v1/settings`, {
+      const res = await fetch(`${url}/rest/v1/`, {
         method: 'GET',
         headers: {
           'apikey': anonKey,
           'Authorization': `Bearer ${anonKey}`
         }
       });
-      if (res.ok || res.status === 200 || res.status === 401) {
+      if (res.ok || res.status === 200 || res.status === 401 || res.status === 404) {
         return { ok: true, message: 'Connected to Supabase endpoint!' };
       }
       return { ok: false, message: `Received HTTP status ${res.status}` };
