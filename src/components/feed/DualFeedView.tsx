@@ -8,17 +8,6 @@ import {
   Play, 
   Pause, 
   Volume2, 
-  VolumeX<dyad-write path="src/components/feed/DualFeedView.tsx" description="Dual Format Video Engine: Vertical TikTok Clips + 16:9 YouTube Widescreen Player with comments & playlists">
-import React, { useState } from 'react';
-import { useWevids } from '../../context/WevidsContext';
-import { 
-  Heart, 
-  MessageCircle, 
-  Share2, 
-  Bookmark, 
-  Play, 
-  Pause, 
-  Volume2, 
   VolumeX,
   Maximize2, 
   Settings, 
@@ -233,7 +222,7 @@ export const DualFeedView: React.FC = () => {
                   )}
                 </div>
                 <div>
-                  <div className="text-sm font-bold text-white flex items-center gap-1 group-hover:text-[#00e5ff] transition-colors">
+                  <div className="text-sm font-bold text-white flex items-center gap-1 group-hover:text-[#00e5ff]">
                     {clipAuthor.name}
                     {clipAuthor.verified && <CheckCircle2 className="w-3.5 h-3.5 text-[#00e5ff]" />}
                   </div>
