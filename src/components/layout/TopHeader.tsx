@@ -4,25 +4,27 @@ import {
   Search, 
   Radio, 
   ShoppingBag, 
-  Bell, 
   Sparkles, 
-  Plus, 
-  Cpu, 
-  Flame,
-  Globe
+  Globe,
+  Database
 } from 'lucide-react';
+import { isSupabaseConfigured } from '../../lib/supabase';
 import { sounds } from '../../lib/soundFx';
 
-export const TopHeader: React.FC = () => {
+interface TopHeaderProps {
+  onOpenSupabaseModal?: () => void;
+}
+
+export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => {
   const { 
     setActiveView, 
     cart, 
     setIsCartOpen, 
-    currentUser, 
-    openShareModal 
+    currentUser 
   } = useWevids();
   
   const [searchQuery, setSearchQuery] = useState('');
+  const isCloudConnected = isSupabaseConfigured();
   const totalCartCount = cart.reduce((acc, i) => acc + i.quantity, 0);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -48,10 +50,27 @@ export const TopHeader: React.FC = () => {
 
       {/* Action Badges & Buttons */}
       <div className="flex items-center gap-3">
+        {/* Supabase Cloud Connection Manager Button */}
+        <button
+          onClick={() => {
+            sounds.click();
+            onOpenSupabaseModal?.();
+          }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+            isCloudConnected 
+              ? 'bg-[#3ecf8e]/15 border-[#3ecf8e]/40 text-[#3ecf8e] hover:bg-[#3ecf8e]/25' 
+              : 'bg-white/5 border-white/10 text-[#8a8aa8] hover:text-white'
+          }`}
+          title="Manage Supabase Online Database & Auth"
+        >
+          <Database className={`w-3.5 h-3.5 ${isCloudConnected ? 'text-[#3ecf8e]' : 'text-[#8a8aa8]'}`} />
+          <span className="hidden md:inline">{isCloudConnected ? 'Cloud Online' : 'Link Cloud'}</span>
+        </button>
+
         {/* Global Node Presence */}
         <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-[#8a8aa8]">
           <Globe className="w-3.5 h-3.5 text-[#00e5ff]" />
-          <span>Nodes: <strong className="text-white">Active (v3.1)</strong></span>
+          <span>Wi-Fi / Internet: <strong className="text-white">Active</strong></span>
         </div>
 
         {/* Go Live Studio CTA */}

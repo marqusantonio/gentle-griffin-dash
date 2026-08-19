@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { WevidsProvider, useWevids } from '../context/WevidsContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { TopHeader } from '../components/layout/TopHeader';
@@ -16,9 +16,11 @@ import { BookmarksView } from '../components/bookmarks/BookmarksView';
 import { VideoCallModal } from '../components/modals/VideoCallModal';
 import { ShareModal } from '../components/modals/ShareModal';
 import { UserProfileModal } from '../components/modals/UserProfileModal';
+import { SupabaseConnectModal } from '../components/modals/SupabaseConnectModal';
 
 const MainContent: React.FC = () => {
   const { activeView } = useWevids();
+  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-[#0a0a1a] text-[#e8e8f4] relative overflow-x-hidden">
@@ -29,7 +31,7 @@ const MainContent: React.FC = () => {
       <Sidebar />
 
       <div className="relative z-10">
-        <TopHeader />
+        <TopHeader onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)} />
 
         <main className="ml-64 p-6 md:p-8 max-w-7xl mx-auto">
           {activeView === 'clips' && <ShortsFeedView />}
@@ -50,6 +52,10 @@ const MainContent: React.FC = () => {
       <VideoCallModal />
       <ShareModal />
       <UserProfileModal />
+      <SupabaseConnectModal 
+        isOpen={isSupabaseModalOpen} 
+        onClose={() => setIsSupabaseModalOpen(false)} 
+      />
     </div>
   );
 };
