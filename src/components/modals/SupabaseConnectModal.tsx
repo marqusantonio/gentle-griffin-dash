@@ -1,3 +1,4 @@
+character syntax errors in SupabaseConnectModal">
 import React, { useState, useEffect } from 'react';
 import { 
   Database, 
@@ -320,7 +321,7 @@ CREATE POLICY "Users insert roms" ON public.rom_packages FOR INSERT WITH CHECK (
                 className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white font-mono placeholder-[#8a8aa8] focus:border-[#00e5ff] focus:outline-none"
               />
               <p className="text-[10px] text-[#8a8aa8]">
-                Found in: <strong>Supabase Dashboard > Settings > API > Project API keys (anon public)</strong>
+                Found in: <strong>Supabase Dashboard &rarr; Settings &rarr; API &rarr; Project API keys (anon public)</strong>
               </p>
             </div>
 
