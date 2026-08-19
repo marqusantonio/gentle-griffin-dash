@@ -8,6 +8,7 @@ import {
   FolderDown,
   Sparkles, 
   Gamepad2, 
+  Headphones, 
   Radio, 
   ShoppingBag, 
   MessageSquareText, 
@@ -42,6 +43,22 @@ const mainNavItems: NavItem[] = [
     isLive: false
   },
   {
+    id: 'gaming',
+    label: 'Gaming Hub (10+)',
+    icon: Gamepad2,
+    badge: 'NEW',
+    badgeColor: 'bg-[#00e5ff] text-slate-900',
+    isLive: false
+  },
+  {
+    id: 'audio',
+    label: 'Audio & Beats',
+    icon: Headphones,
+    badge: 'LIVE 24/7',
+    badgeColor: 'bg-[#ff2d95] text-slate-900',
+    isLive: false
+  },
+  {
     id: 'files',
     label: 'File Vault',
     icon: FolderDown,
@@ -51,12 +68,6 @@ const mainNavItems: NavItem[] = [
     id: 'aihub',
     label: 'AI Hub',
     icon: Sparkles,
-    isLive: false
-  },
-  {
-    id: 'gaming',
-    label: 'Gaming',
-    icon: Gamepad2,
     isLive: false
   },
   {
@@ -162,7 +173,7 @@ export const Sidebar: React.FC = () => {
               {item.badge && !item.isLive && (
                 <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
                   item.badgeColor 
-                    ? `${item.badgeColor} text-white` 
+                    ? `${item.badgeColor}` 
                     : 'bg-white/10 text-[#00e5ff] border border-[#00e5ff]/30'
                 }`}>
                   {item.badge}

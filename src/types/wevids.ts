@@ -5,6 +5,7 @@ export type ViewName =
   | 'files'
   | 'aihub' 
   | 'gaming' 
+  | 'audio'
   | 'live' 
   | 'roms' 
   | 'mall' 

@@ -7,6 +7,7 @@ import { DualFeedView } from '../components/feed/DualFeedView';
 import { FileDropVaultView } from '../components/files/FileDropVaultView';
 import { AiHubView } from '../components/ai/AiHubView';
 import { GamingHubView } from '../components/gaming/GamingHubView';
+import { AudioHubView } from '../components/audio/AudioHubView';
 import { RomVaultView } from '../components/roms/RomVaultView';
 import { WevidsMallView } from '../components/mall/WevidsMallView';
 import { MessagesView } from '../components/messages/MessagesView';
@@ -36,10 +37,11 @@ const MainContent: React.FC = () => {
         <main className="ml-64 p-6 md:p-8 max-w-7xl mx-auto">
           {activeView === 'clips' && <ShortsFeedView />}
           {activeView === 'feed' && <DualFeedView />}
+          {activeView === 'gaming' && <GamingHubView />}
+          {activeView === 'audio' && <AudioHubView />}
           {activeView === 'files' && <FileDropVaultView />}
           {activeView === 'explore' && <ShortsFeedView />}
           {activeView === 'aihub' && <AiHubView />}
-          {activeView === 'gaming' && <GamingHubView />}
           {activeView === 'roms' && <RomVaultView />}
           {activeView === 'mall' && <WevidsMallView />}
           {activeView === 'messages' && <MessagesView />}

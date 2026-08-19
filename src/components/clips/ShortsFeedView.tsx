@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { useWevids } from '../../context/WevidsContext';
 import { 
   Heart, 
@@ -10,17 +10,11 @@ import {
   ChevronUp, 
   ChevronDown, 
   ThumbsDown, 
-  Send, 
   CheckCircle2, 
-  UserPlus, 
-  Check, 
-  Sparkles,
-  Music2,
-  Image as ImageIcon,
-  Smile
+  Music2 
 } from 'lucide-react';
+import { RichCommentInput } from '../comments/RichCommentInput';
 import { sounds } from '../../lib/soundFx';
-import { toast } from 'sonner';
 
 export const ShortsFeedView: React.FC = () => {
   const { 
@@ -40,10 +34,6 @@ export const ShortsFeedView: React.FC = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(true);
   const [showComments, setShowComments] = useState(false);
-  const [commentText, setCommentText] = useState('');
-  const [selectedEmoji, setSelectedEmoji] = useState<string | null>(null);
-
-  const emojis = ['🔥', '❤️', '👏', '😍', '🚀', '✨', '😂', '🤯'];
 
   const activeClip = clips[currentIndex] || clips[0];
   const clipAuthor = allUsers[activeClip?.userId] || currentUser;
@@ -60,34 +50,8 @@ export const ShortsFeedView: React.FC = () => {
     setCurrentIndex(prev => (prev - 1 + clips.length) % clips.length);
   };
 
-  const handleSendComment = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!commentText.trim()) return;
-    addClipComment(activeClip.id, {
-      user: currentUser.id,
-      userName: currentUser.name,
-      userAvatar: currentUser.avatar,
-      userColor: currentUser.color,
-      text: commentText.trim(),
-    });
-    setCommentText('');
-    toast.success('Comment added!');
-  };
-
-  const handleAddQuickEmoji = (em: string) => {
-    sounds.pop();
-    addClipComment(activeClip.id, {
-      user: currentUser.id,
-      userName: currentUser.name,
-      userAvatar: currentUser.avatar,
-      userColor: currentUser.color,
-      text: em,
-    });
-  };
-
   return (
     <div className="flex flex-col lg:flex-row gap-6 justify-center items-start pb-20 max-w-5xl mx-auto">
-      {/* Vertical Video Viewport */}
       <div className="relative w-full max-w-[440px] mx-auto h-[680px] rounded-3xl overflow-hidden liquid-glass border border-white/20 shadow-[0_25px_80px_rgba(0,0,0,0.85)] flex items-center justify-center bg-black">
         <video
           src={activeClip.videoUrl}
@@ -98,7 +62,6 @@ export const ShortsFeedView: React.FC = () => {
           className="w-full h-full object-cover"
         />
 
-        {/* Top Badges */}
         <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
           <span className="px-3 py-1 rounded-full bg-black/70 backdrop-blur-md text-[10px] font-bold text-[#00e5ff] border border-[#00e5ff]/30 font-orbitron">
             TRENDING CLIP {currentIndex + 1}/{clips.length}
@@ -117,7 +80,6 @@ export const ShortsFeedView: React.FC = () => {
           </button>
         </div>
 
-        {/* Vertical Swipe Navigation buttons */}
         <div className="absolute right-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
           <button
             onClick={handlePrev}
@@ -135,7 +97,6 @@ export const ShortsFeedView: React.FC = () => {
           </button>
         </div>
 
-        {/* Bottom Author & Music details */}
         <div className="absolute bottom-0 left-0 right-16 p-5 z-20 bg-gradient-to-t from-black/95 via-black/50 to-transparent space-y-2">
           <div className="flex items-center gap-2.5">
             <div 
@@ -186,13 +147,9 @@ export const ShortsFeedView: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Floating Actions (Like, Dislike, Comment, Share) */}
+        {/* Right Floating Actions */}
         <div className="absolute right-3 bottom-6 z-20 flex flex-col items-center gap-3.5">
-          {/* Like */}
-          <button
-            onClick={() => toggleClipLike(activeClip.id)}
-            className="flex flex-col items-center group"
-          >
+          <button onClick={() => toggleClipLike(activeClip.id)} className="flex flex-col items-center group">
             <div className={`p-3 rounded-full backdrop-blur-md transition-all shadow-lg ${
               activeClip.isLiked 
                 ? 'bg-[#ff2d95] text-white scale-110 shadow-[0_0_18px_rgba(255,45,149,0.8)]' 
@@ -200,49 +157,26 @@ export const ShortsFeedView: React.FC = () => {
             }`}>
               <Heart className={`w-5 h-5 ${activeClip.isLiked ? 'fill-current' : ''}`} />
             </div>
-            <span className="text-[10px] font-bold text-white mt-1 drop-shadow">
-              {activeClip.likes.toLocaleString()}
-            </span>
+            <span className="text-[10px] font-bold text-white mt-1 drop-shadow">{activeClip.likes.toLocaleString()}</span>
           </button>
 
-          {/* Dislike */}
-          <button
-            onClick={() => toggleClipDislike(activeClip.id)}
-            className="flex flex-col items-center group"
-          >
+          <button onClick={() => toggleClipDislike(activeClip.id)} className="flex flex-col items-center group">
             <div className={`p-3 rounded-full backdrop-blur-md transition-all shadow-lg ${
-              activeClip.isDisliked
-                ? 'bg-slate-700 text-white border border-white/30'
-                : 'bg-black/60 text-white hover:bg-white/10 border border-white/10'
+              activeClip.isDisliked ? 'bg-slate-700 text-white' : 'bg-black/60 text-white hover:bg-white/10 border border-white/10'
             }`}>
               <ThumbsDown className="w-5 h-5" />
             </div>
-            <span className="text-[10px] font-bold text-white mt-1 drop-shadow">
-              {activeClip.dislikes || 0}
-            </span>
+            <span className="text-[10px] font-bold text-white mt-1 drop-shadow">{activeClip.dislikes || 0}</span>
           </button>
 
-          {/* Comment */}
-          <button
-            onClick={() => {
-              sounds.pop();
-              setShowComments(!showComments);
-            }}
-            className="flex flex-col items-center group"
-          >
+          <button onClick={() => setShowComments(!showComments)} className="flex flex-col items-center group">
             <div className="p-3 rounded-full bg-black/60 backdrop-blur-md text-white hover:bg-[#00e5ff]/40 transition-all border border-white/10 shadow-lg">
               <MessageCircle className="w-5 h-5" />
             </div>
-            <span className="text-[10px] font-bold text-white mt-1 drop-shadow">
-              {activeClip.comments.length}
-            </span>
+            <span className="text-[10px] font-bold text-white mt-1 drop-shadow">{activeClip.comments.length}</span>
           </button>
 
-          {/* Share */}
-          <button
-            onClick={() => openShareModal(activeClip.title, `https://wevids.app/clip/${activeClip.id}`)}
-            className="flex flex-col items-center group"
-          >
+          <button onClick={() => openShareModal(activeClip.title, `https://wevids.app/clip/${activeClip.id}`)} className="flex flex-col items-center group">
             <div className="p-3 rounded-full bg-black/60 backdrop-blur-md text-white hover:bg-[#ff2d95]/40 transition-all border border-white/10 shadow-lg">
               <Share2 className="w-5 h-5" />
             </div>
@@ -251,7 +185,7 @@ export const ShortsFeedView: React.FC = () => {
         </div>
       </div>
 
-      {/* Slide-out Comments Drawer */}
+      {/* Slide-out Comments Drawer with GIPHY & Voice */}
       {showComments && (
         <div className="w-full lg:w-96 liquid-glass rounded-3xl p-5 border border-white/15 shadow-2xl flex flex-col h-[680px] animate-fade-in">
           <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-3">
@@ -259,62 +193,61 @@ export const ShortsFeedView: React.FC = () => {
               <MessageCircle className="w-4 h-4 text-[#00e5ff]" />
               Clip Comments ({activeClip.comments.length})
             </h3>
-            <button
-              onClick={() => setShowComments(false)}
-              className="text-xs text-[#8a8aa8] hover:text-white"
-            >
-              ✕ Close
-            </button>
-          </div>
-
-          {/* Quick Reaction Emojis */}
-          <div className="flex items-center justify-between gap-1 pb-3 mb-2 border-b border-white/5 overflow-x-auto">
-            {emojis.map(em => (
-              <button
-                key={em}
-                onClick={() => handleAddQuickEmoji(em)}
-                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-sm transition-transform hover:scale-125"
-              >
-                {em}
-              </button>
-            ))}
+            <button onClick={() => setShowComments(false)} className="text-xs text-[#8a8aa8] hover:text-white">✕</button>
           </div>
 
           {/* Comments List */}
           <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
             {activeClip.comments.length === 0 ? (
               <div className="text-center py-20 text-xs text-[#8a8aa8]">
-                No comments yet! Be the first to start the vibe.
+                No comments yet! Post a GIF, sticker, or voice note.
               </div>
             ) : (
               activeClip.comments.map(c => (
-                <div key={c.id} className="p-3 rounded-2xl bg-white/5 border border-white/5 space-y-1">
+                <div key={c.id} className="p-3 rounded-2xl bg-white/5 border border-white/5 space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-white">{c.userName}</span>
                     <span className="text-[10px] text-[#8a8aa8]">{c.timestamp}</span>
                   </div>
-                  <p className="text-xs text-[#e8e8f4] leading-relaxed">{c.text}</p>
+                  {c.text && <p className="text-xs text-[#e8e8f4] leading-relaxed">{c.text}</p>}
+
+                  {c.media && c.mediaType === 'gif' && (
+                    <img src={c.media} alt="GIF" className="rounded-xl max-h-32 object-cover border border-white/10" />
+                  )}
+                  {c.media && c.mediaType === 'image' && (
+                    <img src={c.media} alt="Photo" className="rounded-xl max-h-32 object-cover border border-white/10" />
+                  )}
+                  {c.media && c.mediaType === 'sticker' && (
+                    <img src={c.media} alt="Sticker" className="w-14 h-14 rounded-lg object-cover" />
+                  )}
+                  {c.mediaType === 'audio' && (
+                    <div className="p-2 rounded-xl bg-white/10 border border-[#00e5ff]/40 text-xs text-[#00e5ff] flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-[#ff2d95] animate-ping" />
+                      <span>🎤 Voice Note (0:08s)</span>
+                    </div>
+                  )}
                 </div>
               ))
             )}
           </div>
 
-          {/* Input */}
-          <form onSubmit={handleSendComment} className="pt-3 border-t border-white/10 flex gap-2">
-            <input
-              type="text"
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              placeholder="Write a comment..."
-              className="flex-1 px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:outline-none focus:border-[#00e5ff]"
+          {/* Rich Comment Input */}
+          <div className="pt-2 border-t border-white/10">
+            <RichCommentInput
+              onSend={(comment) => {
+                addClipComment(activeClip.id, {
+                  user: currentUser.id,
+                  userName: currentUser.name,
+                  userAvatar: currentUser.avatar,
+                  userColor: currentUser.color,
+                  text: comment.text,
+                  media: comment.media,
+                  mediaType: comment.mediaType
+                });
+              }}
+              placeholder="Post a GIF, sticker, or voice note..."
             />
-            <button
-              type="submit"
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-bold text-xs hover:scale-105 transition-transform"
-            >
-              <Send className="w-3.5 h-3.5" />
-            </button>
-          </form>
+          </div>
         </div>
       )}
     </div>
