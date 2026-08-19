@@ -1,96 +1,39 @@
-import { createClient } from '@supabase/supabase-js';
+export interface SupabaseConfig {
+  url: string;
+  anonKey: string;
+}
 
-// Read from environment variables if present, or from localStorage for quick testing
-const getEnvOrLocal = (key: string, localKey: string): string => {
-  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
-    return import.meta.env[key];
-  }
-  if (typeof window !== 'undefined') {
-    return localStorage.getItem(localKey) || '';
-  }
-  return '';
+export interface SupabaseUser {
+  id: string;
+  email?: string;
+  created_at?: string;
+}
+
+export interface SupabaseSession {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  refresh_token: string;
+  user: SupabaseUser;
+}
+
+// Storage helpers
+export const getSupabaseConfig = (): SupabaseConfig => {
+  if (typeof window === 'undefined') return { url: '', anonKey: '' };
+  const envUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
+  const envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+  const localUrl = localStorage.getItem('wevids_supabase_url') || '';
+  const localKey = localStorage.getItem('wevids_supabase_anon_key') || '';
+  return {
+    url: envUrl || localUrl,
+    anonKey: envKey || localKey,
+  };
 };
-
-export const SUPABASE_URL = getEnvOrLocal('VITE_SUPABASE_URL', 'wevids_supabase_url');
-export const SUPABASE_ANON_KEY = getEnvOrLocal('VITE_SUPABASE_ANON_KEY', 'wevids_supabase_anon_key');
-
-export const isSupabaseConfigured = (): boolean => {
-  const url = getEnvOrLocal('VITE_SUPABASE_URL', 'wevids_supabase_url');
-  const key = getEnvOrLocal('VITE_SUPABASE_ANON_KEY', 'wevids_supabase_anon_key');
-  return Boolean(url && key && url.startsWith('https://') && key.length > 20);
-};
-
-export const supabase = isSupabaseConfigured()
-  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-      },
-    })
-  : createClient('https://placeholder.supabase.co', 'placeholder-anon-key', {
-      auth: {
-        persistSession: false,
-      }
-    });
 
 export const saveSupabaseCredentials = (url: string, anonKey: string) => {
   if (typeof window !== 'undefined') {
-    localStorage.setItem('wevids_supabase_url', url.trim());
-    localStorage.setItem('wevids_supabase_anon_key', anonKey.trim());
-  }
-};
-
-export const clearSupabaseCredentials = () => {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem('wevids_supabase_url');
-    localStorage.removeItem('wevids_supabase_anon<dyad-write path="src/lib/supabase.ts" description="Supabase client initialization and connection helper">
-import { createClient } from '@supabase/supabase-js';
-
-// Read from environment variables if present, or from localStorage for quick testing
-const getEnvOrLocal = (key: string, localKey: string): string => {
-  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
-    return import.meta.env[key];
-  }
-  if (typeof window !== 'undefined') {
-    return localStorage.getItem(localKey) || '';
-  }
-  return '';
-};
-
-export const SUPABASE_URL = getEnvOrLocal('VITE_SUPABASE_URL', 'wevids_supabase_url');
-export const SUPABASE_ANON_KEY = getEnvOrLocal('VITE_SUPABASE_ANON_KEY', 'wevids_supabase_anon_key');
-
-export const isSupabaseConfigured = (): boolean => {
-  const url = getEnvOrLocal('VITE_SUPABASE_URL', 'wevids_supabase_url');
-  const key = getEnvOrLocal('VITE_SUPABASE_ANON_KEY', 'wevids_supabase_anon_key');
-  return Boolean(url && key && url.startsWith('https://') && key.length > 20);
-};
-
-export const getSupabaseClient = () => {
-  const url = getEnvOrLocal('VITE_SUPABASE_URL', 'wevids_supabase_url');
-  const key = getEnvOrLocal('VITE_SUPABASE_ANON_KEY', 'wevids_supabase_anon_key');
-
-  if (url && key && url.startsWith('https://') && key.length > 20) {
-    return createClient(url, key, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-      },
-    });
-  }
-
-  return null;
-};
-
-export const supabase = getSupabaseClient() || createClient('https://placeholder.supabase.co', 'placeholder-anon-key', {
-  auth: {
-    persistSession: false,
-  }
-});
-
-export const saveSupabaseCredentials = (url: string, anonKey: string) => {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('wevids_supabase_url', url.trim());
+    const cleanUrl = url.trim().replace(/\/+$/, '');
+    localStorage.setItem('wevids_supabase_url', cleanUrl);
     localStorage.setItem('wevids_supabase_anon_key', anonKey.trim());
   }
 };
@@ -99,5 +42,172 @@ export const clearSupabaseCredentials = () => {
   if (typeof window !== 'undefined') {
     localStorage.removeItem('wevids_supabase_url');
     localStorage.removeItem('wevids_supabase_anon_key');
+    localStorage.removeItem('wevids_supabase_session');
   }
 };
+
+export const isSupabaseConfigured = (): boolean => {
+  const { url, anonKey } = getSupabaseConfig();
+  return Boolean(url && anonKey && url.startsWith('https://') && anonKey.length > 20);
+};
+
+export const getStoredSession = (): SupabaseSession | null => {
+  if (typeof window === 'undefined') return null;
+  const raw = localStorage.getItem('wevids_supabase_session');
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
+export const saveStoredSession = (session: SupabaseSession | null) => {
+  if (typeof window === 'undefined') return;
+  if (!session) {
+    localStorage.removeItem('wevids_supabase_session');
+  } else {
+    localStorage.setItem('wevids_supabase_session', JSON.stringify(session));
+  }
+};
+
+// Pure fetch client for Supabase REST & Auth APIs
+export class SupabaseClient {
+  private getHeaders(token?: string) {
+    const { anonKey } = getSupabaseConfig();
+    const headers: Record<string, string> = {
+      'apikey': anonKey,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation',
+    };
+    const session = getStoredSession();
+    const bearer = token || session?.access_token || anonKey;
+    if (bearer) {
+      headers['Authorization'] = `Bearer ${bearer}`;
+    }
+    return headers;
+  }
+
+  public async signUp(email: string, password: string): Promise<{ user?: SupabaseUser; session?: SupabaseSession; error?: string }> {
+    const { url } = getSupabaseConfig();
+    if (!url) return { error: 'Supabase URL is not configured' };
+
+    try {
+      const res = await fetch(`${url}/auth/v1/signup`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { error: data.msg || data.error_description || data.message || 'Signup failed' };
+      }
+      if (data.access_token) {
+        saveStoredSession(data as SupabaseSession);
+      }
+      return { user: data.user || data, session: data.access_token ? data : undefined };
+    } catch (err: any) {
+      return { error: err.message || 'Network error connecting to Supabase' };
+    }
+  }
+
+  public async signIn(email: string, password: string): Promise<{ user?: SupabaseUser; session?: SupabaseSession; error?: string }> {
+    const { url } = getSupabaseConfig();
+    if (!url) return { error: 'Supabase URL is not configured' };
+
+    try {
+      const res = await fetch(`${url}/auth/v1/token?grant_type=password`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { error: data.msg || data.error_description || data.message || 'Invalid credentials' };
+      }
+      saveStoredSession(data as SupabaseSession);
+      return { user: data.user, session: data as SupabaseSession };
+    } catch (err: any) {
+      return { error: err.message || 'Network error connecting to Supabase' };
+    }
+  }
+
+  public async signOut(): Promise<void> {
+    const { url } = getSupabaseConfig();
+    const session = getStoredSession();
+    if (url && session?.access_token) {
+      try {
+        await fetch(`${url}/auth/v1/logout`, {
+          method: 'POST',
+          headers: this.getHeaders(session.access_token),
+        });
+      } catch {
+        // Safe ignore
+      }
+    }
+    saveStoredSession(null);
+  }
+
+  public async select(table: string, query: string = '*'): Promise<{ data?: any[]; error?: string }> {
+    const { url } = getSupabaseConfig();
+    if (!url) return { error: 'Supabase URL not configured' };
+
+    try {
+      const res = await fetch(`${url}/rest/v1/${table}?select=${encodeURIComponent(query)}`, {
+        method: 'GET',
+        headers: this.getHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { error: data.message || 'Query failed' };
+      }
+      return { data: Array.isArray(data) ? data : [data] };
+    } catch (err: any) {
+      return { error: err.message || 'Query error' };
+    }
+  }
+
+  public async insert(table: string, payload: Record<string, any>): Promise<{ data?: any; error?: string }> {
+    const { url } = getSupabaseConfig();
+    if (!url) return { error: 'Supabase URL not configured' };
+
+    try {
+      const res = await fetch(`${url}/rest/v1/${table}`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { error: data.message || 'Insert failed' };
+      }
+      return { data };
+    } catch (err: any) {
+      return { error: err.message || 'Insert error' };
+    }
+  }
+
+  public async testConnection(): Promise<{ ok: boolean; message: string }> {
+    const { url, anonKey } = getSupabaseConfig();
+    if (!url || !anonKey) {
+      return { ok: false, message: 'URL and Anon Key are missing.' };
+    }
+    try {
+      const res = await fetch(`${url}/auth/v1/settings`, {
+        method: 'GET',
+        headers: {
+          'apikey': anonKey,
+          'Authorization': `Bearer ${anonKey}`
+        }
+      });
+      if (res.ok || res.status === 200 || res.status === 401) {
+        return { ok: true, message: 'Connected to Supabase endpoint!' };
+      }
+      return { ok: false, message: `Received HTTP status ${res.status}` };
+    } catch (err: any) {
+      return { ok: false, message: err.message || 'Failed to reach Supabase project.' };
+    }
+  }
+}
+
+export const supabase = new SupabaseClient();
