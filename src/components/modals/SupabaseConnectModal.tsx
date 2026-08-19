@@ -1,4 +1,3 @@
-character syntax errors in SupabaseConnectModal">
 import React, { useState, useEffect } from 'react';
 import { 
   Database, 
@@ -462,7 +461,7 @@ CREATE POLICY "Users insert roms" ON public.rom_packages FOR INSERT WITH CHECK (
                 onClick={copySql}
                 className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#ff2d95] text-white font-bold hover:scale-105 transition-transform"
               >
-                {copiedSql ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedSql ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{copiedSql ? 'Copied!' : 'Copy SQL Schema'}</span>
               </button>
             </div>
