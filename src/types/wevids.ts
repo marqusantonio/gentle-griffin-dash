@@ -6,6 +6,7 @@ export type ViewName =
   | 'aihub' 
   | 'gaming' 
   | 'audio'
+  | 'films'
   | 'live' 
   | 'roms' 
   | 'mall' 
@@ -37,6 +38,35 @@ export interface UserProfile {
   verified?: boolean;
   walletBalance: number;
   isCreator?: boolean;
+}
+
+export interface AudioTrackItem {
+  id: string;
+  title: string;
+  artist: string;
+  duration: string;
+  genre: string;
+  bpm: number;
+  url: string;
+  cover: string;
+  uploaderId?: string;
+  createdAt?: string;
+}
+
+export interface FilmItem {
+  id: string;
+  title: string;
+  synopsis: string;
+  director: string;
+  releaseYear: number;
+  duration: string;
+  genre: 'Cyberpunk Sci-Fi' | 'Anime Cinema' | 'Tech Documentary' | 'Gaming Lore' | 'Open Source Action';
+  rating: number;
+  videoUrl: string;
+  posterUrl: string;
+  backdropUrl?: string;
+  uploaderId?: string;
+  views?: string;
 }
 
 export interface CommentItem {
@@ -136,7 +166,7 @@ export interface RomItem {
 
 export interface SavedCollectionItem {
   id: string;
-  type: 'rom' | 'clip' | 'long_video' | 'file' | 'product';
+  type: 'rom' | 'clip' | 'long_video' | 'file' | 'product' | 'film' | 'audio';
   title: string;
   preview: string;
   addedAt: string;

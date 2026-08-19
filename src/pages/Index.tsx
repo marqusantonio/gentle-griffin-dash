@@ -8,6 +8,7 @@ import { FileDropVaultView } from '../components/files/FileDropVaultView';
 import { AiHubView } from '../components/ai/AiHubView';
 import { GamingHubView } from '../components/gaming/GamingHubView';
 import { AudioHubView } from '../components/audio/AudioHubView';
+import { FilmsHubView } from '../components/films/FilmsHubView';
 import { RomVaultView } from '../components/roms/RomVaultView';
 import { WevidsMallView } from '../components/mall/WevidsMallView';
 import { MessagesView } from '../components/messages/MessagesView';
@@ -25,7 +26,7 @@ const MainContent: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#0a0a1a] text-[#e8e8f4] relative overflow-x-hidden">
-      {/* Glow lights */}
+      {/* Ambient background glows */}
       <div className="fixed top-[-10vw] left-[-10vw] w-[45vw] h-[45vw] rounded-full bg-gradient-to-br from-[#ff2d95]/15 to-transparent blur-[120px] pointer-events-none z-0" />
       <div className="fixed bottom-[-10vw] right-[-10vw] w-[45vw] h-[45vw] rounded-full bg-gradient-to-tl from-[#00e5ff]/15 to-transparent blur-[120px] pointer-events-none z-0" />
 
@@ -37,8 +38,9 @@ const MainContent: React.FC = () => {
         <main className="ml-64 p-6 md:p-8 max-w-7xl mx-auto">
           {activeView === 'clips' && <ShortsFeedView />}
           {activeView === 'feed' && <DualFeedView />}
-          {activeView === 'gaming' && <GamingHubView />}
+          {activeView === 'films' && <FilmsHubView />}
           {activeView === 'audio' && <AudioHubView />}
+          {activeView === 'gaming' && <GamingHubView />}
           {activeView === 'files' && <FileDropVaultView />}
           {activeView === 'explore' && <ShortsFeedView />}
           {activeView === 'aihub' && <AiHubView />}

@@ -2,14 +2,12 @@ import React from 'react';
 import { useWevids } from '../../context/WevidsContext';
 import { ViewName } from '../../types/wevids';
 import { 
-  PlaySquare, 
-  Flame,
   FileCode2,
   FolderDown,
   Sparkles, 
   Gamepad2, 
   Headphones, 
-  Radio, 
+  Clapperboard,
   ShoppingBag, 
   MessageSquareText, 
   UserCheck, 
@@ -28,7 +26,6 @@ interface NavItem {
   isLive?: boolean;
 }
 
-// Define main navigation items
 const mainNavItems: NavItem[] = [
   {
     id: 'clips',
@@ -43,19 +40,27 @@ const mainNavItems: NavItem[] = [
     isLive: false
   },
   {
-    id: 'gaming',
-    label: 'Gaming Hub (10+)',
-    icon: Gamepad2,
-    badge: 'NEW',
-    badgeColor: 'bg-[#00e5ff] text-slate-900',
+    id: 'films',
+    label: 'Films & Cinema',
+    icon: Clapperboard,
+    badge: '4K HDR',
+    badgeColor: 'bg-[#ff2d95] text-slate-900',
     isLive: false
   },
   {
     id: 'audio',
     label: 'Audio & Beats',
     icon: Headphones,
-    badge: 'LIVE 24/7',
-    badgeColor: 'bg-[#ff2d95] text-slate-900',
+    badge: 'MP3 SYNC',
+    badgeColor: 'bg-[#00e5ff] text-slate-900',
+    isLive: false
+  },
+  {
+    id: 'gaming',
+    label: 'Gaming Hub (10+)',
+    icon: Gamepad2,
+    badge: 'NEW',
+    badgeColor: 'bg-[#fbbf24] text-slate-900',
     isLive: false
   },
   {
@@ -109,12 +114,8 @@ export const Sidebar: React.FC = () => {
     currentUser, 
     soundEnabled, 
     setSoundEnabled,
-    conversations,
-    cart
+    conversations
   } = useWevids();
-
-  const totalUnread = conversations ? conversations.reduce((acc, c) => acc + (c.unread || 0), 0) : 0;
-  const totalCartCount = cart ? cart.reduce((acc, item) => acc + item.quantity, 0) : 0;
 
   return (
     <aside className="w-64 fixed top-0 left-0 bottom-0 z-40 flex flex-col liquid-glass border-r border-white/10 p-4 transition-all duration-300">
@@ -173,7 +174,7 @@ export const Sidebar: React.FC = () => {
               {item.badge && !item.isLive && (
                 <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
                   item.badgeColor 
-                    ? `${item.badgeColor}` 
+                    ? item.badgeColor 
                     : 'bg-white/10 text-[#00e5ff] border border-[#00e5ff]/30'
                 }`}>
                   {item.badge}

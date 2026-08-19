@@ -34,15 +34,13 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
   const [testingConnection, setTestingConnection] = useState(false);
   const [activeTab, setActiveTab] = useState<'status' | 'auth' | 'sql' | 'test'>('status');
   
-  // Auth state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [currentSessionUser, setCurrentSessionUser] = useState<string | null>(() => getStoredSession()?.user?.email || null);
   const [copiedSql, setCopiedSql] = useState(false);
 
-  // Test Query State
-  const [testTableName, setTestTableName] = useState('profiles');
+  const [testTableName, setTestTableName] = useState('audio_tracks');
   const [testQueryResult, setTestQueryResult] = useState<string | null>(null);
   const [isQuerying, setIsQuerying] = useState(false);
 
@@ -83,7 +81,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
       toast.success('Successfully connected to Supabase!');
     } else {
       setConnected(true);
-      toast.info('Credentials saved! You can now run live auth and SQL tables.');
+      toast.info('Credentials saved! You can now run live auth, audio tracks, and films tables.');
     }
   };
 
@@ -157,14 +155,14 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
     setIsQuerying(false);
 
     if (res.error) {
-      setTestQueryResult(`❌ Error: ${res.error}\n(Hint: Make sure the table "${testTableName}" exists in Supabase and RLS allows select)`);
+      setTestQueryResult(`❌ Error: ${res.error}\n(Make sure "${testTableName}" table exists in Supabase)`);
     } else {
       sounds.success();
       setTestQueryResult(`✅ Success (${res.data?.length || 0} rows found):\n` + JSON.stringify(res.data, null, 2));
     }
   };
 
-  const sqlSchema = `-- WEVIDS Online Database Schema
+  const sqlSchema = `-- WEVIDS Online Database Schema with Audio & Films
 -- Run in your Supabase SQL Editor: https://supabase.com/dashboard/project/_/sql
 
 -- 1. Profiles Table
@@ -178,44 +176,49 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2. Clips & Shorts Table
-CREATE TABLE IF NOT EXISTS public.clips (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES auth.users ON DELETE CASCADE,
+-- 2. Audio & MP3 Tracks Table
+CREATE TABLE IF NOT EXISTS public.audio_tracks (
+  id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
-  description TEXT,
-  video_url TEXT NOT NULL,
-  audio_track TEXT,
-  likes_count INT DEFAULT 0,
+  artist TEXT NOT NULL,
+  duration TEXT,
+  genre TEXT,
+  bpm INT DEFAULT 120,
+  url TEXT NOT NULL,
+  cover TEXT,
+  uploader_id TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Developer ROM Packages
-CREATE TABLE IF NOT EXISTS public.rom_packages (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  uploader_id UUID REFERENCES auth.users ON DELETE CASCADE,
+-- 3. Feature Films & Cinema Table
+CREATE TABLE IF NOT EXISTS public.films (
+  id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
-  device_codename TEXT NOT NULL,
-  version TEXT NOT NULL,
-  checksum TEXT NOT NULL,
-  download_url TEXT NOT NULL,
+  synopsis TEXT,
+  director TEXT,
+  release_year INT DEFAULT 2026,
+  duration TEXT,
+  genre TEXT,
+  rating NUMERIC DEFAULT 5.0,
+  video_url TEXT NOT NULL,
+  poster_url TEXT,
+  backdrop_url TEXT,
+  uploader_id TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 4. Enable Row Level Security (RLS)
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.clips ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.rom_packages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audio_tracks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.films ENABLE ROW LEVEL SECURITY;
 
--- 5. Open Read Policies
+-- 5. Open Read & Authenticated Insert Policies
 CREATE POLICY "Public profiles read" ON public.profiles FOR SELECT USING (true);
-CREATE POLICY "Public clips read" ON public.clips FOR SELECT USING (true);
-CREATE POLICY "Public roms read" ON public.rom_packages FOR SELECT USING (true);
+CREATE POLICY "Public audio read" ON public.audio_tracks FOR SELECT USING (true);
+CREATE POLICY "Public films read" ON public.films FOR SELECT USING (true);
 
--- 6. Authenticated Write Policies
-CREATE POLICY "Users update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
-CREATE POLICY "Users insert clips" ON public.clips FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Users insert roms" ON public.rom_packages FOR INSERT WITH CHECK (auth.uid() = uploader_id);
+CREATE POLICY "Open audio insert" ON public.audio_tracks FOR INSERT WITH CHECK (true);
+CREATE POLICY "Open films insert" ON public.films FOR INSERT WITH CHECK (true);
 `;
 
   const copySql = () => {
@@ -250,7 +253,7 @@ CREATE POLICY "Users insert roms" ON public.rom_packages FOR INSERT WITH CHECK (
                 {connected ? 'ONLINE LINKED' : 'LOCAL CACHE / READY'}
               </span>
             </div>
-            <p className="text-xs text-[#8a8aa8]">Connect live authentication, database tables, and cloud storage</p>
+            <p className="text-xs text-[#8a8aa8]">Connect live authentication, MP3 tracks, films, and cloud storage</p>
           </div>
         </div>
 
@@ -319,9 +322,6 @@ CREATE POLICY "Users insert roms" ON public.rom_packages FOR INSERT WITH CHECK (
                 placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                 className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white font-mono placeholder-[#8a8aa8] focus:border-[#00e5ff] focus:outline-none"
               />
-              <p className="text-[10px] text-[#8a8aa8]">
-                Found in: <strong>Supabase Dashboard &rarr; Settings &rarr; API &rarr; Project API keys (anon public)</strong>
-              </p>
             </div>
 
             <div className="flex gap-2 pt-2">
@@ -346,7 +346,7 @@ CREATE POLICY "Users insert roms" ON public.rom_packages FOR INSERT WITH CHECK (
           </form>
         )}
 
-        {/* TAB 2: LIVE AUTH TEST */}
+        {/* TAB 2: AUTH */}
         {activeTab === 'auth' && (
           <div className="space-y-3 text-xs">
             {currentSessionUser ? (
@@ -366,9 +366,6 @@ CREATE POLICY "Users insert roms" ON public.rom_packages FOR INSERT WITH CHECK (
                 <div className="text-white font-mono bg-black/40 p-2.5 rounded-xl border border-white/10">
                   {currentSessionUser}
                 </div>
-                <p className="text-[11px] text-[#8a8aa8]">
-                  Your authenticated session token is active and will attach to real-time queries and file posts.
-                </p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -382,7 +379,7 @@ CREATE POLICY "Users insert roms" ON public.rom_packages FOR INSERT WITH CHECK (
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="creator@wevids.app"
-                    className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white placeholder-[#8a8aa8]"
+                    className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white"
                   />
                   <div className="font-bold text-white flex items-center gap-1.5 pt-1">
                     <Lock className="w-3.5 h-3.5 text-[#ff2d95]" />
@@ -393,7 +390,7 @@ CREATE POLICY "Users insert roms" ON public.rom_packages FOR INSERT WITH CHECK (
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••••••"
-                    className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white placeholder-[#8a8aa8]"
+                    className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white"
                   />
                 </div>
 
@@ -401,14 +398,14 @@ CREATE POLICY "Users insert roms" ON public.rom_packages FOR INSERT WITH CHECK (
                   <button
                     onClick={handleSignIn}
                     disabled={authLoading}
-                    className="py-2.5 rounded-xl bg-gradient-to-r from-[#00e5ff] to-[#3ecf8e] text-slate-900 font-orbitron font-bold shadow-md hover:scale-102 transition-transform disabled:opacity-50"
+                    className="py-2.5 rounded-xl bg-gradient-to-r from-[#00e5ff] to-[#3ecf8e] text-slate-900 font-orbitron font-bold shadow-md hover:scale-102 transition-transform"
                   >
                     {authLoading ? 'Signing in...' : 'Sign In'}
                   </button>
                   <button
                     onClick={handleSignUp}
                     disabled={authLoading}
-                    className="py-2.5 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#9333ea] text-white font-orbitron font-bold shadow-md hover:scale-102 transition-transform disabled:opacity-50"
+                    className="py-2.5 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#9333ea] text-white font-orbitron font-bold shadow-md hover:scale-102 transition-transform"
                   >
                     {authLoading ? 'Signing up...' : 'Sign Up'}
                   </button>
@@ -418,7 +415,7 @@ CREATE POLICY "Users insert roms" ON public.rom_packages FOR INSERT WITH CHECK (
           </div>
         )}
 
-        {/* TAB 3: REST QUERY TEST */}
+        {/* TAB 3: TEST QUERY */}
         {activeTab === 'test' && (
           <div className="space-y-3 text-xs">
             <div className="p-3 rounded-2xl bg-white/5 border border-white/10 space-y-2">
@@ -431,7 +428,7 @@ CREATE POLICY "Users insert roms" ON public.rom_packages FOR INSERT WITH CHECK (
                   type="text"
                   value={testTableName}
                   onChange={(e) => setTestTableName(e.target.value)}
-                  placeholder="profiles or clips"
+                  placeholder="audio_tracks or films"
                   className="flex-1 px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white font-mono"
                 />
                 <button
@@ -452,7 +449,7 @@ CREATE POLICY "Users insert roms" ON public.rom_packages FOR INSERT WITH CHECK (
           </div>
         )}
 
-        {/* TAB 4: SQL SETUP */}
+        {/* TAB 4: SQL SCHEMA */}
         {activeTab === 'sql' && (
           <div className="space-y-3 text-xs">
             <div className="flex items-center justify-between">

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import { 
   PostItem, 
   ShortClipItem, 
@@ -10,6 +10,8 @@ import {
   CartItem, 
   SavedCollection, 
   SharedFileItem, 
+  AudioTrackItem,
+  FilmItem,
   ViewName 
 } from '../types/wevids';
 import { 
@@ -27,18 +29,95 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { sounds } from '../lib/soundFx';
 import { toast } from 'sonner';
 
-// Types
+export const INITIAL_AUDIO_TRACKS: AudioTrackItem[] = [
+  {
+    id: 't-1',
+    title: 'Neon Tokyo Midnight Rain',
+    artist: 'Aiko Tanaka x WEVIDS Synth Lab',
+    duration: '03:45',
+    genre: 'Synthwave / Cyberpunk',
+    bpm: 120,
+    url: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=lofi-study-112191.mp3',
+    cover: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80'
+  },
+  {
+    id: 't-2',
+    title: 'Persian Saffron Sunset Acoustic',
+    artist: 'Sara from Tehran',
+    duration: '04:12',
+    genre: 'Ambient World Fusion',
+    bpm: 88,
+    url: 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3?filename=lofi-chill-medium-version-159456.mp3',
+    cover: 'https://images.unsplash.com/photo-1517256064527-09c73fc73e38?auto=format&fit=crop&w=400&q=80'
+  },
+  {
+    id: 't-3',
+    title: 'Snapdragon Hyper Overclock Pulse',
+    artist: 'Carlos Mendez (ROM Dev)',
+    duration: '02:50',
+    genre: 'Hard Techno Glitch',
+    bpm: 144,
+    url: 'https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=cyberpunk-2099-10701.mp3',
+    cover: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=400&q=80'
+  }
+];
+
+export const INITIAL_FILMS: FilmItem[] = [
+  {
+    id: 'film-1',
+    title: 'Neo-Genesis 2088: The Silicon Frontier',
+    synopsis: 'A rogue neural programmer discovers an encrypted kernel anomaly inside Tokyo’s quantum power grid that allows human consciousness transfer.',
+    director: 'Aiko Tanaka',
+    releaseYear: 2026,
+    duration: '1h 48m',
+    genre: 'Cyberpunk Sci-Fi',
+    rating: 4.9,
+    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+    posterUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=800&q=80',
+    backdropUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1400&q=80',
+    views: '482K'
+  },
+  {
+    id: 'film-2',
+    title: 'Open Source Revolution: The Kernel Chronicles',
+    synopsis: 'An inside documentary investigating the worldwide underground network of Android ROM porters, Linux kernel hackers, and custom hardware modders.',
+    director: 'Carlos Mendez',
+    releaseYear: 2026,
+    duration: '1h 22m',
+    genre: 'Tech Documentary',
+    rating: 4.8,
+    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+    posterUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=800&q=80',
+    backdropUrl: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=1400&q=80',
+    views: '320K'
+  },
+  {
+    id: 'film-3',
+    title: 'Echoes of Tehran: The Saffron Road',
+    synopsis: 'A visually breathtaking journey through ancient Persian architectural marvels, modern poetry, and the enduring human spirit connecting continents.',
+    director: 'Sara from Tehran',
+    releaseYear: 2026,
+    duration: '1h 35m',
+    genre: 'Open Source Action',
+    rating: 5.0,
+    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+    posterUrl: 'https://images.unsplash.com/photo-1517256064527-09c73fc73e38?auto=format&fit=crop&w=800&q=80',
+    backdropUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1400&q=80',
+    views: '610K'
+  }
+];
+
 interface WevidsState {
-  // Core content
   posts: PostItem[];
   clips: ShortClipItem[];
   longVideos: LongVideoItem[];
   roms: RomItem[];
   products: ProductItem[];
   files: SharedFileItem[];
+  audioTracks: AudioTrackItem[];
+  films: FilmItem[];
   conversations: Conversation[];
   
-  // UI state
   activeView: ViewName;
   activeConvId: string | null;
   activeCallUser: string | null;
@@ -48,12 +127,9 @@ interface WevidsState {
   viewingProfileUser: UserProfile | null;
   isSupabaseModalOpen: boolean;
   
-  // User & auth
   currentUser: UserProfile;
   allUsers: Record<string, UserProfile>;
   soundEnabled: boolean;
-  
-  // Cart & bookmarks
   cart: CartItem[];
   collections: SavedCollection[];
 }
@@ -71,19 +147,6 @@ const initialFiles: SharedFileItem[] = [
     checksum: 'e8f7a932b14c90d6e42a19ff88b643ce219f01ab92',
     downloads: 1420,
     uploadedAt: '2 days ago'
-  },
-  {
-    id: 'f-2',
-    title: 'Cyberpunk Neon LUT Preset Pack (.cube)',
-    fileName: 'wevids_neon_v3_lut.cube',
-    fileSize: '4.2 MB',
-    category: 'LUTs / Preset',
-    uploaderId: 'aiko',
-    uploaderName: 'Aiko Tanaka',
-    downloadUrl: '#',
-    checksum: '5a6bc3128dfa910bc4e2',
-    downloads: 3820,
-    uploadedAt: '5 days ago'
   }
 ];
 
@@ -94,6 +157,8 @@ const initialState: WevidsState = {
   roms: INITIAL_ROMS,
   products: INITIAL_PRODUCTS,
   files: initialFiles,
+  audioTracks: INITIAL_AUDIO_TRACKS,
+  films: INITIAL_FILMS,
   conversations: INITIAL_CONVERSATIONS,
   activeView: 'clips',
   activeConvId: 'conv-group-1',
@@ -110,7 +175,6 @@ const initialState: WevidsState = {
   collections: INITIAL_BOOKMARKS,
 };
 
-// Reducer
 const reducer = (state: WevidsState, action: any): WevidsState => {
   switch (action.type) {
     case 'SET_ACTIVE_VIEW':
@@ -294,12 +358,19 @@ const reducer = (state: WevidsState, action: any): WevidsState => {
       return { ...state, products: [action.payload, ...state.products] };
     case 'ADD_SHARED_FILE':
       return { ...state, files: [action.payload, ...state.files] };
+    case 'ADD_AUDIO_TRACK':
+      return { ...state, audioTracks: [action.payload, ...state.audioTracks] };
+    case 'SET_AUDIO_TRACKS':
+      return { ...state, audioTracks: action.payload };
+    case 'ADD_FILM':
+      return { ...state, films: [action.payload, ...state.films] };
+    case 'SET_FILMS':
+      return { ...state, films: action.payload };
     default:
       return state;
   }
 };
 
-// Context
 const WevidsContext = createContext<{
   posts: PostItem[];
   clips: ShortClipItem[];
@@ -307,6 +378,8 @@ const WevidsContext = createContext<{
   roms: RomItem[];
   products: ProductItem[];
   files: SharedFileItem[];
+  audioTracks: AudioTrackItem[];
+  films: FilmItem[];
   conversations: Conversation[];
   activeView: ViewName;
   activeConvId: string | null;
@@ -322,13 +395,14 @@ const WevidsContext = createContext<{
   cart: CartItem[];
   collections: SavedCollection[];
   
-  // Actions
   addPost: (post: Partial<PostItem>) => Promise<void>;
   addClip: (clip: ShortClipItem) => void;
   addLongVideo: (video: LongVideoItem) => void;
   addRom: (rom: Partial<RomItem>) => void;
   addProduct: (product: ProductItem) => void;
   addSharedFile: (file: Partial<SharedFileItem>) => void;
+  addAudioTrack: (track: Partial<AudioTrackItem>) => Promise<void>;
+  addFilm: (film: Partial<FilmItem>) => Promise<void>;
   setActiveView: (view: ViewName) => void;
   setActiveConvId: (id: string | null) => void;
   setIsCartOpen: (open: boolean) => void;
@@ -359,16 +433,29 @@ const WevidsContext = createContext<{
   setSoundEnabled: (enabled: boolean) => void;
 } | undefined>(undefined);
 
-// Provider
 export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  // Sync sound manager enabled flag
   useEffect(() => {
     sounds.enabled = state.soundEnabled;
   }, [state.soundEnabled]);
 
-  // Actions
+  // Load from Supabase on mount if configured
+  useEffect(() => {
+    if (isSupabaseConfigured()) {
+      supabase.select('audio_tracks').then((res) => {
+        if (res.data && res.data.length > 0) {
+          dispatch({ type: 'SET_AUDIO_TRACKS', payload: [...res.data, ...INITIAL_AUDIO_TRACKS] });
+        }
+      });
+      supabase.select('films').then((res) => {
+        if (res.data && res.data.length > 0) {
+          dispatch({ type: 'SET_FILMS', payload: [...res.data, ...INITIAL_FILMS] });
+        }
+      });
+    }
+  }, []);
+
   const addPost = async (post: Partial<PostItem>) => {
     const fullPost: PostItem = {
       id: `post-${Date.now()}`,
@@ -392,6 +479,90 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     sounds.success();
     toast.success('Post created successfully!');
     dispatch({ type: 'ADD_POST', payload: fullPost });
+  };
+
+  const addAudioTrack = async (track: Partial<AudioTrackItem>) => {
+    const fullTrack: AudioTrackItem = {
+      id: track.id || `audio-${Date.now()}`,
+      title: track.title || 'Uploaded Audio Track',
+      artist: track.artist || state.currentUser.name,
+      duration: track.duration || '03:20',
+      genre: track.genre || 'Cyber Lo-Fi / Synth',
+      bpm: track.bpm || 120,
+      url: track.url || '',
+      cover: track.cover || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80',
+      uploaderId: state.currentUser.id,
+      createdAt: new Date().toISOString()
+    };
+
+    dispatch({ type: 'ADD_AUDIO_TRACK', payload: fullTrack });
+    sounds.success();
+    toast.success(`"${fullTrack.title}" added to Audio Deck!`);
+
+    // Sync to Supabase table
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.insert('audio_tracks', {
+          id: fullTrack.id,
+          title: fullTrack.title,
+          artist: fullTrack.artist,
+          duration: fullTrack.duration,
+          genre: fullTrack.genre,
+          bpm: fullTrack.bpm,
+          url: fullTrack.url,
+          cover: fullTrack.cover,
+          uploader_id: fullTrack.uploaderId
+        });
+        toast.info('Audio track synced to Supabase database!');
+      } catch {
+        // Safe offline fallback
+      }
+    }
+  };
+
+  const addFilm = async (film: Partial<FilmItem>) => {
+    const fullFilm: FilmItem = {
+      id: film.id || `film-${Date.now()}`,
+      title: film.title || 'New Cinema Feature',
+      synopsis: film.synopsis || 'Full HD Feature Film.',
+      director: film.director || state.currentUser.name,
+      releaseYear: film.releaseYear || 2026,
+      duration: film.duration || '1h 30m',
+      genre: film.genre || 'Cyberpunk Sci-Fi',
+      rating: film.rating || 5.0,
+      videoUrl: film.videoUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+      posterUrl: film.posterUrl || 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=800&q=80',
+      backdropUrl: film.backdropUrl || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1400&q=80',
+      uploaderId: state.currentUser.id,
+      views: '1.2K'
+    };
+
+    dispatch({ type: 'ADD_FILM', payload: fullFilm });
+    sounds.success();
+    toast.success(`Film "${fullFilm.title}" premiered to Cinema Hub!`);
+
+    // Sync to Supabase table
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.insert('films', {
+          id: fullFilm.id,
+          title: fullFilm.title,
+          synopsis: fullFilm.synopsis,
+          director: fullFilm.director,
+          release_year: fullFilm.releaseYear,
+          duration: fullFilm.duration,
+          genre: fullFilm.genre,
+          rating: fullFilm.rating,
+          video_url: fullFilm.videoUrl,
+          poster_url: fullFilm.posterUrl,
+          backdrop_url: fullFilm.backdropUrl,
+          uploader_id: fullFilm.uploaderId
+        });
+        toast.info('Film synced to Supabase database!');
+      } catch {
+        // Safe offline fallback
+      }
+    }
   };
 
   const addClip = (clip: ShortClipItem) => {
@@ -643,6 +814,8 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     addRom,
     addProduct,
     addSharedFile,
+    addAudioTrack,
+    addFilm,
     setActiveView,
     setActiveConvId,
     setIsCartOpen,

@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { useWevids } from '../../context/WevidsContext';
 import { 
   Headphones, 
   Play, 
@@ -10,62 +11,35 @@ import {
   Radio, 
   Music2, 
   Sliders, 
-  Disc 
+  Upload, 
+  Plus, 
+  Check, 
+  Disc,
+  X 
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
 import { toast } from 'sonner';
 
-interface Track {
-  id: string;
-  title: string;
-  artist: string;
-  duration: string;
-  genre: string;
-  bpm: number;
-  url: string;
-  cover: string;
-}
-
-const TRACKS: Track[] = [
-  {
-    id: 't-1',
-    title: 'Neon Tokyo Midnight Rain',
-    artist: 'Aiko Tanaka x WEVIDS Synth Lab',
-    duration: '03:45',
-    genre: 'Synthwave / Cyberpunk',
-    bpm: 120,
-    url: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=lofi-study-112191.mp3',
-    cover: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80'
-  },
-  {
-    id: 't-2',
-    title: 'Persian Saffron Sunset Acoustic',
-    artist: 'Sara from Tehran',
-    duration: '04:12',
-    genre: 'Ambient World Fusion',
-    bpm: 88,
-    url: 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3?filename=lofi-chill-medium-version-159456.mp3',
-    cover: 'https://images.unsplash.com/photo-1517256064527-09c73fc73e38?auto=format&fit=crop&w=400&q=80'
-  },
-  {
-    id: 't-3',
-    title: 'Snapdragon Hyper Overclock Pulse',
-    artist: 'Carlos Mendez (ROM Dev)',
-    duration: '02:50',
-    genre: 'Hard Techno Glitch',
-    bpm: 144,
-    url: 'https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=cyberpunk-2099-10701.mp3',
-    cover: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=400&q=80'
-  }
-];
-
 export const AudioHubView: React.FC = () => {
+  const { audioTracks, addAudioTrack, currentUser } = useWevids();
+  
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isRadioActive, setIsRadioActive] = useState(true);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  
+  // MP3 Upload State
+  const [title, setTitle] = useState('');
+  const [artist, setArtist] = useState(currentUser.name);
+  const [genre, setGenre] = useState('Cyberpunk / Synth');
+  const [bpm, setBpm] = useState(128);
+  const [audioUrl, setAudioUrl] = useState('');
+  const [coverUrl, setCoverUrl] = useState('https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80');
+  const [uploadFileName, setUploadFileName] = useState('');
 
-  const currentTrack = TRACKS[currentTrackIndex];
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const currentTrack = audioTracks[currentTrackIndex] || audioTracks[0];
 
   const handleTogglePlay = () => {
     if (!audioRef.current) return;
@@ -88,6 +62,47 @@ export const AudioHubView: React.FC = () => {
     }, 100);
   };
 
+  const handleLocalMp3Upload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadFileName(file.name);
+    if (!title) {
+      setTitle(file.name.replace(/\.[^/.]+$/, ''));
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAudioUrl(reader.result as string);
+      sounds.pop();
+      toast.success(`MP3 loaded: ${file.name}`);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmitTrack = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title || !audioUrl) {
+      toast.error('Please select an MP3 file and enter a track title');
+      return;
+    }
+
+    addAudioTrack({
+      title,
+      artist: artist || currentUser.name,
+      genre,
+      bpm: Number(bpm) || 120,
+      duration: '03:15',
+      url: audioUrl,
+      cover: coverUrl
+    });
+
+    setIsUploadModalOpen(false);
+    setTitle('');
+    setAudioUrl('');
+    setUploadFileName('');
+  };
+
   return (
     <div className="space-y-6 pb-20">
       {/* Banner */}
@@ -95,20 +110,26 @@ export const AudioHubView: React.FC = () => {
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#ff2d95]/20 border border-[#ff2d95]/30 text-[#ff2d95] font-bold text-xs mb-2">
             <Radio className="w-3.5 h-3.5 animate-pulse" />
-            <span>24/7 BORDERLESS AUDIO STREAM</span>
+            <span>24/7 BORDERLESS AUDIO STREAM & MP3 LAB</span>
           </div>
           <h1 className="text-3xl font-bold font-orbitron neon-gradient-text tracking-wide">
-            Audio Studio & Radio
+            Audio Studio & MP3 Deck
           </h1>
           <p className="text-xs text-[#8a8aa8]">
-            Lo-Fi beats, sound effects synthesizer, creator bio audio tracks, and royalty-free stems for vertical clips.
+            Stream Lo-Fi beats, upload custom MP3 stems with Supabase cloud backup, and trigger Web Audio synth effects.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#10b981] animate-ping" />
-          <span className="text-xs font-orbitron font-bold text-[#00e5ff]">Stream Online: 192kbps AAC</span>
-        </div>
+        <button
+          onClick={() => {
+            sounds.pop();
+            setIsUploadModalOpen(true);
+          }}
+          className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-[#00e5ff] to-[#ff2d95] text-slate-900 font-orbitron font-bold text-xs shadow-lg hover:scale-105 transition-transform"
+        >
+          <Upload className="w-4 h-4" />
+          <span>UPLOAD MP3 STEM</span>
+        </button>
       </div>
 
       {/* Main Music Deck */}
@@ -118,38 +139,38 @@ export const AudioHubView: React.FC = () => {
           <div className="liquid-glass rounded-3xl p-6 border border-white/15 shadow-2xl space-y-6 flex flex-col justify-between h-full">
             <div className="relative aspect-square rounded-2xl overflow-hidden bg-black shadow-xl group">
               <img
-                src={currentTrack.cover}
-                alt={currentTrack.title}
+                src={currentTrack?.cover || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80'}
+                alt={currentTrack?.title}
                 className={`w-full h-full object-cover transition-transform duration-700 ${isPlaying ? 'scale-105' : ''}`}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-4">
                 <div className="flex items-center gap-2">
                   <span className="px-2.5 py-1 rounded-full bg-[#ff2d95]/80 text-white font-orbitron text-[10px] font-bold">
-                    {currentTrack.bpm} BPM
+                    {currentTrack?.bpm || 120} BPM
                   </span>
                   <span className="px-2.5 py-1 rounded-full bg-black/60 text-[#00e5ff] text-[10px]">
-                    {currentTrack.genre}
+                    {currentTrack?.genre || 'Electronic'}
                   </span>
                 </div>
               </div>
             </div>
 
             <div className="space-y-1 text-center">
-              <h2 className="font-orbitron font-bold text-lg text-white">{currentTrack.title}</h2>
-              <p className="text-xs text-[#8a8aa8]">{currentTrack.artist}</p>
+              <h2 className="font-orbitron font-bold text-lg text-white">{currentTrack?.title}</h2>
+              <p className="text-xs text-[#8a8aa8]">{currentTrack?.artist}</p>
             </div>
 
             {/* Audio Element */}
             <audio
               ref={audioRef}
-              src={currentTrack.url}
-              onEnded={() => handleSelectTrack((currentTrackIndex + 1) % TRACKS.length)}
+              src={currentTrack?.url}
+              onEnded={() => handleSelectTrack((currentTrackIndex + 1) % audioTracks.length)}
             />
 
             {/* Transport controls */}
             <div className="flex items-center justify-center gap-6">
               <button
-                onClick={() => handleSelectTrack((currentTrackIndex - 1 + TRACKS.length) % TRACKS.length)}
+                onClick={() => handleSelectTrack((currentTrackIndex - 1 + audioTracks.length) % audioTracks.length)}
                 className="p-3 rounded-full bg-white/5 hover:bg-white/15 text-white transition-transform hover:scale-110"
               >
                 ⏮
@@ -163,7 +184,7 @@ export const AudioHubView: React.FC = () => {
               </button>
 
               <button
-                onClick={() => handleSelectTrack((currentTrackIndex + 1) % TRACKS.length)}
+                onClick={() => handleSelectTrack((currentTrackIndex + 1) % audioTracks.length)}
                 className="p-3 rounded-full bg-white/5 hover:bg-white/15 text-white transition-transform hover:scale-110"
               >
                 ⏭
@@ -175,13 +196,16 @@ export const AudioHubView: React.FC = () => {
         {/* Tracks List & SFX Station (7 cols) */}
         <div className="lg:col-span-7 space-y-4">
           <div className="liquid-glass rounded-2xl p-5 border border-white/10 space-y-3">
-            <h3 className="font-orbitron font-bold text-sm text-white flex items-center gap-2">
-              <Music2 className="w-4 h-4 text-[#00e5ff]" />
-              Featured Stems & Royalty-Free Tracks
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="font-orbitron font-bold text-sm text-white flex items-center gap-2">
+                <Music2 className="w-4 h-4 text-[#00e5ff]" />
+                Deck Playlist ({audioTracks.length} tracks)
+              </h3>
+              <span className="text-[10px] text-[#10b981] font-bold">☁️ Live Supabase Synced</span>
+            </div>
 
-            <div className="space-y-2">
-              {TRACKS.map((t, idx) => {
+            <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
+              {audioTracks.map((t, idx) => {
                 const isSelected = idx === currentTrackIndex;
                 return (
                   <div
@@ -193,29 +217,29 @@ export const AudioHubView: React.FC = () => {
                         : 'hover:bg-white/5 border border-white/5'
                     }`}
                   >
-                    <div className="flex items-center gap-3">
-                      <img src={t.cover} alt={t.title} className="w-10 h-10 rounded-xl object-cover" />
-                      <div>
-                        <div className="font-bold text-xs text-white flex items-center gap-1.5">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <img src={t.cover} alt={t.title} className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
+                      <div className="truncate">
+                        <div className="font-bold text-xs text-white flex items-center gap-1.5 truncate">
                           {t.title}
-                          {isSelected && isPlaying && <span className="w-2 h-2 rounded-full bg-[#00e5ff] animate-ping" />}
+                          {isSelected && isPlaying && <span className="w-2 h-2 rounded-full bg-[#00e5ff] animate-ping flex-shrink-0" />}
                         </div>
-                        <div className="text-[10px] text-[#8a8aa8]">{t.artist}</div>
+                        <div className="text-[10px] text-[#8a8aa8] truncate">{t.artist} · {t.genre}</div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3 text-xs text-[#8a8aa8]">
+                    <div className="flex items-center gap-3 text-xs text-[#8a8aa8] flex-shrink-0">
                       <span>{t.duration}</span>
                       <a
                         href={t.url}
-                        download
+                        download={`${t.title}.mp3`}
                         onClick={(e) => {
                           e.stopPropagation();
                           sounds.success();
-                          toast.success(`Downloaded stem: ${t.title}`);
+                          toast.success(`Downloading stem: ${t.title}`);
                         }}
                         className="p-2 rounded-xl bg-white/5 hover:bg-white/15 text-white"
-                        title="Download Audio Stem"
+                        title="Download Audio File"
                       >
                         <Download className="w-3.5 h-3.5" />
                       </a>
@@ -261,6 +285,120 @@ export const AudioHubView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* MP3 UPLOAD MODAL */}
+      {isUploadModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="liquid-glass rounded-3xl p-6 border border-white/20 max-w-md w-full space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <h3 className="font-orbitron font-bold text-base text-white flex items-center gap-2">
+                <Upload className="w-4 h-4 text-[#00e5ff]" />
+                Upload MP3 Audio Track
+              </h3>
+              <button onClick={() => setIsUploadModalOpen(false)} className="text-xs text-[#8a8aa8] hover:text-white">✕</button>
+            </div>
+
+            <form onSubmit={handleSubmitTrack} className="space-y-3 text-xs">
+              {/* File input */}
+              <div className="p-4 rounded-2xl bg-white/5 border border-dashed border-white/20 text-center space-y-2">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept="audio/mp3,audio/wav,audio/ogg"
+                  className="hidden"
+                  onChange={handleLocalMp3Upload}
+                />
+                <Music2 className="w-8 h-8 text-[#ff2d95] mx-auto opacity-75" />
+                <div className="text-white font-bold">
+                  {uploadFileName ? uploadFileName : 'Select .mp3 or .wav Audio File'}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-4 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold"
+                >
+                  Browse Device
+                </button>
+              </div>
+
+              <div>
+                <label className="text-[#8a8aa8] font-bold block mb-1">Track Title</label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="e.g. Neon Horizon 2026"
+                  className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[#8a8aa8] font-bold block mb-1">Artist Name</label>
+                  <input
+                    type="text"
+                    value={artist}
+                    onChange={(e) => setArtist(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-[#8a8aa8] font-bold block mb-1">BPM Tempo</label>
+                  <input
+                    type="number"
+                    value={bpm}
+                    onChange={(e) => setBpm(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[#8a8aa8] font-bold block mb-1">Genre Category</label>
+                <select
+                  value={genre}
+                  onChange={(e) => setGenre(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white"
+                >
+                  <option value="Synthwave / Cyberpunk" className="bg-[#0a0a1a]">Synthwave / Cyberpunk</option>
+                  <option value="Lo-Fi Chill Beats" className="bg-[#0a0a1a]">Lo-Fi Chill Beats</option>
+                  <option value="Hard Techno / Glitch" className="bg-[#0a0a1a]">Hard Techno / Glitch</option>
+                  <option value="Persian Acoustic Fusion" className="bg-[#0a0a1a]">Persian Acoustic Fusion</option>
+                  <option value="Game OST / Ambient" className="bg-[#0a0a1a]">Game OST / Ambient</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[#8a8aa8] font-bold block mb-1">Cover Artwork URL</label>
+                <input
+                  type="text"
+                  value={coverUrl}
+                  onChange={(e) => setCoverUrl(e.target.value)}
+                  placeholder="https://..."
+                  className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsUploadModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-white/5 text-[#8a8aa8]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#00e5ff] to-[#ff2d95] text-slate-900 font-orbitron font-bold shadow-md"
+                >
+                  ⚡ Sync & Add Track
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
