@@ -27,7 +27,6 @@ import {
   INITIAL_BOOKMARKS 
 } from '../data/initialData';
 import { INITIAL_AUDIO_TRACKS, INITIAL_FILMS, INITIAL_FILES } from '../data/mediaData';
-import { loadLocalSyncData } from '../lib/syncService';
 
 export interface WevidsState {
   posts: PostItem[];
@@ -59,18 +58,15 @@ export interface WevidsState {
   lastCloudSync: string | null;
 }
 
-// Pre-load persisted posts and clips from local storage
-const cachedData = loadLocalSyncData();
-
 export const initialWevidsState: WevidsState = {
-  posts: (cachedData.posts && cachedData.posts.length > 0) ? cachedData.posts : INITIAL_POSTS,
-  clips: (cachedData.clips && cachedData.clips.length > 0) ? cachedData.clips : INITIAL_CLIPS,
+  posts: INITIAL_POSTS,
+  clips: INITIAL_CLIPS,
   longVideos: INITIAL_LONG_VIDEOS,
-  roms: (cachedData.roms && cachedData.roms.length > 0) ? cachedData.roms : INITIAL_ROMS,
-  products: (cachedData.products && cachedData.products.length > 0) ? cachedData.products : INITIAL_PRODUCTS,
-  files: (cachedData.files && cachedData.files.length > 0) ? cachedData.files : INITIAL_FILES,
-  audioTracks: (cachedData.audioTracks && cachedData.audioTracks.length > 0) ? cachedData.audioTracks : INITIAL_AUDIO_TRACKS,
-  films: (cachedData.films && cachedData.films.length > 0) ? cachedData.films : INITIAL_FILMS,
+  roms: INITIAL_ROMS,
+  products: INITIAL_PRODUCTS,
+  files: INITIAL_FILES,
+  audioTracks: INITIAL_AUDIO_TRACKS,
+  films: INITIAL_FILMS,
   conversations: INITIAL_CONVERSATIONS,
   directMessages: [],
   activeView: 'feed',
@@ -102,6 +98,7 @@ export type WevidsAction =
   | { type: 'CLOSE_USER_PROFILE_MODAL' }
   | { type: 'SET_IS_SUPABASE_MODAL_OPEN'; payload: boolean }
   | { type: 'UPDATE_CURRENT_USER'; payload: Partial<UserProfile> }
+  | { type: 'SET_ALL_USERS'; payload: Record<string, UserProfile> }
   | { type: 'TOGGLE_FOLLOW_USER'; payload: { userId: string; isFollowing: boolean } }
   | { type: 'TOGGLE_POST_LIKE'; payload: { postId: string } }
   | { type: 'ADD_POST_COMMENT'; payload: { postId: string; comment: CommentItem } }
@@ -137,18 +134,6 @@ export type WevidsAction =
   | { type: 'SET_CLOUD_SYNCING'; payload: boolean }
   | { type: 'SET_LAST_CLOUD_SYNC'; payload: string };
 
-function mergeItems<T extends { id: string }>(incomingList: T[], currentList: T[]): T[] {
-  const map = new Map<string, T>();
-  // Current user's newly created items come first
-  currentList.forEach(item => map.set(item.id, item));
-  incomingList.forEach(item => {
-    if (!map.has(item.id)) {
-      map.set(item.id, item);
-    }
-  });
-  return Array.from(map.values());
-}
-
 export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsState => {
   switch (action.type) {
     case 'SET_ACTIVE_VIEW':
@@ -180,6 +165,11 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
           [state.currentUser.id]: { ...state.currentUser, ...action.payload }
         }
       };
+    case 'SET_ALL_USERS':
+      return {
+        ...state,
+        allUsers: { ...state.allUsers, ...action.payload }
+      };
     case 'TOGGLE_FOLLOW_USER': {
       const { userId, isFollowing } = action.payload;
       const targetUser = state.allUsers[userId];
@@ -193,14 +183,14 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
         ...state,
         currentUser: {
           ...state.currentUser,
-          following: isFollowing ? Math.max(0, state.currentUser.following - 1) : state.currentUser.following + 1,
+          following: isFollowing ? Math.max(0, (state.currentUser.following || 1) - 1) : (state.currentUser.following || 0) + 1,
           followingIds: newFollowingIds
         },
         allUsers: {
           ...state.allUsers,
           [userId]: {
             ...targetUser,
-            followers: isFollowing ? Math.max(0, targetUser.followers - 1) : targetUser.followers + 1,
+            followers: isFollowing ? Math.max(0, (targetUser.followers || 1) - 1) : (targetUser.followers || 0) + 1,
             followerIds: isFollowing 
               ? (targetUser.followerIds || []).filter(id => id !== state.currentUser.id)
               : [...(targetUser.followerIds || []), state.currentUser.id]
@@ -240,7 +230,7 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
           clip.id === action.payload.clipId
             ? { 
                 ...clip, 
-                likes: clip.isLiked ? clip.likes - 1 : clip.likes + 1, 
+                likes: clip.isLiked ? Math.max(0, clip.likes - 1) : clip.likes + 1, 
                 isLiked: !clip.isLiked,
                 isDisliked: false 
               }
@@ -254,7 +244,7 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
           clip.id === action.payload.clipId
             ? { 
                 ...clip, 
-                dislikes: clip.isDisliked ? (clip.dislikes || 1) - 1 : (clip.dislikes || 0) + 1, 
+                dislikes: clip.isDisliked ? Math.max(0, (clip.dislikes || 1) - 1) : (clip.dislikes || 0) + 1, 
                 isDisliked: !clip.isDisliked,
                 isLiked: false 
               }
@@ -277,19 +267,7 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
           clip.id === action.payload.clipId
             ? { 
                 ...clip, 
-                comments: [
-                  {
-                    id: `comm-${Date.now()}`,
-                    user: action.payload.comment.user,
-                    userName: action.payload.comment.userName,
-                    userAvatar: action.payload.comment.userAvatar,
-                    userColor: action.payload.comment.userColor,
-                    text: action.payload.comment.text,
-                    timestamp: 'Just now',
-                    likes: 0
-                  },
-                  ...clip.comments
-                ] 
+                comments: [action.payload.comment, ...(clip.comments || [])] 
               }
             : clip
         ),
@@ -367,33 +345,33 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
     case 'DELETE_POST':
       return { ...state, posts: state.posts.filter(p => p.id !== action.payload.postId) };
     case 'SET_POSTS':
-      return { ...state, posts: mergeItems(action.payload, state.posts) };
+      return { ...state, posts: action.payload };
     case 'ADD_CLIP':
       return { ...state, clips: [action.payload, ...state.clips.filter(c => c.id !== action.payload.id)] };
     case 'SET_CLIPS':
-      return { ...state, clips: mergeItems(action.payload, state.clips) };
+      return { ...state, clips: action.payload };
     case 'ADD_LONG_VIDEO':
       return { ...state, longVideos: [action.payload, ...state.longVideos] };
     case 'ADD_ROM':
       return { ...state, roms: [action.payload, ...state.roms.filter(r => r.id !== action.payload.id)] };
     case 'SET_ROMS':
-      return { ...state, roms: mergeItems(action.payload, state.roms) };
+      return { ...state, roms: action.payload };
     case 'ADD_PRODUCT':
       return { ...state, products: [action.payload, ...state.products.filter(p => p.id !== action.payload.id)] };
     case 'SET_PRODUCTS':
-      return { ...state, products: mergeItems(action.payload, state.products) };
+      return { ...state, products: action.payload };
     case 'ADD_SHARED_FILE':
       return { ...state, files: [action.payload, ...state.files.filter(f => f.id !== action.payload.id)] };
     case 'SET_SHARED_FILES':
-      return { ...state, files: mergeItems(action.payload, state.files) };
+      return { ...state, files: action.payload };
     case 'ADD_AUDIO_TRACK':
       return { ...state, audioTracks: [action.payload, ...state.audioTracks.filter(a => a.id !== action.payload.id)] };
     case 'SET_AUDIO_TRACKS':
-      return { ...state, audioTracks: mergeItems(action.payload, state.audioTracks) };
+      return { ...state, audioTracks: action.payload };
     case 'ADD_FILM':
       return { ...state, films: [action.payload, ...state.films.filter(f => f.id !== action.payload.id)] };
     case 'SET_FILMS':
-      return { ...state, films: mergeItems(action.payload, state.films) };
+      return { ...state, films: action.payload };
     case 'SET_CLOUD_SYNCING':
       return { ...state, isCloudSyncing: action.payload };
     case 'SET_LAST_CLOUD_SYNC':

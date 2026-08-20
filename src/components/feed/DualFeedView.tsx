@@ -12,7 +12,8 @@ import {
   Film,
   Radio,
   Trash2,
-  Send
+  Send,
+  RefreshCw
 } from 'lucide-react';
 import { RichCommentInput } from '../comments/RichCommentInput';
 import { CreatePostModal } from './CreatePostModal';
@@ -30,7 +31,9 @@ export const DualFeedView: React.FC = () => {
     addPost,
     deletePost,
     togglePostLike,
-    addPostComment
+    addPostComment,
+    syncWithSupabase,
+    isCloudSyncing
   } = useWevids();
 
   const [selectedTopic, setSelectedTopic] = useState('All');
@@ -39,9 +42,12 @@ export const DualFeedView: React.FC = () => {
   const [quickInputText, setQuickInputText] = useState('');
   const [openCommentsPostId, setOpenCommentsPostId] = useState<string | null>(null);
 
-  // Listen for real-time inserts and deletes using Supabase Realtime channel
+  // Fetch directly from Supabase on mount and listen to realtime changes
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
+
+    // Direct live query
+    supabase.from('posts').select('*').order('created_at', { ascending: false });
 
     const channel = supabase
       .channel('posts-channel')
@@ -51,8 +57,8 @@ export const DualFeedView: React.FC = () => {
         (payload: any) => {
           if (payload?.new) {
             sounds.pop();
-            toast.info(`New post from ${payload.new.authorName || 'creator'}!`);
-            addPost(payload.new);
+            toast.info(`New post published: "${payload.new.content?.slice(0, 30)}..."`);
+            syncWithSupabase();
           }
         }
       )
@@ -61,7 +67,7 @@ export const DualFeedView: React.FC = () => {
         { event: 'DELETE', schema: 'public', table: 'posts' },
         (payload: any) => {
           if (payload?.old?.id) {
-            deletePost(payload.old.id);
+            syncWithSupabase();
           }
         }
       )
@@ -112,17 +118,26 @@ export const DualFeedView: React.FC = () => {
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#00e5ff]/20 border border-[#00e5ff]/30 text-[#00e5ff] font-bold text-xs mb-2">
             <Radio className="w-3.5 h-3.5 animate-pulse text-[#00e5ff]" />
-            <span>REALTIME VIDEO & COMMUNITY STREAM</span>
+            <span>LIVE SUPABASE COMMUNITY STREAM</span>
           </div>
           <h1 className="text-3xl font-bold font-orbitron neon-gradient-text tracking-wide">
             Community Feed
           </h1>
           <p className="text-xs text-[#8a8aa8]">
-            Real-time discussions and video uploads with automated content safety & creator moderation.
+            Real-time feed synced live with Supabase. Zero mock data.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => syncWithSupabase()}
+            disabled={isCloudSyncing}
+            className="p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-[#00e5ff] transition-colors"
+            title="Refresh Feed from Supabase"
+          >
+            <RefreshCw className={`w-4 h-4 ${isCloudSyncing ? 'animate-spin' : ''}`} />
+          </button>
+
           <button
             onClick={() => handleOpenComposer('clips')}
             className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-orbitron font-bold text-xs transition-colors"
@@ -150,14 +165,14 @@ export const DualFeedView: React.FC = () => {
           className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-900 text-xs shadow-md flex-shrink-0"
           style={{ background: currentUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
         >
-          {currentUser?.avatar || 'G'}
+          {currentUser?.avatar || 'U'}
         </div>
 
         <input
           type="text"
           value={quickInputText}
           onChange={(e) => setQuickInputText(e.target.value)}
-          placeholder={`Share a thought or link, ${currentUser?.name || 'creator'}...`}
+          placeholder={`Share a thought, ${currentUser?.name || 'creator'}...`}
           className="flex-1 bg-transparent text-xs text-white placeholder-[#8a8aa8] focus:outline-none py-1"
         />
 
@@ -211,7 +226,7 @@ export const DualFeedView: React.FC = () => {
         ))}
       </div>
 
-      {/* FEED POSTS STREAM */}
+      {/* Live Feed Stream */}
       <div className="space-y-6">
         {filteredPosts.length === 0 ? (
           <div className="liquid-glass rounded-3xl p-10 border border-white/10 text-center space-y-4 shadow-xl">
@@ -219,9 +234,9 @@ export const DualFeedView: React.FC = () => {
               <Sparkles className="w-8 h-8 animate-pulse" />
             </div>
             <div className="space-y-1">
-              <h3 className="font-orbitron font-bold text-lg text-white">No posts matching this topic!</h3>
+              <h3 className="font-orbitron font-bold text-lg text-white">No posts in database yet</h3>
               <p className="text-xs text-[#8a8aa8] max-w-sm mx-auto">
-                Be the first person to publish a thought, screenshot, or video to this stream.
+                Publish the first post to write directly to your Supabase `posts` table.
               </p>
             </div>
             <button
@@ -229,7 +244,7 @@ export const DualFeedView: React.FC = () => {
               className="px-6 py-3 rounded-2xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold text-xs shadow-lg hover:scale-105 transition-transform inline-flex items-center gap-2"
             >
               <Plus className="w-4 h-4" />
-              <span>PUBLISH THE FIRST POST</span>
+              <span>PUBLISH LIVE POST</span>
             </button>
           </div>
         ) : (
@@ -260,9 +275,9 @@ export const DualFeedView: React.FC = () => {
                   >
                     <div
                       className="w-11 h-11 rounded-full flex items-center justify-center font-bold text-slate-900 text-sm shadow-md group-hover:scale-105 transition-transform"
-                      style={{ background: post.authorColor }}
+                      style={{ background: post.authorColor || 'linear-gradient(135deg, #00e5ff, #ff2d95)' }}
                     >
-                      {post.authorAvatar}
+                      {post.authorAvatar || post.authorName?.charAt(0) || 'U'}
                     </div>
                     <div>
                       <div className="text-sm font-bold text-white flex items-center gap-1 group-hover:text-[#00e5ff]">
@@ -279,7 +294,7 @@ export const DualFeedView: React.FC = () => {
                       <button
                         onClick={() => handleDelete(post.id)}
                         className="p-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 transition-colors border border-red-500/20"
-                        title="Delete Your Post"
+                        title="Delete Your Post in Supabase"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -354,7 +369,7 @@ export const DualFeedView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Comments Stream (Toggleable or Expandable) */}
+                {/* Comments Stream */}
                 {post.comments && post.comments.length > 0 && (
                   <div className="space-y-2 pt-2 border-t border-white/5 max-h-48 overflow-y-auto pr-1">
                     {post.comments.map((c) => (
@@ -381,20 +396,9 @@ export const DualFeedView: React.FC = () => {
                 <div className="pt-2">
                   <RichCommentInput
                     onSend={(commentData) => {
-                      addPostComment(post.id, {
-                        id: `c-${Date.now()}`,
-                        user: currentUser.id,
-                        userName: currentUser.name,
-                        userAvatar: currentUser.avatar,
-                        userColor: currentUser.color,
-                        text: commentData.text,
-                        media: commentData.media,
-                        mediaType: commentData.mediaType,
-                        timestamp: 'Just now',
-                        likes: 0
-                      });
+                      addPostComment(post.id, commentData);
                     }}
-                    placeholder="Write a comment with GIF, sticker, or voice note..."
+                    placeholder="Write a comment..."
                   />
                 </div>
               </div>

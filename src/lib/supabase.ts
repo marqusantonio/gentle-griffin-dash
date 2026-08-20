@@ -4,7 +4,7 @@ const supabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.info(
-    'Supabase environment variables (VITE_SUPABASE_URL and/or VITE_SUPABASE_ANON_KEY) are not provided in .env. Using local offline storage mode with live fallback.'
+    'Supabase environment variables (VITE_SUPABASE_URL and/or VITE_SUPABASE_ANON_KEY) are not provided in .env. You can connect in the UI or define them in .env.'
   );
 }
 
@@ -227,7 +227,6 @@ export class RealtimeChannel {
   private topic: string;
   private listeners: Array<{ options: any; callback: (payload: any) => void }> = [];
   private ws: WebSocket | null = null;
-  private pollInterval: any = null;
   private isSubscribed = false;
 
   constructor(topic: string) {
@@ -275,33 +274,17 @@ export class RealtimeChannel {
             // safe fallback
           }
         };
-
-        this.ws.onerror = () => {
-          this.startPollingFallback();
-        };
       } catch {
-        this.startPollingFallback();
+        // safe fallback
       }
-    } else {
-      this.startPollingFallback();
     }
 
     callback?.('SUBSCRIBED');
     return this;
   }
 
-  private startPollingFallback() {
-    // Fallback polling keeps state updated even if websockets are blocked
-    if (this.pollInterval) return;
-    this.pollInterval = setInterval(async () => {
-      const { url } = getSupabaseConfig();
-      if (!url) return;
-    }, 5000);
-  }
-
   public unsubscribe(): void {
     this.isSubscribed = false;
-    if (this.pollInterval) clearInterval(this.pollInterval);
     if (this.ws) {
       try {
         this.ws.close();
@@ -404,7 +387,6 @@ export class SupabaseClientInstance {
     channel?.unsubscribe();
   }
 
-  // Convenience methods
   public async signInWithGoogle(): Promise<{ url?: string; error?: string }> {
     const config = getSupabaseConfig();
     const u = this.url || config.url;
@@ -441,12 +423,12 @@ export class SupabaseClientInstance {
     if (!u || !k) return { ok: false, message: 'URL and Anon Key are missing.' };
 
     try {
-      const res = await fetch(`${u}/auth/v1/health?apikey=${encodeURIComponent(k)}`, {
+      const res = await fetch(`${u}/rest/v1/posts?select=id&limit=1`, {
         method: 'GET',
         headers: { 'apikey': k },
       });
-      if (res.ok || res.status === 200) {
-        return { ok: true, message: 'Connected to Supabase successfully!' };
+      if (res.ok || res.status === 200 || res.status === 204) {
+        return { ok: true, message: 'Connected to Supabase database successfully!' };
       }
       return { ok: false, message: `Received HTTP status ${res.status}` };
     } catch (err: any) {
@@ -455,23 +437,17 @@ export class SupabaseClientInstance {
   }
 }
 
-// Function to create a new client
 export const createClient = (url: string, anonKey: string): SupabaseClientInstance => {
   return new SupabaseClientInstance(url, anonKey);
 };
 
-// Official exported Supabase singleton
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-// Content moderation keyword list
-export const PROHIBITED_KEYWORDS = [
-  'kill', 'harass', 'hate_speech', 'nazi', 'doxx', 'scam', 'abuse', 'terrorism'
-];
 
 export const checkContentModeration = (text: string): { flagged: boolean; reason?: string } => {
   if (!text) return { flagged: false };
+  const prohibited = ['kill', 'harass', 'hate_speech', 'nazi', 'doxx', 'scam', 'abuse', 'terrorism'];
   const lower = text.toLowerCase();
-  for (const word of PROHIBITED_KEYWORDS) {
+  for (const word of prohibited) {
     if (new RegExp(`\\b${word}\\b`, 'i').test(lower)) {
       return { 
         flagged: true, 
@@ -482,10 +458,35 @@ export const checkContentModeration = (text: string): { flagged: boolean; reason
   return { flagged: false };
 };
 
-// Complete Production SQL Schema for Supabase
-export const SUPABASE_SQL_SCHEMA = `-- Run this script in your Supabase SQL Editor (supabase.com -> Project -> SQL Editor)
+export const SUPABASE_SQL_SCHEMA = `-- Run this in your Supabase SQL Editor (supabase.com -> Project -> SQL Editor)
 
--- 1. Posts Table
+-- 1. Profiles Table
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  handle TEXT,
+  avatar TEXT,
+  "avatarImage" TEXT,
+  color TEXT,
+  location TEXT,
+  bio TEXT,
+  pronouns TEXT,
+  "bioAudioUrl" TEXT,
+  "bioAudioTitle" TEXT,
+  followers INT DEFAULT 0,
+  following INT DEFAULT 0,
+  "followingIds" JSONB DEFAULT '[]'::jsonb,
+  "followerIds" JSONB DEFAULT '[]'::jsonb,
+  likes INT DEFAULT 0,
+  views TEXT DEFAULT '0',
+  joined TEXT,
+  verified BOOLEAN DEFAULT false,
+  "walletBalance" NUMERIC DEFAULT 50,
+  email TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 2. Posts Table
 CREATE TABLE IF NOT EXISTS public.posts (
   id TEXT PRIMARY KEY,
   "userId" TEXT,
@@ -506,7 +507,7 @@ CREATE TABLE IF NOT EXISTS public.posts (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 2. Clips Table
+-- 3. Clips Table
 CREATE TABLE IF NOT EXISTS public.clips (
   id TEXT PRIMARY KEY,
   "userId" TEXT,
@@ -521,7 +522,7 @@ CREATE TABLE IF NOT EXISTS public.clips (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 3. Audio Tracks Table
+-- 4. Audio Tracks Table
 CREATE TABLE IF NOT EXISTS public.audio_tracks (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -535,7 +536,7 @@ CREATE TABLE IF NOT EXISTS public.audio_tracks (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 4. Films Table
+-- 5. Films Table
 CREATE TABLE IF NOT EXISTS public.films (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -553,7 +554,7 @@ CREATE TABLE IF NOT EXISTS public.films (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 5. ROMs Table
+-- 6. ROMs Table
 CREATE TABLE IF NOT EXISTS public.roms (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -575,7 +576,7 @@ CREATE TABLE IF NOT EXISTS public.roms (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 6. Files Table
+-- 7. Files Table
 CREATE TABLE IF NOT EXISTS public.files (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -591,7 +592,7 @@ CREATE TABLE IF NOT EXISTS public.files (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 7. Products Table
+-- 8. Products Table
 CREATE TABLE IF NOT EXISTS public.products (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -609,16 +610,6 @@ CREATE TABLE IF NOT EXISTS public.products (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 8. Game Scores Table
-CREATE TABLE IF NOT EXISTS public.game_scores (
-  id TEXT PRIMARY KEY,
-  game_id TEXT NOT NULL,
-  player_name TEXT,
-  player_handle TEXT,
-  score INT DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
 -- 9. Direct Messages Table
 CREATE TABLE IF NOT EXISTS public.direct_messages (
   id TEXT PRIMARY KEY,
@@ -631,7 +622,8 @@ CREATE TABLE IF NOT EXISTS public.direct_messages (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Enable Row Level Security (RLS)
+-- Enable RLS
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.clips ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audio_tracks ENABLE ROW LEVEL SECURITY;
@@ -639,12 +631,15 @@ ALTER TABLE public.films ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.roms ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.files ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.game_scores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.direct_messages ENABLE ROW LEVEL SECURITY;
 
--- Allow public read & write access
+-- Allow public read & write operations
 DO $$ 
 BEGIN
+  CREATE POLICY "Public Read Profiles" ON public.profiles FOR SELECT USING (true);
+  CREATE POLICY "Public Write Profiles" ON public.profiles FOR INSERT WITH CHECK (true);
+  CREATE POLICY "Public Update Profiles" ON public.profiles FOR UPDATE USING (true);
+
   CREATE POLICY "Public Read Posts" ON public.posts FOR SELECT USING (true);
   CREATE POLICY "Public Write Posts" ON public.posts FOR INSERT WITH CHECK (true);
   CREATE POLICY "Public Update Posts" ON public.posts FOR UPDATE USING (true);
@@ -653,6 +648,7 @@ BEGIN
   CREATE POLICY "Public Read Clips" ON public.clips FOR SELECT USING (true);
   CREATE POLICY "Public Write Clips" ON public.clips FOR INSERT WITH CHECK (true);
   CREATE POLICY "Public Update Clips" ON public.clips FOR UPDATE USING (true);
+  CREATE POLICY "Public Delete Clips" ON public.clips FOR DELETE USING (true);
 
   CREATE POLICY "Public Read Audio" ON public.audio_tracks FOR SELECT USING (true);
   CREATE POLICY "Public Write Audio" ON public.audio_tracks FOR INSERT WITH CHECK (true);
@@ -669,18 +665,16 @@ BEGIN
   CREATE POLICY "Public Read Products" ON public.products FOR SELECT USING (true);
   CREATE POLICY "Public Write Products" ON public.products FOR INSERT WITH CHECK (true);
 
-  CREATE POLICY "Public Read GameScores" ON public.game_scores FOR SELECT USING (true);
-  CREATE POLICY "Public Write GameScores" ON public.game_scores FOR INSERT WITH CHECK (true);
-
   CREATE POLICY "Public Read DMs" ON public.direct_messages FOR SELECT USING (true);
   CREATE POLICY "Public Write DMs" ON public.direct_messages FOR INSERT WITH CHECK (true);
   CREATE POLICY "Public Update DMs" ON public.direct_messages FOR UPDATE USING (true);
 EXCEPTION WHEN OTHERS THEN
-  -- Policies already exist
+  -- Policies already present
 END $$;
 
 -- Enable Realtime publication
 ALTER PUBLICATION supabase_realtime ADD TABLE public.posts;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.clips;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.direct_messages;
 `;
