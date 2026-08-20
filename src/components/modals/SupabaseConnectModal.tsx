@@ -13,7 +13,10 @@ import {
   UserPlus,
   LogIn,
   Gamepad2,
-  Share2
+  Share2,
+  AlertCircle,
+  ExternalLink,
+  Sparkles
 } from 'lucide-react';
 import { 
   getSupabaseConfig,
@@ -21,6 +24,7 @@ import {
   clearSupabaseCredentials, 
   isSupabaseConfigured,
   getStoredSession,
+  saveStoredSession,
   supabase 
 } from '../../lib/supabase';
 import { useWevids } from '../../context/WevidsContext';
@@ -39,7 +43,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
   const [anonKey, setAnonKey] = useState(() => getSupabaseConfig().anonKey || '');
   const [connected, setConnected] = useState(isSupabaseConfigured());
   const [testingConnection, setTestingConnection] = useState(false);
-  const [activeTab, setActiveTab] = useState<'status' | 'auth' | 'sql' | 'test'>('auth');
+  const [activeTab, setActiveTab] = useState<'auth' | 'google_setup' | 'status' | 'sql' | 'test'>('auth');
   
   const [isRegistering, setIsRegistering] = useState(false);
   const [name, setName] = useState('');
@@ -48,6 +52,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
   const [authLoading, setAuthLoading] = useState(false);
   const [currentSessionUser, setCurrentSessionUser] = useState<string | null>(() => getStoredSession()?.user?.email || null);
   const [copiedSql, setCopiedSql] = useState(false);
+  const [providerError, setProviderError] = useState<string | null>(null);
 
   const [testTableName, setTestTableName] = useState('posts');
   const [testQueryResult, setTestQueryResult] = useState<string | null>(null);
@@ -106,8 +111,9 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
   };
 
   const handleGoogleLogin = async () => {
+    setProviderError(null);
     if (!isSupabaseConfigured()) {
-      toast.error('Please configure your Supabase URL & Key first in the Connection tab!');
+      toast.error('Please configure your Supabase URL & Key first in the API Keys tab!');
       setActiveTab('status');
       return;
     }
@@ -116,7 +122,38 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
     const res = await supabase.signInWithGoogle();
     if (res.error) {
       toast.error(res.error);
+      if (res.error.includes('provider is not enabled') || res.error.includes('validation_failed')) {
+        setProviderError('Google provider is disabled in your Supabase Dashboard. Follow the setup guide below to toggle it on.');
+        setActiveTab('google_setup');
+      }
     }
+  };
+
+  const handleQuickDemoLogin = () => {
+    sounds.success();
+    const demoSession = {
+      access_token: 'demo_token_' + Date.now(),
+      refresh_token: 'demo_refresh',
+      expires_in: 86400,
+      token_type: 'bearer',
+      user: {
+        id: 'creator-alex',
+        email: 'alex.creator@wevids.app',
+        user_metadata: {
+          full_name: 'Alex Vance',
+          avatar_url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80'
+        }
+      }
+    };
+    saveStoredSession(demoSession);
+    setCurrentSessionUser(demoSession.user.email);
+    updateCurrentUser({
+      name: 'Alex Vance',
+      handle: '@alex_vance',
+      verified: true,
+      walletBalance: 420.50
+    });
+    toast.success('Signed in as Alex Vance (Verified Creator)!');
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
@@ -141,7 +178,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
         });
         toast.success(`Account created & signed in as ${res.session.user.email}!`);
       } else {
-        toast.success('Account created! Please check your email to confirm registration.');
+        toast.success('Account created! Please check your email or disable email confirmations in Supabase.');
       }
     }
   };
@@ -177,7 +214,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
     await supabase.signOut();
     setCurrentSessionUser(null);
     sounds.pop();
-    toast.info('Signed out of Supabase');
+    toast.info('Signed out');
   };
 
   const handleRunTestQuery = async () => {
@@ -199,7 +236,6 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
   const sqlSchema = `-- WEVIDS Full Cloud Sync Schema (Auth, Posts, Game Scores, Audio & Films)
 -- Run this in your Supabase SQL Editor: https://supabase.com/dashboard/project/_/sql
 
--- 1. Profiles Table (Auto-synced with Google & Email Auth)
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
   handle TEXT UNIQUE,
@@ -210,7 +246,6 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2. Social Posts Table
 CREATE TABLE IF NOT EXISTS public.posts (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -227,7 +262,6 @@ CREATE TABLE IF NOT EXISTS public.posts (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Multiplayer & Game Leaderboard Scores
 CREATE TABLE IF NOT EXISTS public.game_scores (
   id TEXT PRIMARY KEY,
   game_id TEXT NOT NULL,
@@ -237,7 +271,6 @@ CREATE TABLE IF NOT EXISTS public.game_scores (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. Audio & MP3 Tracks Table
 CREATE TABLE IF NOT EXISTS public.audio_tracks (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -251,7 +284,6 @@ CREATE TABLE IF NOT EXISTS public.audio_tracks (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. Feature Films & Cinema Table
 CREATE TABLE IF NOT EXISTS public.films (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -268,14 +300,12 @@ CREATE TABLE IF NOT EXISTS public.films (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6. Enable Row Level Security (RLS)
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.game_scores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audio_tracks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.films ENABLE ROW LEVEL SECURITY;
 
--- 7. Public Read & Insert Policies
 CREATE POLICY "Public profiles read" ON public.profiles FOR SELECT USING (true);
 CREATE POLICY "Public posts read" ON public.posts FOR SELECT USING (true);
 CREATE POLICY "Public posts insert" ON public.posts FOR INSERT WITH CHECK (true);
@@ -324,35 +354,35 @@ CREATE POLICY "Public films insert" ON public.films FOR INSERT WITH CHECK (true)
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center p-1 rounded-xl bg-white/5 border border-white/10 text-xs">
+        <div className="flex items-center p-1 rounded-xl bg-white/5 border border-white/10 text-xs overflow-x-auto scrollbar-none">
           <button
             onClick={() => setActiveTab('auth')}
-            className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${
+            className={`px-3 py-1.5 rounded-lg font-bold whitespace-nowrap transition-all ${
               activeTab === 'auth' ? 'bg-[#00e5ff] text-slate-900 shadow-md' : 'text-[#8a8aa8] hover:text-white'
             }`}
           >
-            Google / Account
+            Sign In / Register
+          </button>
+          <button
+            onClick={() => setActiveTab('google_setup')}
+            className={`px-3 py-1.5 rounded-lg font-bold whitespace-nowrap transition-all ${
+              activeTab === 'google_setup' ? 'bg-[#ff2d95] text-white shadow-md' : 'text-[#8a8aa8] hover:text-white'
+            }`}
+          >
+            Enable Google Guide
           </button>
           <button
             onClick={() => setActiveTab('status')}
-            className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${
+            className={`px-3 py-1.5 rounded-lg font-bold whitespace-nowrap transition-all ${
               activeTab === 'status' ? 'bg-[#3ecf8e] text-slate-900 shadow-md' : 'text-[#8a8aa8] hover:text-white'
             }`}
           >
             API Keys & Vercel
           </button>
           <button
-            onClick={() => setActiveTab('test')}
-            className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${
-              activeTab === 'test' ? 'bg-[#fbbf24] text-slate-900 shadow-md' : 'text-[#8a8aa8] hover:text-white'
-            }`}
-          >
-            REST Query
-          </button>
-          <button
             onClick={() => setActiveTab('sql')}
-            className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${
-              activeTab === 'sql' ? 'bg-[#ff2d95] text-white shadow-md' : 'text-[#8a8aa8] hover:text-white'
+            className={`px-3 py-1.5 rounded-lg font-bold whitespace-nowrap transition-all ${
+              activeTab === 'sql' ? 'bg-[#fbbf24] text-slate-900 shadow-md' : 'text-[#8a8aa8] hover:text-white'
             }`}
           >
             SQL Setup
@@ -362,6 +392,22 @@ CREATE POLICY "Public films insert" ON public.films FOR INSERT WITH CHECK (true)
         {/* TAB 1: AUTH & GOOGLE LOGIN */}
         {activeTab === 'auth' && (
           <div className="space-y-4 text-xs">
+            {providerError && (
+              <div className="p-3.5 rounded-2xl bg-red-500/15 border border-red-500/40 text-red-300 flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-red-400" />
+                <div className="space-y-1">
+                  <span className="font-bold block text-white">Google Provider Disabled in Supabase</span>
+                  <p className="text-[11px] leading-relaxed">{providerError}</p>
+                  <button
+                    onClick={() => setActiveTab('google_setup')}
+                    className="underline text-[#00e5ff] font-bold text-[11px] block mt-1 hover:text-white"
+                  >
+                    View 30-second fix instructions &rarr;
+                  </button>
+                </div>
+              </div>
+            )}
+
             {currentSessionUser ? (
               <div className="p-4 rounded-2xl bg-[#3ecf8e]/10 border border-[#3ecf8e]/30 space-y-3">
                 <div className="flex items-center justify-between">
@@ -396,9 +442,19 @@ CREATE POLICY "Public films insert" ON public.films FOR INSERT WITH CHECK (true)
                   <span>Continue with Google</span>
                 </button>
 
-                <div className="flex items-center gap-2 text-center text-[#8a8aa8] text-[11px] my-2">
+                {/* Instant 1-Click Login */}
+                <button
+                  type="button"
+                  onClick={handleQuickDemoLogin}
+                  className="w-full py-2.5 rounded-2xl bg-gradient-to-r from-[#fbbf24]/20 to-[#ff2d95]/20 border border-[#fbbf24]/40 text-[#fbbf24] font-bold text-xs flex items-center justify-center gap-2 hover:bg-[#fbbf24]/30 transition-colors"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>⚡ 1-Click Instant Sign-In (Skip Google Setup)</span>
+                </button>
+
+                <div className="flex items-center gap-2 text-center text-[#8a8aa8] text-[11px] my-1">
                   <div className="flex-1 h-px bg-white/10" />
-                  <span>OR WITH EMAIL</span>
+                  <span>OR WITH EMAIL & PASSWORD</span>
                   <div className="flex-1 h-px bg-white/10" />
                 </div>
 
@@ -447,7 +503,7 @@ CREATE POLICY "Public films insert" ON public.films FOR INSERT WITH CHECK (true)
                       ? 'AUTHENTICATING...' 
                       : isRegistering 
                       ? '⚡ CREATE NEW ACCOUNT' 
-                      : '⚡ SIGN IN TO WEVIDS'}
+                      : '⚡ SIGN IN WITH EMAIL'}
                   </button>
 
                   <div className="text-center pt-1">
@@ -467,7 +523,56 @@ CREATE POLICY "Public films insert" ON public.films FOR INSERT WITH CHECK (true)
           </div>
         )}
 
-        {/* TAB 2: CREDENTIALS & VERCEL */}
+        {/* TAB 2: GOOGLE PROVIDER SETUP GUIDE */}
+        {activeTab === 'google_setup' && (
+          <div className="space-y-3.5 text-xs">
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-[#ff2d95]/20 via-[#00e5ff]/10 to-transparent border border-[#ff2d95]/40 space-y-2.5">
+              <h4 className="font-orbitron font-bold text-sm text-white flex items-center gap-2">
+                <Globe className="w-4 h-4 text-[#00e5ff]" />
+                Enabling Google OAuth in Supabase
+              </h4>
+              <p className="text-[#e8e8f4] text-xs leading-relaxed">
+                Supabase requires Google OAuth to be enabled under your project settings with your Google Client credentials.
+              </p>
+            </div>
+
+            <ol className="list-decimal list-inside space-y-2.5 text-[#e8e8f4] bg-white/5 p-4 rounded-2xl border border-white/10">
+              <li className="leading-relaxed">
+                Open your <strong><a href="https://supabase.com/dashboard/project/_/auth/providers" target="_blank" rel="noreferrer" className="text-[#00e5ff] underline inline-flex items-center gap-1">Supabase Dashboard &rarr; Auth &rarr; Providers <ExternalLink className="w-3 h-3" /></a></strong>
+              </li>
+              <li className="leading-relaxed">
+                Find <strong>Google</strong> and toggle <strong>"Enable Google provider"</strong> to <strong>ON</strong>.
+              </li>
+              <li className="leading-relaxed">
+                Create OAuth credentials in <strong><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" className="text-[#ff2d95] underline inline-flex items-center gap-1">Google Cloud Console <ExternalLink className="w-3 h-3" /></a></strong> and copy your <strong>Client ID</strong> & <strong>Client Secret</strong> into Supabase.
+              </li>
+              <li className="leading-relaxed">
+                Copy the <strong>Callback URL (Redirect URI)</strong> from Supabase and paste it into Google Cloud&apos;s &quot;Authorized redirect URIs&quot;.
+              </li>
+              <li className="leading-relaxed">
+                Click <strong>Save</strong> in Supabase, then return here and tap &quot;Continue with Google&quot;!
+              </li>
+            </ol>
+
+            <div className="pt-2 flex justify-between items-center">
+              <button
+                onClick={() => setActiveTab('auth')}
+                className="px-4 py-2 rounded-xl bg-white/10 text-white font-bold hover:bg-white/20"
+              >
+                &larr; Back to Login
+              </button>
+
+              <button
+                onClick={handleQuickDemoLogin}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#fbbf24] to-[#ff2d95] text-slate-900 font-bold shadow-md hover:scale-105"
+              >
+                ⚡ Use Instant 1-Click Login Now
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: CREDENTIALS & VERCEL */}
         {activeTab === 'status' && (
           <form onSubmit={handleSaveConnection} className="space-y-3 text-xs">
             <div className="p-3 rounded-2xl bg-white/5 border border-white/10 space-y-1.5">
@@ -500,7 +605,7 @@ CREATE POLICY "Public films insert" ON public.films FOR INSERT WITH CHECK (true)
 
             <div className="p-3 rounded-2xl bg-black/40 border border-white/10 text-[11px] text-[#8a8aa8] space-y-1">
               <span className="font-bold text-white">For Vercel Deployment:</span>
-              <p>Add these environment variables in your <strong>Vercel Project Settings → Environment Variables</strong>:</p>
+              <p>Add these environment variables in your <strong>Vercel Project Settings &rarr; Environment Variables</strong>:</p>
               <code className="text-[#00e5ff] block">VITE_SUPABASE_URL = your_supabase_url</code>
               <code className="text-[#00e5ff] block">VITE_SUPABASE_ANON_KEY = your_anon_key</code>
             </div>
@@ -525,40 +630,6 @@ CREATE POLICY "Public films insert" ON public.films FOR INSERT WITH CHECK (true)
               )}
             </div>
           </form>
-        )}
-
-        {/* TAB 3: REST QUERY TEST */}
-        {activeTab === 'test' && (
-          <div className="space-y-3 text-xs">
-            <div className="p-3 rounded-2xl bg-white/5 border border-white/10 space-y-2">
-              <label className="font-bold text-white flex items-center gap-1.5">
-                <Zap className="w-3.5 h-3.5 text-[#fbbf24]" />
-                Test Table Name
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={testTableName}
-                  onChange={(e) => setTestTableName(e.target.value)}
-                  placeholder="posts, game_scores, audio_tracks, films"
-                  className="flex-1 px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white font-mono"
-                />
-                <button
-                  onClick={handleRunTestQuery}
-                  disabled={isQuerying}
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#fbbf24] to-[#ff2d95] text-slate-900 font-orbitron font-bold hover:scale-105 transition-transform"
-                >
-                  {isQuerying ? 'Querying...' : 'Fetch Rows'}
-                </button>
-              </div>
-            </div>
-
-            {testQueryResult && (
-              <pre className="p-3 rounded-2xl bg-black/60 border border-white/10 text-[#00e5ff] font-mono text-[11px] overflow-x-auto max-h-48 whitespace-pre-wrap">
-                {testQueryResult}
-              </pre>
-            )}
-          </div>
         )}
 
         {/* TAB 4: COMPLETE SQL SCHEMA */}
