@@ -6,7 +6,13 @@ export interface SupabaseConfig {
 export interface SupabaseUser {
   id: string;
   email?: string;
-  user_metadata?: Record<string, any>;
+  user_metadata?: {
+    full_name?: string;
+    name?: string;
+    avatar_url?: string;
+    picture?: string;
+    [key: string]: any;
+  };
   created_at?: string;
 }
 
@@ -90,18 +96,81 @@ export class SupabaseClient {
     return headers;
   }
 
-  // Google OAuth Login
+  // Google OAuth 2.0 Login
   public async signInWithGoogle(): Promise<{ url?: string; error?: string }> {
-    const { url, anonKey } = getSupabaseConfig();
-    if (!url) return { error: 'Supabase URL is not configured' };
+    const { url } = getSupabaseConfig();
+    if (!url) return { error: 'Supabase URL is not configured. Please add your credentials in Link Cloud.' };
 
     const redirectUrl = typeof window !== 'undefined' ? window.location.origin : '';
+    // Standard Supabase GoTrue OAuth provider endpoint
     const oauthUrl = `${url}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUrl)}`;
     
     if (typeof window !== 'undefined') {
       window.location.href = oauthUrl;
     }
     return { url: oauthUrl };
+  }
+
+  // Parse OAuth access_token from hash fragments upon return
+  public parseOAuthCallback(): SupabaseSession | null {
+    if (typeof window === 'undefined') return null;
+    const hash = window.location.hash;
+    if (!hash || !hash.includes('access_token=')) return null;
+
+    try {
+      const params = new URLSearchParams(hash.replace(/^#/, ''));
+      const accessToken = params.get('access_token');
+      const refreshToken = params.get('refresh_token') || '';
+      const expiresIn = Number(params.get('expires_in')) || 3600;
+      const tokenType = params.get('token_type') || 'bearer';
+
+      if (accessToken) {
+        // Base structure; will be enriched by getUser()
+        const session: SupabaseSession = {
+          access_token: accessToken,
+          refresh_token: refreshToken,
+          expires_in: expiresIn,
+          token_type: tokenType,
+          user: {
+            id: 'oauth_user',
+            email: 'google_user@wevids.app',
+          }
+        };
+        saveStoredSession(session);
+        // Clear the URL hash cleanly without reload
+        window.history.replaceState(null, '', window.location.pathname);
+        return session;
+      }
+    } catch {
+      // Safe ignore
+    }
+    return null;
+  }
+
+  // Fetch current user details with access_token
+  public async getUser(token?: string): Promise<{ user?: SupabaseUser; error?: string }> {
+    const { url } = getSupabaseConfig();
+    const session = getStoredSession();
+    const activeToken = token || session?.access_token;
+    if (!url || !activeToken) return { error: 'Not authenticated' };
+
+    try {
+      const res = await fetch(`${url}/auth/v1/user`, {
+        method: 'GET',
+        headers: this.getHeaders(activeToken),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { error: data.message || 'Failed to fetch user profile' };
+      }
+      if (session) {
+        session.user = data;
+        saveStoredSession(session);
+      }
+      return { user: data };
+    } catch (err: any) {
+      return { error: err.message || 'User fetch error' };
+    }
   }
 
   public async signUp(email: string, password: string, name?: string): Promise<{ user?: SupabaseUser; session?: SupabaseSession; error?: string }> {
