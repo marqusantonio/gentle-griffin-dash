@@ -1,3 +1,5 @@
+import { createClient, SupabaseClient as OfficialSupabaseClient } from '@supabase/supabase-js';
+
 export interface SupabaseConfig {
   url: string;
   anonKey: string;
@@ -42,8 +44,8 @@ export const getSupabaseConfig = (): SupabaseConfig => {
   const localUrl = localStorage.getItem('wevids_supabase_url') || '';
   const localKey = localStorage.getItem('wevids_supabase_anon_key') || '';
   
-  const rawUrl = envUrl || localUrl || '';
-  const rawKey = envKey || localKey || '';
+  const rawUrl = envUrl || localUrl || 'https://placeholder-project.supabase.co';
+  const rawKey = envKey || localKey || 'placeholder-anon-key-123456789012345';
   
   return {
     url: sanitizeSupabaseUrl(rawUrl),
@@ -56,6 +58,8 @@ export const saveSupabaseCredentials = (url: string, anonKey: string) => {
     const cleanUrl = sanitizeSupabaseUrl(url);
     localStorage.setItem('wevids_supabase_url', cleanUrl);
     localStorage.setItem('wevids_supabase_anon_key', anonKey.trim());
+    // Recreate client
+    initSupabaseClient();
   }
 };
 
@@ -64,12 +68,13 @@ export const clearSupabaseCredentials = () => {
     localStorage.removeItem('wevids_supabase_url');
     localStorage.removeItem('wevids_supabase_anon_key');
     localStorage.removeItem('wevids_supabase_session');
+    initSupabaseClient();
   }
 };
 
 export const isSupabaseConfigured = (): boolean => {
   const { url, anonKey } = getSupabaseConfig();
-  return Boolean(url && anonKey && url.startsWith('https://') && anonKey.length > 15);
+  return Boolean(url && anonKey && url.startsWith('https://') && anonKey.length > 20 && !url.includes('placeholder-project'));
 };
 
 export const getStoredSession = (): SupabaseSession | null => {
@@ -219,6 +224,15 @@ CREATE TABLE IF NOT EXISTS public.products (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Enable Realtime replication on the tables
+ALTER PUBLICATION supabase_realtime ADD TABLE public.posts;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.clips;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.audio_tracks;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.films;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.roms;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.files;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.products;
+
 -- Disable Row Level Security for instant unrestricted guest & member sharing
 ALTER TABLE public.posts DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.clips DISABLE ROW LEVEL SECURITY;
@@ -229,38 +243,54 @@ ALTER TABLE public.files DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.products DISABLE ROW LEVEL SECURITY;
 `;
 
-export class SupabaseClient {
-  private getHeaders(token?: string, isUpsert = false) {
-    const { anonKey } = getSupabaseConfig();
-    const headers: Record<string, string> = {
-      'apikey': anonKey,
-      'Content-Type': 'application/json',
-      'Prefer': isUpsert 
-        ? 'return=representation,resolution=merge-duplicates' 
-        : 'return=representation',
-    };
-    const session = getStoredSession();
-    const bearer = token || session?.access_token || anonKey;
-    if (bearer) {
-      headers['Authorization'] = `Bearer ${bearer}`;
+let clientInstance: OfficialSupabaseClient | null = null;
+
+export const initSupabaseClient = (): OfficialSupabaseClient => {
+  const { url, anonKey } = getSupabaseConfig();
+  clientInstance = createClient(url || 'https://placeholder-project.supabase.co', anonKey || 'placeholder-anon-key-123456789012345', {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+    realtime: {
+      params: {
+        eventsPerSecond: 10,
+      }
     }
-    return headers;
+  });
+  return clientInstance;
+};
+
+export const getClient = (): OfficialSupabaseClient => {
+  if (!clientInstance) {
+    clientInstance = initSupabaseClient();
+  }
+  return clientInstance;
+};
+
+// Wrapper supporting both direct channel subscription & helper methods
+class SupabaseWrapper {
+  public get client(): OfficialSupabaseClient {
+    return getClient();
   }
 
-  // Google OAuth 2.0 Login
-  public async signInWithGoogle(): Promise<{ url?: string; error?: string }> {
-    const { url, anonKey } = getSupabaseConfig();
-    if (!url || !anonKey) {
-      return { error: 'Please configure your Supabase URL & Public Anon Key first in the modal.' };
-    }
+  public channel(name: string) {
+    return this.client.channel(name);
+  }
 
-    const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
-    const oauthUrl = `${url}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(currentOrigin)}&apikey=${encodeURIComponent(anonKey)}`;
-    
-    if (typeof window !== 'undefined') {
-      window.location.href = oauthUrl;
-    }
-    return { url: oauthUrl };
+  public removeChannel(channel: any) {
+    return this.client.removeChannel(channel);
+  }
+
+  public async signInWithGoogle(): Promise<{ url?: string; error?: string }> {
+    const { data, error } = await this.client.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+      }
+    });
+    if (error) return { error: error.message };
+    return { url: data.url };
   }
 
   public parseOAuthCallback(): { session?: SupabaseSession; error?: string } | null {
@@ -273,11 +303,10 @@ export class SupabaseClient {
     const hashParams = new URLSearchParams(hash ? hash.replace(/^#/, '') : '');
     const searchParams = new URLSearchParams(search ? search.replace(/^\?/, '') : '');
 
-    const errorDescription = hashParams.get('error_description') || searchParams.get('error_description') || searchParams.get('error') || hashParams.get('error');
+    const errorDescription = hashParams.get('error_description') || searchParams.get('error_description') || searchParams.get('error');
     if (errorDescription) {
       window.history.replaceState(null, '', window.location.pathname);
-      const decoded = decodeURIComponent(errorDescription.replace(/\+/g, ' '));
-      return { error: decoded };
+      return { error: decodeURIComponent(errorDescription.replace(/\+/g, ' ')) };
     }
 
     const accessToken = hashParams.get('access_token') || searchParams.get('access_token');
@@ -304,173 +333,84 @@ export class SupabaseClient {
     return null;
   }
 
-  public async getUser(token?: string): Promise<{ user?: SupabaseUser; error?: string }> {
-    const { url, anonKey } = getSupabaseConfig();
-    const session = getStoredSession();
-    const activeToken = token || session?.access_token;
-    if (!url || !activeToken) return { error: 'Not authenticated' };
-
-    try {
-      const res = await fetch(`${url}/auth/v1/user?apikey=${encodeURIComponent(anonKey)}`, {
-        method: 'GET',
-        headers: this.getHeaders(activeToken),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        return { error: data.message || data.msg || 'Failed to fetch user profile' };
-      }
-      if (session) {
-        session.user = data;
-        saveStoredSession(session);
-      }
-      return { user: data };
-    } catch (err: any) {
-      return { error: err.message || 'User fetch error' };
-    }
+  public async getUser() {
+    const { data, error } = await this.client.auth.getUser();
+    if (error) return { error: error.message };
+    return { user: data.user as any };
   }
 
-  public async signUp(email: string, password: string, name?: string): Promise<{ user?: SupabaseUser; session?: SupabaseSession; error?: string }> {
-    const { url, anonKey } = getSupabaseConfig();
-    if (!url || !anonKey) return { error: 'Supabase URL & Anon Key are required.' };
-
-    try {
-      const res = await fetch(`${url}/auth/v1/signup?apikey=${encodeURIComponent(anonKey)}`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ 
-          email, 
-          password,
-          data: { full_name: name || email.split('@')[0] }
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        return { error: data.msg || data.error_description || data.message || 'Signup failed' };
+  public async signUp(email: string, password: string, name?: string) {
+    const { data, error } = await this.client.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { full_name: name || email.split('@')[0] }
       }
-      if (data.access_token) {
-        saveStoredSession(data as SupabaseSession);
-      }
-      return { user: data.user || data, session: data.access_token ? data : undefined };
-    } catch (err: any) {
-      return { error: err.message || 'Network error connecting to Supabase' };
-    }
+    });
+    if (error) return { error: error.message };
+    if (data.session) saveStoredSession(data.session as any);
+    return { user: data.user as any, session: data.session as any };
   }
 
-  public async signIn(email: string, password: string): Promise<{ user?: SupabaseUser; session?: SupabaseSession; error?: string }> {
-    const { url, anonKey } = getSupabaseConfig();
-    if (!url || !anonKey) return { error: 'Supabase URL & Anon Key are required.' };
-
-    try {
-      const res = await fetch(`${url}/auth/v1/token?grant_type=password&apikey=${encodeURIComponent(anonKey)}`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        return { error: data.msg || data.error_description || data.message || 'Invalid credentials' };
-      }
-      saveStoredSession(data as SupabaseSession);
-      return { user: data.user, session: data as SupabaseSession };
-    } catch (err: any) {
-      return { error: err.message || 'Network error connecting to Supabase' };
-    }
+  public async signIn(email: string, password: string) {
+    const { data, error } = await this.client.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) return { error: error.message };
+    if (data.session) saveStoredSession(data.session as any);
+    return { user: data.user as any, session: data.session as any };
   }
 
   public async signOut(): Promise<void> {
-    const { url, anonKey } = getSupabaseConfig();
-    const session = getStoredSession();
-    if (url && session?.access_token) {
-      try {
-        await fetch(`${url}/auth/v1/logout?apikey=${encodeURIComponent(anonKey)}`, {
-          method: 'POST',
-          headers: this.getHeaders(session.access_token),
-        });
-      } catch {
-        // Safe ignore
-      }
-    }
+    await this.client.auth.signOut().catch(() => {});
     saveStoredSession(null);
   }
 
-  public async select(table: string, query: string = '*'): Promise<{ data?: any[]; error?: string }> {
-    const { url, anonKey } = getSupabaseConfig();
-    if (!url) return { error: 'Supabase URL not configured' };
-    const cleanTable = table.trim().replace(/^\/+/, '');
-    if (!cleanTable) return { error: 'Invalid table name' };
-
+  public async select(table: string, query: string = '*') {
     try {
-      const res = await fetch(`${url}/rest/v1/${cleanTable}?select=${encodeURIComponent(query)}&order=created_at.desc`, {
-        method: 'GET',
-        headers: this.getHeaders(),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        return { error: data.message || data.hint || data.details || `Query to ${cleanTable} failed` };
-      }
-      return { data: Array.isArray(data) ? data : [data] };
+      const { data, error } = await this.client
+        .from(table)
+        .select(query)
+        .order('created_at', { ascending: false });
+      if (error) return { error: error.message };
+      return { data: data || [] };
     } catch (err: any) {
-      return { error: err.message || 'Query error' };
+      return { error: err.message };
     }
   }
 
-  public async upsert(table: string, payload: Record<string, any>): Promise<{ data?: any; error?: string }> {
-    const { url } = getSupabaseConfig();
-    if (!url) return { error: 'Supabase URL not configured' };
-    const cleanTable = table.trim().replace(/^\/+/, '');
-    if (!cleanTable) return { error: 'Invalid table name' };
-
+  public async upsert(table: string, payload: Record<string, any>) {
     try {
-      const res = await fetch(`${url}/rest/v1/${cleanTable}`, {
-        method: 'POST',
-        headers: this.getHeaders(undefined, true),
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        return { error: data.message || data.hint || data.details || `Upsert to ${cleanTable} failed` };
-      }
+      const { data, error } = await this.client
+        .from(table)
+        .upsert(payload)
+        .select();
+      if (error) return { error: error.message };
       return { data };
     } catch (err: any) {
-      return { error: err.message || 'Network sync error' };
+      return { error: err.message };
     }
   }
 
-  public async insert(table: string, payload: Record<string, any>): Promise<{ data?: any; error?: string }> {
+  public async insert(table: string, payload: Record<string, any>) {
     return this.upsert(table, payload);
   }
 
   public async testConnection(): Promise<{ ok: boolean; message: string }> {
-    const { url, anonKey } = getSupabaseConfig();
-    if (!url || !anonKey) {
-      return { ok: false, message: 'URL and Anon Key are missing.' };
+    if (!isSupabaseConfigured()) {
+      return { ok: false, message: 'Please enter a valid Supabase URL and Anon Key.' };
     }
     try {
-      const res = await fetch(`${url}/auth/v1/health?apikey=${encodeURIComponent(anonKey)}`, {
-        method: 'GET',
-        headers: {
-          'apikey': anonKey,
-        }
-      });
-      if (res.ok || res.status === 200) {
-        return { ok: true, message: 'Connected to Supabase successfully!' };
+      const { error } = await this.client.from('posts').select('id').limit(1);
+      if (error && !error.message.includes('relation "public.posts" does not exist')) {
+        return { ok: false, message: error.message };
       }
-
-      const restRes = await fetch(`${url}/rest/v1/?apikey=${encodeURIComponent(anonKey)}`, {
-        method: 'GET',
-        headers: {
-          'apikey': anonKey,
-          'Accept': 'application/openapi+json, application/json'
-        }
-      });
-      if (restRes.ok || restRes.status === 200 || restRes.status === 401) {
-        return { ok: true, message: 'Connected to Supabase REST endpoint!' };
-      }
-      return { ok: false, message: `Received HTTP status ${res.status}` };
+      return { ok: true, message: 'Connected to Supabase successfully!' };
     } catch (err: any) {
-      return { ok: false, message: err.message || 'Failed to reach Supabase project.' };
+      return { ok: false, message: err.message || 'Connection failed.' };
     }
   }
 }
 
-export const supabase = new SupabaseClient();
+export const supabase = new SupabaseWrapper();

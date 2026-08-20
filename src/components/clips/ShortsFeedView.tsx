@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWevids } from '../../context/WevidsContext';
 import { 
   Heart, 
@@ -17,10 +17,13 @@ import {
 import { RichCommentInput } from '../comments/RichCommentInput';
 import { CreatePostModal } from '../feed/CreatePostModal';
 import { sounds } from '../../lib/soundFx';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { toast } from 'sonner';
 
 export const ShortsFeedView: React.FC = () => {
   const { 
     clips, 
+    addClip,
     toggleClipLike, 
     toggleClipDislike, 
     addClipComment, 
@@ -37,6 +40,30 @@ export const ShortsFeedView: React.FC = () => {
   const [isMuted, setIsMuted] = useState(true);
   const [showComments, setShowComments] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+
+  // Real-time Supabase postgres_changes listener for newly published vertical clips
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+
+    const channel = supabase
+      .channel('clips-channel')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'clips' },
+        (payload: any) => {
+          if (payload?.new) {
+            sounds.success();
+            toast.info(`New short clip: "${payload.new.title}"!`);
+            addClip(payload.new);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   if (clips.length === 0) {
     return (

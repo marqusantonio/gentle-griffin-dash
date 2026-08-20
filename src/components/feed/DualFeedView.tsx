@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWevids } from '../../context/WevidsContext';
 import { 
   Heart, 
@@ -10,11 +10,14 @@ import {
   Video as VideoIcon, 
   Sparkles,
   CheckCircle2,
-  Film
+  Film,
+  Radio
 } from 'lucide-react';
 import { RichCommentInput } from '../comments/RichCommentInput';
 import { CreatePostModal } from './CreatePostModal';
 import { sounds } from '../../lib/soundFx';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { toast } from 'sonner';
 
 export const DualFeedView: React.FC = () => {
   const { 
@@ -23,12 +26,42 @@ export const DualFeedView: React.FC = () => {
     currentUser, 
     openShareModal, 
     openUserProfileModal,
-    setActiveView
+    setActiveView,
+    addPost
   } = useWevids();
 
   const [selectedTopic, setSelectedTopic] = useState('All');
   const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
   const [composerTarget, setComposerTarget] = useState<'feed' | 'clips'>('feed');
+
+  // Listen for real-time inserts using Supabase Realtime channel
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+
+    const channel = supabase
+      .channel('posts-channel')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'posts' },
+        (payload: any) => {
+          if (payload?.new) {
+            sounds.pop();
+            toast.info(`New post from ${payload.new.authorName || 'creator'}!`);
+            // Add or merge into state if not already existing
+            addPost(payload.new);
+          }
+        }
+      )
+      .subscribe((status: string) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Realtime posts-channel subscribed successfully');
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const topics = ['All', '#WEVIDS', '#Tech', '#CustomROM', '#Anime', '#Gaming', '#Cyberpunk', '#Music'];
 
@@ -49,14 +82,14 @@ export const DualFeedView: React.FC = () => {
       <div className="p-6 rounded-3xl liquid-glass border border-white/10 flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#00e5ff]/20 border border-[#00e5ff]/30 text-[#00e5ff] font-bold text-xs mb-2">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>GLOBAL COMMUNITY STREAM</span>
+            <Radio className="w-3.5 h-3.5 animate-pulse text-[#00e5ff]" />
+            <span>REALTIME VIDEO & COMMUNITY STREAM</span>
           </div>
           <h1 className="text-3xl font-bold font-orbitron neon-gradient-text tracking-wide">
             Community Feed
           </h1>
           <p className="text-xs text-[#8a8aa8]">
-            Real-time discussions and media published by logged-in users and creators.
+            Real-time discussions and video uploads instantly synced across all connected devices.
           </p>
         </div>
 
@@ -92,7 +125,7 @@ export const DualFeedView: React.FC = () => {
             {currentUser.avatar}
           </div>
           <span className="text-xs text-[#8a8aa8] truncate">
-            Share what you're working on, {currentUser.name}...
+            Share a new video or thought, {currentUser.name}...
           </span>
         </div>
 
@@ -136,7 +169,7 @@ export const DualFeedView: React.FC = () => {
             <div className="space-y-1">
               <h3 className="font-orbitron font-bold text-lg text-white">No posts in the feed yet!</h3>
               <p className="text-xs text-[#8a8aa8] max-w-sm mx-auto">
-                Be the first person to publish a thought, photo, or short video clip to the global network.
+                Be the first person to publish a video, thought, or photo to the global network.
               </p>
             </div>
             <button
