@@ -45,6 +45,8 @@ export interface WevidsContextType extends WevidsState {
   toggleFollowUser: (userId: string) => Promise<void>;
   isFollowing: (userId?: string) => boolean;
   isMutualFriend: (userId?: string) => boolean;
+  togglePostLike: (postId: string) => void;
+  addPostComment: (postId: string, comment: any) => void;
   toggleClipLike: (clipId: string) => void;
   toggleClipDislike: (clipId: string) => void;
   toggleClipBookmark: (clipId: string) => void;
@@ -183,7 +185,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
 
     sounds.success();
-    toast.success('Post published and broadcasted to all devices!');
+    toast.success('Post published and broadcasted!');
     dispatch({ type: 'ADD_POST', payload: fullPost });
 
     const currentPosts = [fullPost, ...state.posts.filter(p => p.id !== fullPost.id)];
@@ -191,7 +193,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     if (isSupabaseConfigured()) {
       try {
-        await supabase.upsert('posts', fullPost);
+        await supabase.from('posts').upsert(fullPost);
       } catch {
         // Safe offline
       }
@@ -209,7 +211,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     if (isSupabaseConfigured()) {
       try {
-        await supabase.delete('posts', 'id', postId);
+        await supabase.from('posts').delete().eq('id', postId);
       } catch {
         // Safe offline
       }
@@ -217,9 +219,19 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return true;
   };
 
+  const togglePostLike = (postId: string) => {
+    sounds.like();
+    dispatch({ type: 'TOGGLE_POST_LIKE', payload: { postId } });
+  };
+
+  const addPostComment = (postId: string, comment: any) => {
+    sounds.pop();
+    dispatch({ type: 'ADD_POST_COMMENT', payload: { postId, comment } });
+  };
+
   const addClip = async (clip: ShortClipItem) => {
     sounds.success();
-    toast.success('Clip published to Global Shorts on all devices!');
+    toast.success('Clip published to Global Shorts!');
     dispatch({ type: 'ADD_CLIP', payload: clip });
 
     const currentClips = [clip, ...state.clips.filter(c => c.id !== clip.id)];
@@ -227,7 +239,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     if (isSupabaseConfigured()) {
       try {
-        await supabase.upsert('clips', clip);
+        await supabase.from('clips').upsert(clip);
       } catch {
         // Safe offline
       }
@@ -257,7 +269,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     if (isSupabaseConfigured()) {
       try {
-        await supabase.upsert('audio_tracks', fullTrack);
+        await supabase.from('audio_tracks').upsert(fullTrack);
       } catch {
         // Safe offline
       }
@@ -283,14 +295,14 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     dispatch({ type: 'ADD_FILM', payload: fullFilm });
     sounds.success();
-    toast.success(`Film "${fullFilm.title}" premiered and synced!`);
+    toast.success(`Film "${fullFilm.title}" premiered!`);
 
     const currentFilms = [fullFilm, ...state.films.filter(f => f.id !== fullFilm.id)];
     pushGlobalCloudState({ films: currentFilms });
 
     if (isSupabaseConfigured()) {
       try {
-        await supabase.upsert('films', fullFilm);
+        await supabase.from('films').upsert(fullFilm);
       } catch {
         // Safe offline
       }
@@ -326,7 +338,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     if (isSupabaseConfigured()) {
       try {
-        await supabase.upsert('roms', fullRom);
+        await supabase.from('roms').upsert(fullRom);
       } catch {
         // Safe offline
       }
@@ -343,7 +355,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     if (isSupabaseConfigured()) {
       try {
-        await supabase.upsert('products', product);
+        await supabase.from('products').upsert(product);
       } catch {
         // Safe offline
       }
@@ -365,7 +377,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       uploadedAt: 'Just now'
     };
     sounds.success();
-    toast.success('File package shared to Vault on all devices!');
+    toast.success('File package shared to Vault!');
     dispatch({ type: 'ADD_SHARED_FILE', payload: fullFile });
 
     const currentFiles = [fullFile, ...state.files.filter(f => f.id !== fullFile.id)];
@@ -373,7 +385,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     if (isSupabaseConfigured()) {
       try {
-        await supabase.upsert('files', fullFile);
+        await supabase.from('files').upsert(fullFile);
       } catch {
         // Safe offline
       }
@@ -414,11 +426,10 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const openUserProfileModal = (user: UserProfile) => {
     sounds.click();
-    // Ensure this user exists in directory
     if (user && user.id && !state.allUsers[user.id]) {
       dispatch({
         type: 'UPDATE_CURRENT_USER',
-        payload: {} // Trigger state pass
+        payload: {}
       });
     }
     dispatch({ type: 'OPEN_USER_PROFILE_MODAL', payload: user });
@@ -466,26 +477,8 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       } else {
         toast.success('Following creator! 🚀');
       }
-
-      if (isSupabaseConfigured()) {
-        try {
-          await supabase.insert('follows', {
-            follower_id: state.currentUser.id,
-            following_id: userId,
-          });
-        } catch {
-          // Safe offline
-        }
-      }
     } else {
       toast.info('Unfollowed creator.');
-      if (isSupabaseConfigured()) {
-        try {
-          await supabase.delete('follows', 'follower_id', state.currentUser.id);
-        } catch {
-          // Safe offline
-        }
-      }
     }
   };
 
@@ -510,7 +503,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     dispatch({ type: 'ADD_CLIP_COMMENT', payload: { clipId, comment } });
   };
 
-  // Safe Start or Open Chat with Any User (Guest or Real Account)
   const startOrOpenChatWithUser = (userId: string) => {
     sounds.click();
     const isFriend = isMutualFriend(userId);
@@ -568,7 +560,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const receiverId = activeConv.members.find(m => m !== state.currentUser.id) || '';
     const isFriend = isMutualFriend(receiverId);
 
-    // Blocked check
     if (activeConv.status === 'blocked') {
       toast.error('Cannot send message. Communication is blocked.');
       return;
@@ -593,7 +584,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     if (isSupabaseConfigured() && receiverId) {
       try {
-        await supabase.insert('direct_messages', {
+        await supabase.from('direct_messages').insert({
           id: newMessage.id,
           sender_id: state.currentUser.id,
           receiver_id: receiverId,
@@ -623,10 +614,10 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     if (isSupabaseConfigured()) {
       try {
-        await supabase.update('direct_messages', 'receiver_id', state.currentUser.id, {
+        await supabase.from('direct_messages').update({
           is_approved: true,
           is_friend_request: false,
-        });
+        }).eq('receiver_id', state.currentUser.id);
       } catch {
         // Safe offline
       }
@@ -640,9 +631,9 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     if (isSupabaseConfigured()) {
       try {
-        await supabase.update('direct_messages', 'receiver_id', state.currentUser.id, {
+        await supabase.from('direct_messages').update({
           is_approved: false,
-        });
+        }).eq('receiver_id', state.currentUser.id);
       } catch {
         // Safe offline
       }
@@ -656,9 +647,9 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     if (isSupabaseConfigured()) {
       try {
-        await supabase.update('direct_messages', 'receiver_id', state.currentUser.id, {
+        await supabase.from('direct_messages').update({
           is_blocked: true,
-        });
+        }).eq('receiver_id', state.currentUser.id);
       } catch {
         // Safe offline
       }
@@ -728,6 +719,8 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     toggleFollowUser,
     isFollowing,
     isMutualFriend,
+    togglePostLike,
+    addPostComment,
     toggleClipLike,
     toggleClipDislike,
     toggleClipBookmark,

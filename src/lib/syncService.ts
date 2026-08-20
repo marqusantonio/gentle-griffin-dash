@@ -50,17 +50,17 @@ export const saveLocalSyncData = (data: Partial<GlobalCloudState>) => {
 
 // Fetch from cloud relay with timeout & multi-provider fallback
 export const fetchGlobalCloudState = async (): Promise<Partial<GlobalCloudState> | null> => {
-  // 1. If Supabase is connected by user, fetch from database tables
+  // 1. If Supabase is configured, fetch from database tables using the standard client
   if (isSupabaseConfigured()) {
     try {
       const [postsRes, clipsRes, audioRes, filmsRes, romsRes, filesRes, prodsRes] = await Promise.all([
-        supabase.select('posts'),
-        supabase.select('clips'),
-        supabase.select('audio_tracks'),
-        supabase.select('films'),
-        supabase.select('roms'),
-        supabase.select('files'),
-        supabase.select('products'),
+        supabase.from('posts').select('*').order('created_at', { ascending: false }),
+        supabase.from('clips').select('*').order('created_at', { ascending: false }),
+        supabase.from('audio_tracks').select('*').order('created_at', { ascending: false }),
+        supabase.from('films').select('*').order('created_at', { ascending: false }),
+        supabase.from('roms').select('*').order('created_at', { ascending: false }),
+        supabase.from('files').select('*').order('created_at', { ascending: false }),
+        supabase.from('products').select('*').order('created_at', { ascending: false }),
       ]);
 
       const result: Partial<GlobalCloudState> = {};
@@ -97,7 +97,6 @@ export const fetchGlobalCloudState = async (): Promise<Partial<GlobalCloudState>
       const cloudData: GlobalCloudState = await res.json();
       if (cloudData && typeof cloudData === 'object') {
         const local = loadLocalSyncData();
-        // Merge cloud with any local items
         const merged: GlobalCloudState = {
           posts: mergeUnique(cloudData.posts || [], local.posts || []),
           clips: mergeUnique(cloudData.clips || [], local.clips || []),
@@ -119,7 +118,6 @@ export const fetchGlobalCloudState = async (): Promise<Partial<GlobalCloudState>
   return loadLocalSyncData();
 };
 
-// Push full state to Zero-Config Global Cloud Relay
 export const pushGlobalCloudState = async (stateToPush: Partial<GlobalCloudState>): Promise<void> => {
   saveLocalSyncData(stateToPush);
 
@@ -136,7 +134,6 @@ export const pushGlobalCloudState = async (stateToPush: Partial<GlobalCloudState
       updatedAt: Date.now()
     };
 
-    // Push to public cloud relay
     fetch(CLOUD_SYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -147,7 +144,6 @@ export const pushGlobalCloudState = async (stateToPush: Partial<GlobalCloudState
   }
 };
 
-// Helper: merge arrays of objects uniquely by .id
 function mergeUnique(primary: any[], secondary: any[]): any[] {
   const map = new Map<string, any>();
   [...secondary, ...primary].forEach((item) => {

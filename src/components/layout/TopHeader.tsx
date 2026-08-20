@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useWevids } from '../../context/WevidsContext';
 import { 
   Search, 
@@ -7,9 +7,8 @@ import {
   Database,
   LogIn
 } from 'lucide-react';
-import { isSupabaseConfigured, getStoredSession, supabase } from '../../lib/supabase';
+import { isSupabaseConfigured, getStoredSession } from '../../lib/supabase';
 import { sounds } from '../../lib/soundFx';
-import { toast } from 'sonner';
 
 interface TopHeaderProps {
   onOpenSupabaseModal?: () => void;
@@ -20,38 +19,13 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => 
     setActiveView, 
     cart, 
     setIsCartOpen, 
-    currentUser,
-    updateCurrentUser
+    currentUser
   } = useWevids();
   
   const [searchQuery, setSearchQuery] = useState('');
   const isCloudConnected = isSupabaseConfigured();
   const session = getStoredSession();
   const isLoggedInWithCloud = Boolean(session?.user);
-
-  // Check for Google OAuth callback or provider error on load
-  useEffect(() => {
-    const callbackResult = supabase.parseOAuthCallback();
-    if (callbackResult?.error) {
-      toast.error(`Google Login: ${callbackResult.error}`);
-      onOpenSupabaseModal?.();
-    } else if (callbackResult?.session) {
-      sounds.success();
-      toast.success('Successfully authenticated with Google!');
-      supabase.getUser().then((res) => {
-        if (res.user) {
-          const name = res.user.user_metadata?.full_name || res.user.user_metadata?.name || res.user.email?.split('@')[0] || 'Google Creator';
-          const avatar = res.user.user_metadata?.avatar_url || res.user.user_metadata?.picture;
-          updateCurrentUser({
-            name,
-            handle: `@${name.toLowerCase().replace(/\s+/g, '_')}`,
-            avatarImage: avatar,
-            verified: true,
-          });
-        }
-      });
-    }
-  }, []);
 
   const totalCartCount = cart ? cart.reduce((acc, i) => acc + i.quantity, 0) : 0;
 

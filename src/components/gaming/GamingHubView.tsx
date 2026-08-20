@@ -74,11 +74,11 @@ export const GamingHubView: React.FC = () => {
   const [memoryFlipped, setMemoryFlipped] = useState<number[]>([]);
   const [memoryMatches, setMemoryMatches] = useState(0);
 
-  // Sync Score helper
+  // Sync Score helper using standard Supabase client
   const syncScoreToCloud = async (gameId: string, score: number) => {
     if (!isSupabaseConfigured()) return;
     try {
-      await supabase.upsert('game_scores', {
+      await supabase.from('game_scores').upsert({
         id: `score-${gameId}-${currentUser.id}`,
         game_id: gameId,
         player_name: currentUser.name,
@@ -90,7 +90,7 @@ export const GamingHubView: React.FC = () => {
     }
   };
 
-  // Game selection catalog (10+ Games)
+  // Game selection catalog
   const gameCatalog = [
     { id: 'voxel', title: '3D Voxel Sandbox', category: 'Creative Sandbox', icon: Box, color: 'from-[#10b981] to-[#00e5ff]' },
     { id: 'pong', title: '2-Player Cyber Pong', category: 'Multiplayer 1v1', icon: Swords, color: 'from-[#00e5ff] to-[#ff2d95]' },
@@ -297,7 +297,6 @@ export const GamingHubView: React.FC = () => {
         syncScoreToCloud('flappy', score);
       }
 
-      // Check collision
       if (birdY > 280 || birdY < 0 || (pipeX < 40 && pipeX > 0 && (birdY < pipeTopHeight || birdY > pipeTopHeight + pipeGap))) {
         sounds.pop();
         setFlappyRunning(false);
@@ -308,12 +307,10 @@ export const GamingHubView: React.FC = () => {
       ctx.fillStyle = '#0a0a1a';
       ctx.fillRect(0, 0, 320, 300);
 
-      // Pipes
       ctx.fillStyle = '#00e5ff';
       ctx.fillRect(pipeX, 0, 35, pipeTopHeight);
       ctx.fillRect(pipeX, pipeTopHeight + pipeGap, 35, 300);
 
-      // Bird
       ctx.fillStyle = '#ff2d95';
       ctx.beginPath();
       ctx.arc(30, birdY, 10, 0, Math.PI * 2);
@@ -376,7 +373,7 @@ export const GamingHubView: React.FC = () => {
           setAimActive(false);
           sounds.success();
           syncScoreToCloud('aim_trainer', aimScore);
-          toast.success(`Training Complete! Score: ${aimScore} synced to Supabase.`);
+          toast.success(`Training Complete! Score: ${aimScore} synced.`);
           return 0;
         }
         return t - 1;
@@ -454,7 +451,7 @@ export const GamingHubView: React.FC = () => {
             Gaming Studio & 10+ Web Games
           </h1>
           <p className="text-xs text-[#8a8aa8]">
-            Interactive 3D Voxel Builder, 2-Player Pong & Tic-Tac-Toe, Neon Snake, Flappy Bird, Aim Trainer with live Supabase leaderboard syncing.
+            Interactive 3D Voxel Builder, 2-Player Pong & Tic-Tac-Toe, Neon Snake, Flappy Bird, Aim Trainer with live cloud score syncing.
           </p>
         </div>
       </div>
