@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useWevids } from '../../context/WevidsContext';
 import { 
   MessageSquareText, 
@@ -12,12 +12,15 @@ import {
   Search,
   X,
   Lock,
-  Smile
+  UserCheck,
+  UserX,
+  ShieldBan,
+  Clock
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { toast } from 'sonner';
 
-// GIPHY & TENOR CURATED STREAMS
 const GIF_REPOSITORIES = [
   { id: 'g1', title: 'Cyber High Five', url: 'https://media.giphy.com/media/3o7TKSjRrfIPjeiVyM/giphy.gif', source: 'GIPHY' },
   { id: 'g2', title: 'Mind Blown Neon', url: 'https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif', source: 'GIPHY' },
@@ -37,9 +40,14 @@ export const MessagesView: React.FC = () => {
     allUsers,
     openVideoCall,
     startOrOpenChatWithUser,
-    openUserProfileModal
+    openUserProfileModal,
+    isMutualFriend,
+    acceptMessageRequest,
+    declineMessageRequest,
+    blockMessageUser
   } = useWevids();
 
+  const [activeTab, setActiveTab] = useState<'chats' | 'requests'>('chats');
   const [messageText, setMessageText] = useState('');
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [showGifPicker, setShowGifPicker] = useState(false);
@@ -49,11 +57,44 @@ export const MessagesView: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Subscribe to real-time direct_messages via Supabase
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+
+    const channel = supabase
+      .channel('direct_messages-channel')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'direct_messages' },
+        (payload: any) => {
+          if (payload?.new && payload.new.receiver_id === currentUser.id) {
+            sounds.pop();
+            toast.info('New message received!');
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser.id]);
+
   const activeConv = conversations.find(c => c.id === activeConvId);
   const otherMemberId = activeConv?.members?.find(id => id !== currentUser.id);
   const otherUser = otherMemberId ? allUsers[otherMemberId] : null;
+  const isFriend = otherMemberId ? isMutualFriend(otherMemberId) : false;
 
-  // Active creator list to start new direct chats with
+  // Filter incoming pending message requests (where current user did NOT initiate the request)
+  const pendingRequests = conversations.filter(c => 
+    c.status === 'pending_request' && c.requestedBy !== currentUser.id
+  );
+
+  // Active or mutual chat conversations
+  const activeChats = conversations.filter(c => 
+    c.status === 'active' || (c.status === 'pending_request' && c.requestedBy === currentUser.id)
+  );
+
   const availableCreators = Object.values(allUsers).filter(u => u.id !== currentUser.id);
 
   const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -119,65 +160,167 @@ export const MessagesView: React.FC = () => {
   return (
     <div className="space-y-6 pb-20">
       <div className="liquid-glass rounded-3xl border border-white/10 h-[640px] flex overflow-hidden shadow-2xl relative">
-        {/* Left Sidebar: Active Chats & Available Creators */}
+        {/* Left Sidebar */}
         <div className="w-80 border-r border-white/10 flex flex-col liquid-glass-card">
-          <div className="p-4 border-b border-white/10 flex items-center justify-between">
-            <h2 className="font-orbitron font-bold text-sm text-white flex items-center gap-2">
-              <MessageSquareText className="w-4 h-4 text-[#ff2d95]" />
-              Direct Messages
-            </h2>
+          <div className="p-4 border-b border-white/10 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="font-orbitron font-bold text-sm text-white flex items-center gap-2">
+                <MessageSquareText className="w-4 h-4 text-[#ff2d95]" />
+                Direct Messages
+              </h2>
+            </div>
+
+            {/* Tab switch: Active Chats vs Requests */}
+            <div className="flex rounded-xl bg-white/5 p-1 border border-white/10 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => {
+                  sounds.click();
+                  setActiveTab('chats');
+                }}
+                className={`flex-1 py-1.5 rounded-lg transition-all ${
+                  activeTab === 'chats' ? 'bg-[#00e5ff] text-slate-900 font-bold shadow-md' : 'text-[#8a8aa8] hover:text-white'
+                }`}
+              >
+                Chats ({activeChats.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  sounds.click();
+                  setActiveTab('requests');
+                }}
+                className={`flex-1 py-1.5 rounded-lg transition-all relative ${
+                  activeTab === 'requests' ? 'bg-[#ff2d95] text-slate-900 font-bold shadow-md' : 'text-[#8a8aa8] hover:text-white'
+                }`}
+              >
+                Requests {pendingRequests.length > 0 && `(${pendingRequests.length})`}
+                {pendingRequests.length > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-red-400 absolute top-1 right-2 animate-ping" />
+                )}
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-4 p-2">
-            {/* Active Conversations */}
-            <div className="space-y-1">
-              <div className="px-2 text-[10px] font-bold text-[#8a8aa8] uppercase tracking-wider">
-                Conversations ({conversations.length})
-              </div>
+            {activeTab === 'chats' ? (
+              <div className="space-y-1">
+                {activeChats.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-[#8a8aa8]">
+                    No active chats. Start one below!
+                  </div>
+                ) : (
+                  activeChats.map((conv) => {
+                    const isActive = conv.id === activeConvId;
+                    const partnerId = conv.members.find(m => m !== currentUser.id) || '';
+                    const partner = allUsers[partnerId];
+                    const isMutual = isMutualFriend(partnerId);
 
-              {conversations.length === 0 ? (
-                <div className="p-4 text-center text-xs text-[#8a8aa8]">
-                  No active chats. Start one below!
-                </div>
-              ) : (
-                conversations.map((conv) => {
-                  const isActive = conv.id === activeConvId;
-                  const partnerId = conv.members.find(m => m !== currentUser.id) || '';
-                  const partner = allUsers[partnerId];
-
-                  return (
-                    <div
-                      key={conv.id}
-                      onClick={() => {
-                        sounds.click();
-                        setActiveConvId(conv.id);
-                      }}
-                      className={`flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all ${
-                        isActive
-                          ? 'bg-gradient-to-r from-[#ff2d95]/20 to-[#00e5ff]/15 border border-[#ff2d95]/40 shadow-md'
-                          : 'hover:bg-white/5 border border-transparent'
-                      }`}
-                    >
+                    return (
                       <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-900 text-sm shadow-md flex-shrink-0"
-                        style={{ background: conv.color }}
+                        key={conv.id}
+                        onClick={() => {
+                          sounds.click();
+                          setActiveConvId(conv.id);
+                        }}
+                        className={`flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all ${
+                          isActive
+                            ? 'bg-gradient-to-r from-[#ff2d95]/20 to-[#00e5ff]/15 border border-[#ff2d95]/40 shadow-md'
+                            : 'hover:bg-white/5 border border-transparent'
+                        }`}
                       >
-                        {conv.avatar}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between text-xs mb-0.5">
-                          <span className="font-bold text-white truncate">
-                            {partner?.name || 'Direct Chat'}
-                          </span>
-                          <span className="text-[10px] text-[#8a8aa8]">{conv.time}</span>
+                        <div
+                          className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-900 text-sm shadow-md flex-shrink-0"
+                          style={{ background: conv.color }}
+                        >
+                          {conv.avatar}
                         </div>
-                        <p className="text-[11px] text-[#8a8aa8] truncate">{conv.lastMsg}</p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between text-xs mb-0.5">
+                            <span className="font-bold text-white truncate">
+                              {partner?.name || 'Direct Chat'}
+                            </span>
+                            <span className="text-[10px] text-[#8a8aa8]">{conv.time}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-[11px]">
+                            <p className="text-[#8a8aa8] truncate flex-1">{conv.lastMsg}</p>
+                            {conv.status === 'pending_request' && (
+                              <span className="text-[9px] text-[#fbbf24] font-bold ml-1 bg-[#fbbf24]/15 px-1.5 py-0.5 rounded-full">
+                                Pending
+                              </span>
+                            )}
+                            {isMutual && (
+                              <span className="text-[9px] text-[#10b981] font-bold ml-1">
+                                🤝 Friend
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+                    );
+                  })
+                )}
+              </div>
+            ) : (
+              /* Message Requests Tab */
+              <div className="space-y-3 p-1">
+                <div className="text-[11px] text-[#8a8aa8]">
+                  Users you don't follow back must send a request before chatting.
+                </div>
+
+                {pendingRequests.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-[#8a8aa8]">
+                    No pending message requests.
+                  </div>
+                ) : (
+                  pendingRequests.map(req => {
+                    const requesterId = req.members.find(m => m !== currentUser.id) || '';
+                    const requester = allUsers[requesterId];
+
+                    return (
+                      <div key={req.id} className="p-3 rounded-2xl bg-white/5 border border-white/10 space-y-2">
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-slate-900 font-bold text-xs"
+                            style={{ background: req.color }}
+                          >
+                            {req.avatar}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-bold text-white truncate">{requester?.name || 'New Creator'}</div>
+                            <div className="text-[10px] text-[#8a8aa8] truncate">{req.lastMsg}</div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 pt-1">
+                          <button
+                            onClick={() => acceptMessageRequest(req.id)}
+                            className="flex-1 py-1.5 rounded-xl bg-gradient-to-r from-[#10b981] to-[#00e5ff] text-slate-900 font-bold text-[10px] flex items-center justify-center gap-1"
+                          >
+                            <UserCheck className="w-3 h-3" />
+                            <span>Accept</span>
+                          </button>
+                          <button
+                            onClick={() => declineMessageRequest(req.id)}
+                            className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-[#8a8aa8] text-[10px] flex items-center gap-1"
+                            title="Decline Request"
+                          >
+                            <UserX className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => blockMessageUser(req.id)}
+                            className="px-2.5 py-1.5 rounded-xl bg-red-500/20 text-red-400 text-[10px] flex items-center gap-1"
+                            title="Block User"
+                          >
+                            <ShieldBan className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
 
             {/* Creators Available */}
             <div className="pt-2 border-t border-white/10 space-y-1">
@@ -206,7 +349,7 @@ export const MessagesView: React.FC = () => {
                   </div>
 
                   <button className="px-2.5 py-1 rounded-xl bg-[#00e5ff]/20 text-[#00e5ff] text-[10px] font-bold font-orbitron hover:bg-[#00e5ff] hover:text-slate-900 transition-colors">
-                    Chat
+                    {isMutualFriend(creator.id) ? 'Chat' : 'Request'}
                   </button>
                 </div>
               ))}
@@ -232,6 +375,11 @@ export const MessagesView: React.FC = () => {
                 <div>
                   <div className="text-xs font-bold text-white flex items-center gap-1.5 group-hover:text-[#00e5ff]">
                     {otherUser.name}
+                    {isFriend && (
+                      <span className="text-[9px] text-[#10b981] bg-[#10b981]/20 px-2 py-0.5 rounded-full border border-[#10b981]/30">
+                        Mutual Friends
+                      </span>
+                    )}
                   </div>
                   <div className="text-[10px] text-[#8a8aa8]">
                     {otherUser.handle} · {otherUser.location}
@@ -248,12 +396,42 @@ export const MessagesView: React.FC = () => {
               </button>
             </div>
 
+            {/* Request banner if non-mutual and pending */}
+            {!isFriend && activeConv.status === 'pending_request' && (
+              <div className="p-3 bg-[#fbbf24]/10 border-b border-[#fbbf24]/20 flex items-center justify-between text-xs text-[#fbbf24]">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  <span>
+                    {activeConv.requestedBy === currentUser.id 
+                      ? 'Message request pending receiver approval.' 
+                      : `${otherUser.name} sent you a message request.`}
+                  </span>
+                </div>
+                {activeConv.requestedBy !== currentUser.id && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => acceptMessageRequest(activeConv.id)}
+                      className="px-3 py-1 rounded-lg bg-[#10b981] text-slate-900 font-bold text-[11px]"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      onClick={() => declineMessageRequest(activeConv.id)}
+                      className="px-3 py-1 rounded-lg bg-white/10 text-white text-[11px]"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Chat Stream */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {activeConv.messages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center p-6 text-xs text-[#8a8aa8]">
                   <Sparkles className="w-8 h-8 text-[#00e5ff] mb-2" />
-                  <p className="font-bold text-white">Direct Chat active!</p>
+                  <p className="font-bold text-white">Direct Chat Initialized</p>
                   <p>Send text, images, or GIFs to {otherUser.name}.</p>
                 </div>
               ) : (
@@ -316,7 +494,7 @@ export const MessagesView: React.FC = () => {
               </div>
             )}
 
-            {/* GIF Drawer (GIPHY + TENOR) */}
+            {/* GIF Drawer */}
             {showGifPicker && (
               <div className="p-3 bg-slate-900/95 border-t border-[#00e5ff]/40 space-y-2 animate-slide-in">
                 <div className="flex items-center justify-between">
@@ -409,13 +587,18 @@ export const MessagesView: React.FC = () => {
                 type="text"
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
-                placeholder={`Message ${otherUser.name}...`}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:outline-none focus:border-[#00e5ff]"
+                placeholder={
+                  !isFriend && activeConv.status === 'pending_request' && activeConv.requestedBy === currentUser.id
+                    ? 'Message request pending approval...'
+                    : `Message ${otherUser.name}...`
+                }
+                disabled={!isFriend && activeConv.status === 'pending_request' && activeConv.messages.length >= 1 && activeConv.requestedBy === currentUser.id}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:outline-none focus:border-[#00e5ff] disabled:opacity-50"
               />
 
               <button
                 type="submit"
-                disabled={!messageText.trim() && !attachedImage}
+                disabled={(!messageText.trim() && !attachedImage) || (!isFriend && activeConv.status === 'pending_request' && activeConv.messages.length >= 1 && activeConv.requestedBy === currentUser.id)}
                 className="p-2.5 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-bold hover:scale-105 transition-transform shadow-md disabled:opacity-50"
               >
                 <Send className="w-4 h-4" />
@@ -427,7 +610,7 @@ export const MessagesView: React.FC = () => {
             <MessageSquareText className="w-12 h-12 text-[#ff2d95] opacity-50" />
             <h3 className="font-orbitron font-bold text-white text-base">Select a Creator to Start Messaging</h3>
             <p className="max-w-sm">
-              Click on any online creator on the left or search across feeds to send instant messages, GIFs, images, and voice notes.
+              Click on any online creator or view incoming message requests to chat, send media, and connect with mutual friends.
             </p>
           </div>
         )}

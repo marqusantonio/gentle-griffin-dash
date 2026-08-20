@@ -11,7 +11,8 @@ import {
   SharedFileItem, 
   AudioTrackItem, 
   FilmItem,
-  ViewName 
+  ViewName,
+  DirectMessageItem 
 } from '../types/wevids';
 import { 
   CURRENT_USER, 
@@ -36,6 +37,7 @@ export interface WevidsState {
   audioTracks: AudioTrackItem[];
   films: FilmItem[];
   conversations: Conversation[];
+  directMessages: DirectMessageItem[];
   
   activeView: ViewName;
   activeConvId: string | null;
@@ -65,6 +67,7 @@ export const initialWevidsState: WevidsState = {
   audioTracks: INITIAL_AUDIO_TRACKS,
   films: INITIAL_FILMS,
   conversations: INITIAL_CONVERSATIONS,
+  directMessages: [],
   activeView: 'feed',
   activeConvId: 'conv-group-1',
   activeCallUser: null,
@@ -101,7 +104,7 @@ export type WevidsAction =
   | { type: 'ADD_CLIP_COMMENT'; payload: { clipId: string; comment: any } }
   | { type: 'ADD_MESSAGE'; payload: { convId: string; message: any } }
   | { type: 'ADD_CONVERSATION'; payload: Conversation }
-  | { type: 'SET_CONVERSATION_STATUS'; payload: { convId: string; status: 'active' | 'pending_request' } }
+  | { type: 'SET_CONVERSATION_STATUS'; payload: { convId: string; status: 'active' | 'pending_request' | 'declined' | 'blocked' } }
   | { type: 'REMOVE_CONVERSATION'; payload: { convId: string } }
   | { type: 'ADD_TO_CART'; payload: { product: ProductItem } }
   | { type: 'REMOVE_FROM_CART'; payload: { productId: string } }
@@ -109,6 +112,7 @@ export type WevidsAction =
   | { type: 'CLEAR_CART' }
   | { type: 'SET_SOUND_ENABLED'; payload: boolean }
   | { type: 'ADD_POST'; payload: PostItem }
+  | { type: 'DELETE_POST'; payload: { postId: string } }
   | { type: 'SET_POSTS'; payload: PostItem[] }
   | { type: 'ADD_CLIP'; payload: ShortClipItem }
   | { type: 'SET_CLIPS'; payload: ShortClipItem[] }
@@ -187,6 +191,9 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
           [userId]: {
             ...targetUser,
             followers: isFollowing ? Math.max(0, targetUser.followers - 1) : targetUser.followers + 1,
+            followerIds: isFollowing 
+              ? (targetUser.followerIds || []).filter(id => id !== state.currentUser.id)
+              : [...(targetUser.followerIds || []), state.currentUser.id]
           },
         },
       };
@@ -322,6 +329,8 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
       return { ...state, soundEnabled: action.payload };
     case 'ADD_POST':
       return { ...state, posts: [action.payload, ...state.posts.filter(p => p.id !== action.payload.id)] };
+    case 'DELETE_POST':
+      return { ...state, posts: state.posts.filter(p => p.id !== action.payload.postId) };
     case 'SET_POSTS':
       return { ...state, posts: mergeItems(action.payload, state.posts) };
     case 'ADD_CLIP':

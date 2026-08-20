@@ -4,14 +4,14 @@ import {
   Heart, 
   MessageCircle, 
   Share2, 
-  Bookmark, 
   Plus, 
   Image as ImageIcon, 
   Video as VideoIcon, 
   Sparkles,
   CheckCircle2,
   Film,
-  Radio
+  Radio,
+  Trash2
 } from 'lucide-react';
 import { RichCommentInput } from '../comments/RichCommentInput';
 import { CreatePostModal } from './CreatePostModal';
@@ -26,15 +26,15 @@ export const DualFeedView: React.FC = () => {
     currentUser, 
     openShareModal, 
     openUserProfileModal,
-    setActiveView,
-    addPost
+    addPost,
+    deletePost
   } = useWevids();
 
   const [selectedTopic, setSelectedTopic] = useState('All');
   const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
   const [composerTarget, setComposerTarget] = useState<'feed' | 'clips'>('feed');
 
-  // Listen for real-time inserts using Supabase Realtime channel
+  // Listen for real-time inserts and deletes using Supabase Realtime channel
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
 
@@ -47,8 +47,16 @@ export const DualFeedView: React.FC = () => {
           if (payload?.new) {
             sounds.pop();
             toast.info(`New post from ${payload.new.authorName || 'creator'}!`);
-            // Add or merge into state if not already existing
             addPost(payload.new);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'posts' },
+        (payload: any) => {
+          if (payload?.old?.id) {
+            deletePost(payload.old.id);
           }
         }
       )
@@ -76,6 +84,12 @@ export const DualFeedView: React.FC = () => {
     setIsCreatePostOpen(true);
   };
 
+  const handleDelete = (postId: string) => {
+    if (window.confirm('Are you sure you want to delete this post?')) {
+      deletePost(postId);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-20 max-w-3xl mx-auto">
       {/* Header Banner */}
@@ -89,7 +103,7 @@ export const DualFeedView: React.FC = () => {
             Community Feed
           </h1>
           <p className="text-xs text-[#8a8aa8]">
-            Real-time discussions and video uploads instantly synced across all connected devices.
+            Real-time discussions and video uploads with automated content safety & creator moderation.
           </p>
         </div>
 
@@ -192,12 +206,14 @@ export const DualFeedView: React.FC = () => {
               id: post.userId
             };
 
+            const isAuthor = post.userId === currentUser.id;
+
             return (
               <div
                 key={post.id}
                 className="liquid-glass rounded-3xl p-6 border border-white/15 shadow-2xl space-y-4 hover:border-white/25 transition-all"
               >
-                {/* Author Info */}
+                {/* Author Info & Creator Delete Option */}
                 <div className="flex items-center justify-between">
                   <div
                     onClick={() => openUserProfileModal(author as any)}
@@ -218,7 +234,18 @@ export const DualFeedView: React.FC = () => {
                     </div>
                   </div>
 
-                  <span className="text-xs text-[#8a8aa8]">{post.location}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-[#8a8aa8]">{post.location}</span>
+                    {isAuthor && (
+                      <button
+                        onClick={() => handleDelete(post.id)}
+                        className="p-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 transition-colors border border-red-500/20"
+                        title="Delete Your Post"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Content */}

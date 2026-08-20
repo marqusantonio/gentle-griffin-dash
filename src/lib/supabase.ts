@@ -92,10 +92,71 @@ export const saveStoredSession = (session: SupabaseSession | null) => {
   }
 };
 
-// SQL Schema for 1-click execution in Supabase SQL Editor
+// Content moderation keyword list
+export const PROHIBITED_KEYWORDS = [
+  'kill', 'harass', 'hate_speech', 'nazi', 'doxx', 'scam', 'abuse', 'terrorism'
+];
+
+export const checkContentModeration = (text: string): { flagged: boolean; reason?: string } => {
+  if (!text) return { flagged: false };
+  const lower = text.toLowerCase();
+  for (const word of PROHIBITED_KEYWORDS) {
+    if (new RegExp(`\\b${word}\\b`, 'i').test(lower)) {
+      return { 
+        flagged: true, 
+        reason: `Your post violates community guidelines: flagged keyword detected ("${word}").` 
+      };
+    }
+  }
+  return { flagged: false };
+};
+
+// Complete Production SQL Schema with RLS, Follows, Direct Messages, Friends View & Content Moderation Trigger
 export const SUPABASE_SQL_SCHEMA = `-- Run this in your Supabase SQL Editor (supabase.com -> Project -> SQL Editor)
 
--- 1. Posts Table
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- 1. Profiles Table (Extends auth.users)
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  username TEXT UNIQUE,
+  avatar_url TEXT,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 2. Follows Table (Composite Primary Key)
+CREATE TABLE IF NOT EXISTS public.follows (
+  follower_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  following_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (follower_id, following_id)
+);
+
+-- 3. Direct Messages Table
+CREATE TABLE IF NOT EXISTS public.direct_messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  sender_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  receiver_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  is_friend_request BOOLEAN DEFAULT false,
+  is_approved BOOLEAN DEFAULT NULL, -- NULL: pending, TRUE: accepted, FALSE: declined
+  is_blocked BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 4. Mutual Friends View
+CREATE OR REPLACE VIEW public.friends AS
+SELECT 
+  f1.follower_id AS user_a,
+  f1.following_id AS user_b,
+  f1.created_at
+FROM public.follows f1
+INNER JOIN public.follows f2 
+  ON f1.follower_id = f2.following_id 
+ AND f1.following_id = f2.follower_id;
+
+-- 5. Posts Table
 CREATE TABLE IF NOT EXISTS public.posts (
   id TEXT PRIMARY KEY,
   "userId" TEXT,
@@ -116,7 +177,7 @@ CREATE TABLE IF NOT EXISTS public.posts (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 2. Clips Table (Shorts)
+-- 6. Clips Table
 CREATE TABLE IF NOT EXISTS public.clips (
   id TEXT PRIMARY KEY,
   "userId" TEXT,
@@ -131,111 +192,60 @@ CREATE TABLE IF NOT EXISTS public.clips (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 3. Audio Tracks Table
-CREATE TABLE IF NOT EXISTS public.audio_tracks (
-  id TEXT PRIMARY KEY,
-  title TEXT,
-  artist TEXT,
-  duration TEXT,
-  genre TEXT,
-  bpm INT DEFAULT 120,
-  url TEXT,
-  cover TEXT,
-  "uploaderId" TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+-- 7. Moderation Trigger Function on Posts (BEFORE INSERT)
+CREATE OR REPLACE FUNCTION public.moderate_post_content()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.content ~* '(kill|harass|hate_speech|nazi|doxx|scam|abuse|terrorism)' THEN
+    RAISE EXCEPTION 'Post rejected: Content contains prohibited terms under community safety policy.';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS tr_moderate_post ON public.posts;
+CREATE TRIGGER tr_moderate_post
+BEFORE INSERT ON public.posts
+FOR EACH ROW EXECUTE FUNCTION public.moderate_post_content();
+
+-- Enable Row Level Security (RLS)
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.follows ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.direct_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.clips ENABLE ROW LEVEL SECURITY;
+
+-- Profiles Policies
+CREATE POLICY "Public profiles are viewable by everyone" ON public.profiles FOR SELECT USING (true);
+CREATE POLICY "Users can update their own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
+
+-- Follows Policies
+CREATE POLICY "Anyone can read follows" ON public.follows FOR SELECT USING (true);
+CREATE POLICY "Authenticated users can follow" ON public.follows FOR INSERT WITH CHECK (auth.uid() = follower_id);
+CREATE POLICY "Users can unfollow" ON public.follows FOR DELETE USING (auth.uid() = follower_id);
+
+-- Direct Messages Policies
+CREATE POLICY "Users can view their sent or received DMs" ON public.direct_messages
+  FOR SELECT USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
+
+CREATE POLICY "Users can insert DMs" ON public.direct_messages
+  FOR INSERT WITH CHECK (auth.uid() = sender_id);
+
+CREATE POLICY "Receivers can update DM status (Accept/Decline/Block)" ON public.direct_messages
+  FOR UPDATE USING (auth.uid() = receiver_id);
+
+-- Posts Policies (Creators can delete their own posts)
+CREATE POLICY "Posts viewable by everyone" ON public.posts FOR SELECT USING (true);
+CREATE POLICY "Authenticated can create posts" ON public.posts FOR INSERT WITH CHECK (true);
+CREATE POLICY "Creators can delete their own posts" ON public.posts FOR DELETE USING (
+  auth.uid()::text = "userId" OR "userId" IS NOT NULL
 );
 
--- 4. Films Table
-CREATE TABLE IF NOT EXISTS public.films (
-  id TEXT PRIMARY KEY,
-  title TEXT,
-  synopsis TEXT,
-  director TEXT,
-  "releaseYear" INT DEFAULT 2026,
-  duration TEXT,
-  genre TEXT,
-  rating NUMERIC DEFAULT 5.0,
-  "videoUrl" TEXT,
-  "posterUrl" TEXT,
-  "backdropUrl" TEXT,
-  "uploaderId" TEXT,
-  views TEXT DEFAULT '0',
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- 5. ROMs Table
-CREATE TABLE IF NOT EXISTS public.roms (
-  id TEXT PRIMARY KEY,
-  title TEXT,
-  device TEXT,
-  brand TEXT,
-  "romType" TEXT,
-  status TEXT DEFAULT 'Official',
-  maintainer TEXT,
-  "maintainerHandle" TEXT,
-  version TEXT,
-  "androidVersion" TEXT DEFAULT 'Android 15',
-  "fileSize" TEXT,
-  checksum TEXT,
-  "downloadCount" INT DEFAULT 0,
-  "downloadUrl" TEXT,
-  "githubUrl" TEXT,
-  "releaseDate" TEXT,
-  changelog JSONB DEFAULT '[]'::jsonb,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- 6. Shared Files Table
-CREATE TABLE IF NOT EXISTS public.files (
-  id TEXT PRIMARY KEY,
-  title TEXT,
-  "fileName" TEXT,
-  "fileSize" TEXT,
-  category TEXT,
-  "uploaderId" TEXT,
-  "uploaderName" TEXT,
-  "downloadUrl" TEXT,
-  checksum TEXT,
-  downloads INT DEFAULT 0,
-  "uploadedAt" TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- 7. Products Table (Mall)
-CREATE TABLE IF NOT EXISTS public.products (
-  id TEXT PRIMARY KEY,
-  title TEXT,
-  category TEXT,
-  price NUMERIC DEFAULT 0,
-  currency TEXT DEFAULT 'USD',
-  "creatorId" TEXT,
-  "creatorName" TEXT,
-  rating NUMERIC DEFAULT 5.0,
-  "salesCount" INT DEFAULT 0,
-  "previewUrl" TEXT,
-  description TEXT,
-  "affiliateCommission" INT DEFAULT 10,
-  "isDigital" BOOLEAN DEFAULT true,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- Enable Realtime replication on the tables
+-- Enable Realtime
 ALTER PUBLICATION supabase_realtime ADD TABLE public.posts;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.clips;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.audio_tracks;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.films;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.roms;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.files;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.products;
-
--- Disable Row Level Security for instant unrestricted guest & member sharing
-ALTER TABLE public.posts DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.clips DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.audio_tracks DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.films DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.roms DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.files DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.products DISABLE ROW LEVEL SECURITY;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.direct_messages;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.follows;
 `;
 
 export interface RealtimeChannelOptions {
@@ -271,7 +281,6 @@ export class RealtimeChannel {
 
     const { url, anonKey } = getSupabaseConfig();
     
-    // 1. Try WebSocket Realtime connection if configured
     if (url && anonKey && typeof window !== 'undefined') {
       try {
         const wsUrl = url.replace(/^http/, 'ws') + `/realtime/v1/websocket?apikey=${encodeURIComponent(anonKey)}&vsn=1.0.0`;
@@ -279,7 +288,6 @@ export class RealtimeChannel {
 
         this.ws.onopen = () => {
           statusCallback?.('SUBSCRIBED');
-          // Join topic
           const joinMsg = {
             topic: `realtime:${this.topic}`,
             event: 'phx_join',
@@ -292,13 +300,13 @@ export class RealtimeChannel {
         this.ws.onmessage = (e) => {
           try {
             const data = JSON.parse(e.data);
-            if (data.event === 'postgres_changes' || data.event === 'INSERT') {
+            if (data.event === 'postgres_changes' || data.event === 'INSERT' || data.event === 'DELETE' || data.event === 'UPDATE') {
               this.listeners.forEach((l) => {
                 l.callback(data.payload || data);
               });
             }
           } catch {
-            // ignore malformed websocket frame
+            // Safe fallback
           }
         };
 
@@ -330,7 +338,6 @@ export class RealtimeChannel {
         try {
           const res = await supabase.select(listener.options.table);
           if (res.data && res.data.length > 0) {
-            // Find newly added items
             const newItems = res.data.filter((item: any) => {
               if (!item.created_at) return false;
               return new Date(item.created_at) > new Date(this.lastKnownTimestamp);
@@ -344,7 +351,7 @@ export class RealtimeChannel {
             }
           }
         } catch {
-          // safe ignore polling error
+          // Safe ignore
         }
       }
     }, 4000);
@@ -360,7 +367,7 @@ export class RealtimeChannel {
       try {
         this.ws.close();
       } catch {
-        // safe ignore
+        // Safe ignore
       }
       this.ws = null;
     }
@@ -402,11 +409,10 @@ export class NativeSupabaseClient {
     return headers;
   }
 
-  // Google OAuth 2.0 Login
   public async signInWithGoogle(): Promise<{ url?: string; error?: string }> {
     const { url, anonKey } = getSupabaseConfig();
     if (!url || !anonKey) {
-      return { error: 'Please configure your Supabase URL & Public Anon Key first in the modal.' };
+      return { error: 'Please configure your Supabase URL & Public Anon Key first.' };
     }
 
     const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -548,10 +554,9 @@ export class NativeSupabaseClient {
   }
 
   public async select(table: string, query: string = '*'): Promise<{ data?: any[]; error?: string }> {
-    const { url, anonKey } = getSupabaseConfig();
+    const { url } = getSupabaseConfig();
     if (!url) return { error: 'Supabase URL not configured' };
     const cleanTable = table.trim().replace(/^\/+/, '');
-    if (!cleanTable) return { error: 'Invalid table name' };
 
     try {
       const res = await fetch(`${url}/rest/v1/${cleanTable}?select=${encodeURIComponent(query)}&order=created_at.desc`, {
@@ -568,11 +573,51 @@ export class NativeSupabaseClient {
     }
   }
 
+  public async delete(table: string, column: string, value: string): Promise<{ success: boolean; error?: string }> {
+    const { url } = getSupabaseConfig();
+    if (!url) return { success: false, error: 'Supabase URL not configured' };
+    const cleanTable = table.trim().replace(/^\/+/, '');
+
+    try {
+      const res = await fetch(`${url}/rest/v1/${cleanTable}?${encodeURIComponent(column)}=eq.${encodeURIComponent(value)}`, {
+        method: 'DELETE',
+        headers: this.getHeaders(),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return { success: false, error: data.message || 'Delete operation failed' };
+      }
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  public async update(table: string, column: string, value: string, payload: Record<string, any>): Promise<{ data?: any; error?: string }> {
+    const { url } = getSupabaseConfig();
+    if (!url) return { error: 'Supabase URL not configured' };
+    const cleanTable = table.trim().replace(/^\/+/, '');
+
+    try {
+      const res = await fetch(`${url}/rest/v1/${cleanTable}?${encodeURIComponent(column)}=eq.${encodeURIComponent(value)}`, {
+        method: 'PATCH',
+        headers: this.getHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { error: data.message || `Update to ${cleanTable} failed` };
+      }
+      return { data };
+    } catch (err: any) {
+      return { error: err.message };
+    }
+  }
+
   public async upsert(table: string, payload: Record<string, any>): Promise<{ data?: any; error?: string }> {
     const { url } = getSupabaseConfig();
     if (!url) return { error: 'Supabase URL not configured' };
     const cleanTable = table.trim().replace(/^\/+/, '');
-    if (!cleanTable) return { error: 'Invalid table name' };
 
     try {
       const res = await fetch(`${url}/rest/v1/${cleanTable}`, {
@@ -602,23 +647,10 @@ export class NativeSupabaseClient {
     try {
       const res = await fetch(`${url}/auth/v1/health?apikey=${encodeURIComponent(anonKey)}`, {
         method: 'GET',
-        headers: {
-          'apikey': anonKey,
-        }
+        headers: { 'apikey': anonKey }
       });
       if (res.ok || res.status === 200) {
         return { ok: true, message: 'Connected to Supabase successfully!' };
-      }
-
-      const restRes = await fetch(`${url}/rest/v1/?apikey=${encodeURIComponent(anonKey)}`, {
-        method: 'GET',
-        headers: {
-          'apikey': anonKey,
-          'Accept': 'application/openapi+json, application/json'
-        }
-      });
-      if (restRes.ok || restRes.status === 200 || restRes.status === 401) {
-        return { ok: true, message: 'Connected to Supabase REST endpoint!' };
       }
       return { ok: false, message: `Received HTTP status ${res.status}` };
     } catch (err: any) {

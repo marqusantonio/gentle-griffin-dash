@@ -14,7 +14,7 @@ import {
 } from '../types/wevids';
 import { wevidsReducer, initialWevidsState, WevidsState } from './wevidsReducer';
 import { INITIAL_AUDIO_TRACKS, INITIAL_FILMS } from '../data/mediaData';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, checkContentModeration } from '../lib/supabase';
 import { loadLocalSyncData, saveLocalSyncData, fetchGlobalCloudState, pushGlobalCloudState } from '../lib/syncService';
 import { sounds } from '../lib/soundFx';
 import { toast } from 'sonner';
@@ -22,7 +22,8 @@ import { toast } from 'sonner';
 export { INITIAL_AUDIO_TRACKS, INITIAL_FILMS } from '../data/mediaData';
 
 export interface WevidsContextType extends WevidsState {
-  addPost: (post: Partial<PostItem>) => Promise<void>;
+  addPost: (post: Partial<PostItem>) => Promise<boolean>;
+  deletePost: (postId: string) => Promise<boolean>;
   addClip: (clip: ShortClipItem) => Promise<void>;
   addLongVideo: (video: LongVideoItem) => void;
   addRom: (rom: Partial<RomItem>) => Promise<void>;
@@ -41,7 +42,7 @@ export interface WevidsContextType extends WevidsState {
   closeUserProfileModal: () => void;
   setIsSupabaseModalOpen: (open: boolean) => void;
   updateCurrentUser: (updates: Partial<UserProfile>) => void;
-  toggleFollowUser: (userId: string) => void;
+  toggleFollowUser: (userId: string) => Promise<void>;
   isFollowing: (userId?: string) => boolean;
   isMutualFriend: (userId?: string) => boolean;
   toggleClipLike: (clipId: string) => void;
@@ -49,9 +50,10 @@ export interface WevidsContextType extends WevidsState {
   toggleClipBookmark: (clipId: string) => void;
   addClipComment: (clipId: string, comment: any) => void;
   startOrOpenChatWithUser: (userId: string) => void;
-  sendMessage: (convId: string, message: any) => void;
-  acceptMessageRequest: (convId: string) => void;
-  declineMessageRequest: (convId: string) => void;
+  sendMessage: (convId: string, message: any) => Promise<void>;
+  acceptMessageRequest: (convId: string) => Promise<void>;
+  declineMessageRequest: (convId: string) => Promise<void>;
+  blockMessageUser: (convId: string) => Promise<void>;
   openVideoCall: (userName: string) => void;
   closeVideoCall: () => void;
   addToCart: (product: ProductItem) => void;
@@ -114,7 +116,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-  // Initial load + immediate sync on tab focus + 4-second poll for cross-device updates
+  // Initial load + immediate sync on tab focus + 4-second poll
   useEffect(() => {
     syncWithSupabase();
     
@@ -123,16 +125,23 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
     window.addEventListener('focus', handleFocus);
 
-    const interval = setInterval(syncWithSupabase, 4000); // Fast 4s poll
+    const interval = setInterval(syncWithSupabase, 4000);
     return () => {
       clearInterval(interval);
       window.removeEventListener('focus', handleFocus);
     };
   }, []);
 
-  const addPost = async (post: Partial<PostItem>) => {
+  const addPost = async (post: Partial<PostItem>): Promise<boolean> => {
+    // Content moderation check (AI/Keyword rule)
+    const moderation = checkContentModeration(post.content || '');
+    if (moderation.flagged) {
+      toast.error(moderation.reason || 'Post violates community guidelines.');
+      return false;
+    }
+
     const fullPost: PostItem = {
-      id: `post-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      id: post.id || `post-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       userId: post.userId || state.currentUser.id,
       authorName: post.authorName || state.currentUser.name,
       authorHandle: post.authorHandle || state.currentUser.handle,
@@ -143,11 +152,12 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       content: post.content || '',
       mediaUrl: post.mediaUrl,
       mediaType: post.mediaType || (post.mediaUrl ? 'image' : undefined),
-      likes: 0,
-      dislikes: 0,
-      shares: 0,
-      comments: [],
-      tags: post.tags || []
+      likes: post.likes || 0,
+      dislikes: post.dislikes || 0,
+      shares: post.shares || 0,
+      comments: post.comments || [],
+      tags: post.tags || [],
+      created_at: new Date().toISOString()
     };
 
     sounds.success();
@@ -161,9 +171,28 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       try {
         await supabase.upsert('posts', fullPost);
       } catch {
-        // safe offline
+        // Safe offline
       }
     }
+    return true;
+  };
+
+  const deletePost = async (postId: string): Promise<boolean> => {
+    sounds.pop();
+    dispatch({ type: 'DELETE_POST', payload: { postId } });
+    toast.success('Post deleted successfully.');
+
+    const updatedPosts = state.posts.filter(p => p.id !== postId);
+    pushGlobalCloudState({ posts: updatedPosts });
+
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.delete('posts', 'id', postId);
+      } catch {
+        // Safe offline
+      }
+    }
+    return true;
   };
 
   const addClip = async (clip: ShortClipItem) => {
@@ -178,7 +207,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       try {
         await supabase.upsert('clips', clip);
       } catch {
-        // safe offline
+        // Safe offline
       }
     }
   };
@@ -208,7 +237,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       try {
         await supabase.upsert('audio_tracks', fullTrack);
       } catch {
-        // safe offline
+        // Safe offline
       }
     }
   };
@@ -241,7 +270,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       try {
         await supabase.upsert('films', fullFilm);
       } catch {
-        // safe offline
+        // Safe offline
       }
     }
   };
@@ -277,7 +306,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       try {
         await supabase.upsert('roms', fullRom);
       } catch {
-        // safe offline
+        // Safe offline
       }
     }
   };
@@ -294,7 +323,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       try {
         await supabase.upsert('products', product);
       } catch {
-        // safe offline
+        // Safe offline
       }
     }
   };
@@ -324,7 +353,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       try {
         await supabase.upsert('files', fullFile);
       } catch {
-        // safe offline
+        // Safe offline
       }
     }
   };
@@ -384,19 +413,54 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return (state.currentUser.followingIds || []).includes(userId);
   };
 
+  // True if and only if both users follow each other
   const isMutualFriend = (userId?: string) => {
     if (!userId || userId === state.currentUser.id) return false;
     const targetUser = state.allUsers[userId];
     const followingThem = (state.currentUser.followingIds || []).includes(userId);
-    const theyFollowMe = (targetUser?.followingIds || []).includes(state.currentUser.id);
-    return followingThem && (theyFollowMe || true);
+    const theyFollowMe = (targetUser?.followerIds || []).includes(state.currentUser.id) || 
+                         (targetUser?.followingIds || []).includes(state.currentUser.id);
+    return Boolean(followingThem && theyFollowMe);
   };
 
-  const toggleFollowUser = (userId: string) => {
+  // Part A: Follow / Unfollow logic and mutual friend transition
+  const toggleFollowUser = async (userId: string) => {
     sounds.click();
     const currentlyFollowing = isFollowing(userId);
     dispatch({ type: 'TOGGLE_FOLLOW_USER', payload: { userId, isFollowing: currentlyFollowing } });
-    toast.success(currentlyFollowing ? 'Unfollowed creator' : 'Following creator! 🚀');
+
+    if (!currentlyFollowing) {
+      // Check if target user already follows current user
+      const targetUser = state.allUsers[userId];
+      const targetFollowsMe = (targetUser?.followingIds || []).includes(state.currentUser.id);
+
+      if (targetFollowsMe) {
+        sounds.success();
+        toast.success(`You and ${targetUser?.name || 'this creator'} are now mutual friends! Direct messaging unlocked. 🤝`);
+      } else {
+        toast.success('Following creator! 🚀');
+      }
+
+      if (isSupabaseConfigured()) {
+        try {
+          await supabase.insert('follows', {
+            follower_id: state.currentUser.id,
+            following_id: userId,
+          });
+        } catch {
+          // Safe offline
+        }
+      }
+    } else {
+      toast.info('Unfollowed creator.');
+      if (isSupabaseConfigured()) {
+        try {
+          await supabase.delete('follows', 'follower_id', state.currentUser.id);
+        } catch {
+          // Safe offline
+        }
+      }
+    }
   };
 
   const toggleClipLike = (clipId: string) => {
@@ -420,8 +484,11 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     dispatch({ type: 'ADD_CLIP_COMMENT', payload: { clipId, comment } });
   };
 
+  // Part B & C: Start chat honoring mutual friend vs. message request status
   const startOrOpenChatWithUser = (userId: string) => {
     sounds.click();
+    const isFriend = isMutualFriend(userId);
+
     const existingConv = state.conversations.find(c => 
       !c.isGroup && c.members.includes(userId) && c.members.includes(state.currentUser.id)
     );
@@ -443,11 +510,11 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         avatar: otherUser.avatar || 'U',
         color: otherUser.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
         members: [state.currentUser.id, userId],
-        lastMsg: 'Chat connection active',
+        lastMsg: isFriend ? 'Mutual friends connected' : 'Message request initiated',
         time: 'Just now',
         unread: 0,
         messages: [],
-        status: 'active',
+        status: isFriend ? 'active' : 'pending_request',
         requestedBy: state.currentUser.id,
       };
       dispatch({ type: 'ADD_CONVERSATION', payload: newConv });
@@ -456,7 +523,25 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-  const sendMessage = (convId: string, message: any) => {
+  const sendMessage = async (convId: string, message: any) => {
+    const activeConv = state.conversations.find(c => c.id === convId);
+    if (!activeConv) return;
+
+    const receiverId = activeConv.members.find(m => m !== state.currentUser.id) || '';
+    const isFriend = isMutualFriend(receiverId);
+
+    // If not mutual friends and already pending, prevent spam
+    if (!isFriend && activeConv.status === 'pending_request' && activeConv.messages.length >= 1 && activeConv.requestedBy === state.currentUser.id) {
+      toast.error('Message request pending. Please wait until the creator accepts your request.');
+      return;
+    }
+
+    // Blocked check
+    if (activeConv.status === 'blocked') {
+      toast.error('Cannot send message. Communication is blocked.');
+      return;
+    }
+
     sounds.pop();
     const newMessage = {
       id: `msg-${Date.now()}`,
@@ -468,21 +553,88 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       type: message.type || 'text',
       mediaUrl: message.mediaUrl,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      is_friend_request: !isFriend,
+      is_approved: isFriend ? true : null
     };
     
     dispatch({ type: 'ADD_MESSAGE', payload: { convId, message: newMessage } });
+
+    if (isSupabaseConfigured() && receiverId) {
+      try {
+        await supabase.insert('direct_messages', {
+          id: newMessage.id,
+          sender_id: state.currentUser.id,
+          receiver_id: receiverId,
+          content: message.text || (message.type ? `[${message.type}]` : 'Media'),
+          is_friend_request: !isFriend,
+          is_approved: isFriend ? true : null,
+          is_blocked: false,
+          created_at: new Date().toISOString()
+        });
+      } catch {
+        // Safe offline
+      }
+    }
   };
 
-  const acceptMessageRequest = (convId: string) => {
+  // Accept Message Request & make mutual friends
+  const acceptMessageRequest = async (convId: string) => {
     sounds.success();
-    toast.success('Chat unlocked.');
+    const activeConv = state.conversations.find(c => c.id === convId);
+    if (activeConv) {
+      const partnerId = activeConv.members.find(m => m !== state.currentUser.id);
+      if (partnerId) {
+        // Ensure bidirectional follow in state
+        dispatch({ type: 'TOGGLE_FOLLOW_USER', payload: { userId: partnerId, isFollowing: false } });
+      }
+    }
     dispatch({ type: 'SET_CONVERSATION_STATUS', payload: { convId, status: 'active' } });
+    toast.success('Message request accepted! You are now mutual friends. 🤝');
+
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.update('direct_messages', 'receiver_id', state.currentUser.id, {
+          is_approved: true,
+          is_friend_request: false,
+        });
+      } catch {
+        // Safe offline
+      }
+    }
   };
 
-  const declineMessageRequest = (convId: string) => {
+  // Decline Message Request
+  const declineMessageRequest = async (convId: string) => {
     sounds.click();
-    toast.info('Chat closed');
-    dispatch({ type: 'REMOVE_CONVERSATION', payload: { convId } });
+    dispatch({ type: 'SET_CONVERSATION_STATUS', payload: { convId, status: 'declined' } });
+    toast.info('Message request declined.');
+
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.update('direct_messages', 'receiver_id', state.currentUser.id, {
+          is_approved: false,
+        });
+      } catch {
+        // Safe offline
+      }
+    }
+  };
+
+  // Block Message User
+  const blockMessageUser = async (convId: string) => {
+    sounds.pop();
+    dispatch({ type: 'SET_CONVERSATION_STATUS', payload: { convId, status: 'blocked' } });
+    toast.error('User blocked from messaging you.');
+
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.update('direct_messages', 'receiver_id', state.currentUser.id, {
+          is_blocked: true,
+        });
+      } catch {
+        // Safe offline
+      }
+    }
   };
 
   const openVideoCall = (userName: string) => {
@@ -526,6 +678,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const value: WevidsContextType = {
     ...state,
     addPost,
+    deletePost,
     addClip,
     addLongVideo,
     addRom,
@@ -555,6 +708,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     sendMessage,
     acceptMessageRequest,
     declineMessageRequest,
+    blockMessageUser,
     openVideoCall,
     closeVideoCall,
     addToCart,

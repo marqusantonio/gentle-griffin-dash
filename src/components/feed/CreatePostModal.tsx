@@ -8,9 +8,11 @@ import {
   Send, 
   Film,
   Music2,
-  Tv
+  Tv,
+  ShieldAlert
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
+import { checkContentModeration } from '../../lib/supabase';
 import { toast } from 'sonner';
 
 interface CreatePostModalProps {
@@ -89,8 +91,15 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     reader.readAsDataURL(file);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // AI / Safety Content Moderation Check
+    const moderation = checkContentModeration(`${title} ${content}`);
+    if (moderation.flagged) {
+      toast.error(moderation.reason);
+      return;
+    }
 
     if (targetType === 'clips') {
       if (!mediaUrl && !content.trim()) {
@@ -98,7 +107,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         return;
       }
 
-      addClip({
+      await addClip({
         id: `clip-${Date.now()}`,
         userId: currentUser.id,
         title: title.trim() || 'New Creator Short Clip',
@@ -111,20 +120,17 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         comments: []
       });
 
-      sounds.success();
-      toast.success('Clip published directly to Clips Feed! 🎬');
       setActiveView('clips');
       onClose();
       return;
     }
 
-    // Otherwise standard Feed Post
     if (!content.trim() && !mediaUrl) {
       toast.error('Please type a message or upload media');
       return;
     }
 
-    addPost({
+    const success = await addPost({
       userId: currentUser.id,
       authorName: currentUser.name,
       authorHandle: currentUser.handle,
@@ -138,10 +144,10 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
       tags: [selectedTag]
     });
 
-    sounds.success();
-    toast.success('Post published to Community Feed!');
-    setActiveView('feed');
-    onClose();
+    if (success) {
+      setActiveView('feed');
+      onClose();
+    }
   };
 
   return (

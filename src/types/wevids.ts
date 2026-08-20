@@ -40,6 +40,25 @@ export interface UserProfile {
   isCreator?: boolean;
 }
 
+export interface DirectMessageItem {
+  id: string;
+  sender_id: string;
+  receiver_id: string;
+  content: string;
+  is_friend_request: boolean;
+  is_approved: boolean | null; // null = pending, true = accepted, false = declined
+  is_blocked: boolean;
+  mediaUrl?: string;
+  type?: 'text' | 'image' | 'gif' | 'audio' | 'file';
+  created_at: string;
+}
+
+export interface FollowRecord {
+  follower_id: string;
+  following_id: string;
+  created_at: string;
+}
+
 export interface AudioTrackItem {
   id: string;
   title: string;
@@ -104,6 +123,7 @@ export interface PostItem {
   isBookmarked?: boolean;
   comments: CommentItem[];
   tags?: string[];
+  created_at?: string;
 }
 
 export interface ShortClipItem {
@@ -120,6 +140,7 @@ export interface ShortClipItem {
   isDisliked?: boolean;
   isBookmarked?: boolean;
   comments: CommentItem[];
+  created_at?: string;
 }
 
 export interface VideoChapter {
@@ -203,6 +224,8 @@ export interface ChatMessage {
   type: 'text' | 'image' | 'gif' | 'video' | 'audio' | 'file';
   mediaUrl?: string;
   timestamp: string;
+  is_friend_request?: boolean;
+  is_approved?: boolean | null;
 }
 
 export interface Conversation {
@@ -217,7 +240,7 @@ export interface Conversation {
   time: string;
   unread: number;
   messages: ChatMessage[];
-  status: 'active' | 'pending_request';
+  status: 'active' | 'pending_request' | 'declined' | 'blocked';
   requestedBy?: string;
 }
 
