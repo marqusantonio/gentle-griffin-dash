@@ -24,6 +24,18 @@ export interface SupabaseSession {
   user: SupabaseUser;
 }
 
+// Clean helper to sanitize any user-entered Supabase project URL
+export const sanitizeSupabaseUrl = (inputUrl: string): string => {
+  if (!inputUrl) return '';
+  let cleaned = inputUrl.trim();
+  // Strip trailing slashes
+  cleaned = cleaned.replace(/\/+$/, '');
+  // Strip accidental path suffixes if user pasted full REST/auth URL
+  cleaned = cleaned.replace(/\/rest\/v1.*$/, '');
+  cleaned = cleaned.replace(/\/auth\/v1.*$/, '');
+  return cleaned;
+};
+
 // Storage helpers
 export const getSupabaseConfig = (): SupabaseConfig => {
   if (typeof window === 'undefined') return { url: '', anonKey: '' };
@@ -31,15 +43,19 @@ export const getSupabaseConfig = (): SupabaseConfig => {
   const envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
   const localUrl = localStorage.getItem('wevids_supabase_url') || '';
   const localKey = localStorage.getItem('wevids_supabase_anon_key') || '';
+  
+  const rawUrl = envUrl || localUrl || '';
+  const rawKey = envKey || localKey || '';
+  
   return {
-    url: (envUrl || localUrl).trim().replace(/\/+$/, ''),
-    anonKey: (envKey || localKey).trim(),
+    url: sanitizeSupabaseUrl(rawUrl),
+    anonKey: rawKey.trim(),
   };
 };
 
 export const saveSupabaseCredentials = (url: string, anonKey: string) => {
   if (typeof window !== 'undefined') {
-    const cleanUrl = url.trim().replace(/\/+$/, '');
+    const cleanUrl = sanitizeSupabaseUrl(url);
     localStorage.setItem('wevids_supabase_url', cleanUrl);
     localStorage.setItem('wevids_supabase_anon_key', anonKey.trim());
   }
@@ -104,7 +120,6 @@ export class SupabaseClient {
     }
 
     const redirectUrl = typeof window !== 'undefined' ? window.location.origin : '';
-    // Append both redirect_to and apikey so Supabase Kong gateway authorizes the request
     const oauthUrl = `${url}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUrl)}&apikey=${encodeURIComponent(anonKey)}`;
     
     if (typeof window !== 'undefined') {
@@ -138,7 +153,6 @@ export class SupabaseClient {
           }
         };
         saveStoredSession(session);
-        // Clean URL hash smoothly without reloading page
         window.history.replaceState(null, '', window.location.pathname);
         return session;
       }
@@ -241,15 +255,17 @@ export class SupabaseClient {
   public async select(table: string, query: string = '*'): Promise<{ data?: any[]; error?: string }> {
     const { url, anonKey } = getSupabaseConfig();
     if (!url) return { error: 'Supabase URL not configured' };
+    const cleanTable = table.trim().replace(/^\/+/, '');
+    if (!cleanTable) return { error: 'Invalid table name' };
 
     try {
-      const res = await fetch(`${url}/rest/v1/${table}?select=${encodeURIComponent(query)}&order=created_at.desc`, {
+      const res = await fetch(`${url}/rest/v1/${cleanTable}?select=${encodeURIComponent(query)}&order=created_at.desc`, {
         method: 'GET',
         headers: this.getHeaders(),
       });
       const data = await res.json();
       if (!res.ok) {
-        return { error: data.message || data.hint || data.details || 'Query failed' };
+        return { error: data.message || data.hint || data.details || `Query to ${cleanTable} failed` };
       }
       return { data: Array.isArray(data) ? data : [data] };
     } catch (err: any) {
@@ -260,16 +276,18 @@ export class SupabaseClient {
   public async upsert(table: string, payload: Record<string, any>): Promise<{ data?: any; error?: string }> {
     const { url } = getSupabaseConfig();
     if (!url) return { error: 'Supabase URL not configured' };
+    const cleanTable = table.trim().replace(/^\/+/, '');
+    if (!cleanTable) return { error: 'Invalid table name' };
 
     try {
-      const res = await fetch(`${url}/rest/v1/${table}`, {
+      const res = await fetch(`${url}/rest/v1/${cleanTable}`, {
         method: 'POST',
         headers: this.getHeaders(undefined, true),
         body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) {
-        return { error: data.message || data.hint || data.details || 'Sync failed' };
+        return { error: data.message || data.hint || data.details || `Upsert to ${cleanTable} failed` };
       }
       return { data };
     } catch (err: any) {
@@ -287,15 +305,27 @@ export class SupabaseClient {
       return { ok: false, message: 'URL and Anon Key are missing.' };
     }
     try {
-      const res = await fetch(`${url}/rest/v1/`, {
+      // Use the auth health endpoint or OpenAPI root endpoint to avoid PGRST125 path errors
+      const res = await fetch(`${url}/auth/v1/health?apikey=${encodeURIComponent(anonKey)}`, {
         method: 'GET',
         headers: {
           'apikey': anonKey,
-          'Authorization': `Bearer ${anonKey}`
         }
       });
-      if (res.ok || res.status === 200 || res.status === 401 || res.status === 404) {
-        return { ok: true, message: 'Connected to Supabase endpoint!' };
+      if (res.ok || res.status === 200) {
+        return { ok: true, message: 'Connected to Supabase successfully!' };
+      }
+
+      // Secondary fallback to OpenAPI schema endpoint
+      const restRes = await fetch(`${url}/rest/v1/?apikey=${encodeURIComponent(anonKey)}`, {
+        method: 'GET',
+        headers: {
+          'apikey': anonKey,
+          'Accept': 'application/openapi+json, application/json'
+        }
+      });
+      if (restRes.ok || restRes.status === 200 || restRes.status === 401) {
+        return { ok: true, message: 'Connected to Supabase REST endpoint!' };
       }
       return { ok: false, message: `Received HTTP status ${res.status}` };
     } catch (err: any) {
