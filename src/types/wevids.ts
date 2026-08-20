@@ -38,6 +38,8 @@ export interface UserProfile {
   verified?: boolean;
   walletBalance: number;
   isCreator?: boolean;
+  isGuest?: boolean;
+  email?: string;
 }
 
 export interface DirectMessageItem {

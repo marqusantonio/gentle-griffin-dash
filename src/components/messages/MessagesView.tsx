@@ -80,12 +80,31 @@ export const MessagesView: React.FC = () => {
     };
   }, [currentUser.id]);
 
-  const activeConv = conversations.find(c => c.id === activeConvId);
-  const otherMemberId = activeConv?.members?.find(id => id !== currentUser.id);
-  const otherUser = otherMemberId ? allUsers[otherMemberId] : null;
+  const activeConv = conversations.find(c => c.id === activeConvId) || conversations[0] || null;
+  const otherMemberId = activeConv?.members?.find(id => id !== currentUser.id) || '';
+  
+  // Safe Fallback Partner Profile: works whether they are guest or real registered user
+  const otherUser = otherMemberId ? (allUsers[otherMemberId] || {
+    id: otherMemberId,
+    name: otherMemberId.startsWith('guest-') ? `Guest_${otherMemberId.replace('guest-', '')}` : (activeConv?.groupName || 'Creator'),
+    handle: `@${otherMemberId.replace('guest-', 'guest_')}`,
+    avatar: otherMemberId.startsWith('guest-') ? 'G' : (activeConv?.avatar || 'C'),
+    color: activeConv?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
+    location: 'Earth Node',
+    bio: 'WEVIDS community member',
+    followers: 0,
+    following: 0,
+    videos: 0,
+    likes: 0,
+    views: '0',
+    joined: '2026',
+    walletBalance: 0,
+    isGuest: otherMemberId.startsWith('guest-')
+  }) : null;
+
   const isFriend = otherMemberId ? isMutualFriend(otherMemberId) : false;
 
-  // Filter incoming pending message requests (where current user did NOT initiate the request)
+  // Filter incoming pending message requests
   const pendingRequests = conversations.filter(c => 
     c.status === 'pending_request' && c.requestedBy !== currentUser.id
   );
@@ -215,6 +234,7 @@ export const MessagesView: React.FC = () => {
                     const partnerId = conv.members.find(m => m !== currentUser.id) || '';
                     const partner = allUsers[partnerId];
                     const isMutual = isMutualFriend(partnerId);
+                    const partnerName = partner?.name || (partnerId.startsWith('guest-') ? `Guest_${partnerId.replace('guest-', '')}` : 'Creator');
 
                     return (
                       <div
@@ -237,8 +257,11 @@ export const MessagesView: React.FC = () => {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between text-xs mb-0.5">
-                            <span className="font-bold text-white truncate">
-                              {partner?.name || 'Direct Chat'}
+                            <span className="font-bold text-white truncate flex items-center gap-1">
+                              {partnerName}
+                              {partner?.isGuest && (
+                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-white/10 text-[#8a8aa8]">Guest</span>
+                              )}
                             </span>
                             <span className="text-[10px] text-[#8a8aa8]">{conv.time}</span>
                           </div>
@@ -276,6 +299,7 @@ export const MessagesView: React.FC = () => {
                   pendingRequests.map(req => {
                     const requesterId = req.members.find(m => m !== currentUser.id) || '';
                     const requester = allUsers[requesterId];
+                    const requesterName = requester?.name || (requesterId.startsWith('guest-') ? `Guest_${requesterId.replace('guest-', '')}` : 'New Creator');
 
                     return (
                       <div key={req.id} className="p-3 rounded-2xl bg-white/5 border border-white/10 space-y-2">
@@ -287,7 +311,7 @@ export const MessagesView: React.FC = () => {
                             {req.avatar}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="text-xs font-bold text-white truncate">{requester?.name || 'New Creator'}</div>
+                            <div className="text-xs font-bold text-white truncate">{requesterName}</div>
                             <div className="text-[10px] text-[#8a8aa8] truncate">{req.lastMsg}</div>
                           </div>
                         </div>
@@ -343,7 +367,14 @@ export const MessagesView: React.FC = () => {
                       {creator.avatar}
                     </div>
                     <div className="truncate">
-                      <div className="text-xs font-bold text-white truncate">{creator.name}</div>
+                      <div className="text-xs font-bold text-white truncate flex items-center gap-1">
+                        {creator.name}
+                        {creator.isGuest ? (
+                          <span className="text-[8px] bg-white/10 px-1 py-0.2 rounded text-[#8a8aa8]">Guest</span>
+                        ) : (
+                          <span className="text-[8px] bg-[#00e5ff]/20 px-1 py-0.2 rounded text-[#00e5ff]">Account</span>
+                        )}
+                      </div>
                       <div className="text-[10px] text-[#8a8aa8]">{creator.handle}</div>
                     </div>
                   </div>
@@ -375,9 +406,18 @@ export const MessagesView: React.FC = () => {
                 <div>
                   <div className="text-xs font-bold text-white flex items-center gap-1.5 group-hover:text-[#00e5ff]">
                     {otherUser.name}
+                    {otherUser.isGuest ? (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/10 text-[#8a8aa8]">
+                        Guest Creator
+                      </span>
+                    ) : (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#00e5ff]/15 text-[#00e5ff] border border-[#00e5ff]/30">
+                        Verified Account
+                      </span>
+                    )}
                     {isFriend && (
                       <span className="text-[9px] text-[#10b981] bg-[#10b981]/20 px-2 py-0.5 rounded-full border border-[#10b981]/30">
-                        Mutual Friends
+                        🤝 Friends
                       </span>
                     )}
                   </div>
@@ -403,7 +443,7 @@ export const MessagesView: React.FC = () => {
                   <Clock className="w-4 h-4" />
                   <span>
                     {activeConv.requestedBy === currentUser.id 
-                      ? 'Message request pending receiver approval.' 
+                      ? 'Message request pending approval. You can send 1 introductory message.' 
                       : `${otherUser.name} sent you a message request.`}
                   </span>
                 </div>
@@ -592,13 +632,12 @@ export const MessagesView: React.FC = () => {
                     ? 'Message request pending approval...'
                     : `Message ${otherUser.name}...`
                 }
-                disabled={!isFriend && activeConv.status === 'pending_request' && activeConv.messages.length >= 1 && activeConv.requestedBy === currentUser.id}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:outline-none focus:border-[#00e5ff] disabled:opacity-50"
+                className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:outline-none focus:border-[#00e5ff]"
               />
 
               <button
                 type="submit"
-                disabled={(!messageText.trim() && !attachedImage) || (!isFriend && activeConv.status === 'pending_request' && activeConv.messages.length >= 1 && activeConv.requestedBy === currentUser.id)}
+                disabled={!messageText.trim() && !attachedImage}
                 className="p-2.5 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-bold hover:scale-105 transition-transform shadow-md disabled:opacity-50"
               >
                 <Send className="w-4 h-4" />

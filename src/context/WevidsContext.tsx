@@ -14,7 +14,7 @@ import {
 } from '../types/wevids';
 import { wevidsReducer, initialWevidsState, WevidsState } from './wevidsReducer';
 import { INITIAL_AUDIO_TRACKS, INITIAL_FILMS } from '../data/mediaData';
-import { supabase, isSupabaseConfigured, checkContentModeration } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, checkContentModeration, getStoredSession } from '../lib/supabase';
 import { loadLocalSyncData, saveLocalSyncData, fetchGlobalCloudState, pushGlobalCloudState } from '../lib/syncService';
 import { sounds } from '../lib/soundFx';
 import { toast } from 'sonner';
@@ -71,6 +71,29 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   useEffect(() => {
     sounds.enabled = state.soundEnabled;
   }, [state.soundEnabled]);
+
+  // Check on boot if active account session exists
+  useEffect(() => {
+    const session = getStoredSession();
+    if (session?.user) {
+      const email = session.user.email || 'user@wevids.app';
+      const name = session.user.user_metadata?.full_name || session.user.user_metadata?.name || email.split('@')[0];
+      const avatarImg = session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture;
+      dispatch({
+        type: 'UPDATE_CURRENT_USER',
+        payload: {
+          id: session.user.id || 'auth_user',
+          name,
+          handle: `@${name.toLowerCase().replace(/\s+/g, '_')}`,
+          avatar: name.charAt(0).toUpperCase() || 'U',
+          avatarImage: avatarImg,
+          verified: true,
+          isGuest: false,
+          email,
+        }
+      });
+    }
+  }, []);
 
   // Sync state across tabs and devices
   const syncWithSupabase = async () => {
@@ -133,7 +156,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   }, []);
 
   const addPost = async (post: Partial<PostItem>): Promise<boolean> => {
-    // Content moderation check (AI/Keyword rule)
     const moderation = checkContentModeration(post.content || '');
     if (moderation.flagged) {
       toast.error(moderation.reason || 'Post violates community guidelines.');
@@ -392,6 +414,13 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const openUserProfileModal = (user: UserProfile) => {
     sounds.click();
+    // Ensure this user exists in directory
+    if (user && user.id && !state.allUsers[user.id]) {
+      dispatch({
+        type: 'UPDATE_CURRENT_USER',
+        payload: {} // Trigger state pass
+      });
+    }
     dispatch({ type: 'OPEN_USER_PROFILE_MODAL', payload: user });
   };
 
@@ -413,7 +442,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return (state.currentUser.followingIds || []).includes(userId);
   };
 
-  // True if and only if both users follow each other
   const isMutualFriend = (userId?: string) => {
     if (!userId || userId === state.currentUser.id) return false;
     const targetUser = state.allUsers[userId];
@@ -423,14 +451,12 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return Boolean(followingThem && theyFollowMe);
   };
 
-  // Part A: Follow / Unfollow logic and mutual friend transition
   const toggleFollowUser = async (userId: string) => {
     sounds.click();
     const currentlyFollowing = isFollowing(userId);
     dispatch({ type: 'TOGGLE_FOLLOW_USER', payload: { userId, isFollowing: currentlyFollowing } });
 
     if (!currentlyFollowing) {
-      // Check if target user already follows current user
       const targetUser = state.allUsers[userId];
       const targetFollowsMe = (targetUser?.followingIds || []).includes(state.currentUser.id);
 
@@ -484,7 +510,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     dispatch({ type: 'ADD_CLIP_COMMENT', payload: { clipId, comment } });
   };
 
-  // Part B & C: Start chat honoring mutual friend vs. message request status
+  // Safe Start or Open Chat with Any User (Guest or Real Account)
   const startOrOpenChatWithUser = (userId: string) => {
     sounds.click();
     const isFriend = isMutualFriend(userId);
@@ -494,18 +520,29 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     );
     
     if (existingConv) {
-      setActiveConvId(existingConv.id);
-      setActiveView('messages');
+      dispatch({ type: 'SET_ACTIVE_CONV_ID', payload: existingConv.id });
+      dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'messages' });
     } else {
       const otherUser = state.allUsers[userId] || {
         id: userId,
-        name: `Creator_${userId.slice(0, 4)}`,
-        avatar: 'C',
-        color: 'linear-gradient(135deg, #ff2d95, #00e5ff)'
+        name: userId.startsWith('guest-') ? `Guest_${userId.replace('guest-', '')}` : `Creator_${userId.slice(0, 5)}`,
+        avatar: userId.startsWith('guest-') ? 'G' : 'C',
+        color: 'linear-gradient(135deg, #ff2d95, #00e5ff)',
+        handle: `@${userId}`,
+        followers: 0,
+        following: 0,
+        location: 'Earth Node',
+        bio: 'WEVIDS creator',
+        videos: 0,
+        likes: 0,
+        views: '0',
+        joined: '2026',
+        walletBalance: 0,
+        isGuest: userId.startsWith('guest-')
       };
 
       const newConv: Conversation = {
-        id: `conv-${userId}-${Date.now()}`,
+        id: `conv-${state.currentUser.id}-${userId}`,
         isGroup: false,
         avatar: otherUser.avatar || 'U',
         color: otherUser.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
@@ -517,9 +554,10 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         status: isFriend ? 'active' : 'pending_request',
         requestedBy: state.currentUser.id,
       };
+
       dispatch({ type: 'ADD_CONVERSATION', payload: newConv });
-      setActiveConvId(newConv.id);
-      setActiveView('messages');
+      dispatch({ type: 'SET_ACTIVE_CONV_ID', payload: newConv.id });
+      dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'messages' });
     }
   };
 
@@ -529,12 +567,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     const receiverId = activeConv.members.find(m => m !== state.currentUser.id) || '';
     const isFriend = isMutualFriend(receiverId);
-
-    // If not mutual friends and already pending, prevent spam
-    if (!isFriend && activeConv.status === 'pending_request' && activeConv.messages.length >= 1 && activeConv.requestedBy === state.currentUser.id) {
-      toast.error('Message request pending. Please wait until the creator accepts your request.');
-      return;
-    }
 
     // Blocked check
     if (activeConv.status === 'blocked') {
@@ -577,14 +609,12 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-  // Accept Message Request & make mutual friends
   const acceptMessageRequest = async (convId: string) => {
     sounds.success();
     const activeConv = state.conversations.find(c => c.id === convId);
     if (activeConv) {
       const partnerId = activeConv.members.find(m => m !== state.currentUser.id);
       if (partnerId) {
-        // Ensure bidirectional follow in state
         dispatch({ type: 'TOGGLE_FOLLOW_USER', payload: { userId: partnerId, isFollowing: false } });
       }
     }
@@ -603,7 +633,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-  // Decline Message Request
   const declineMessageRequest = async (convId: string) => {
     sounds.click();
     dispatch({ type: 'SET_CONVERSATION_STATUS', payload: { convId, status: 'declined' } });
@@ -620,7 +649,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-  // Block Message User
   const blockMessageUser = async (convId: string) => {
     sounds.pop();
     dispatch({ type: 'SET_CONVERSATION_STATUS', payload: { convId, status: 'blocked' } });

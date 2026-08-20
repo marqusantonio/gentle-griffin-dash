@@ -1,19 +1,54 @@
 import { PostItem, ShortClipItem, LongVideoItem, RomItem, ProductItem, Conversation, UserProfile, SavedCollection } from '../types/wevids';
+import { getStoredSession } from '../lib/supabase';
 
-// Load or generate a persistent Guest ID for this device
-function getOrCreateGuestProfile(): UserProfile {
-  const GUEST_STORAGE_KEY = 'wevids_guest_profile_v3';
+// Load stored account profile or generate persistent Guest
+function getInitialUserProfile(): UserProfile {
   if (typeof window !== 'undefined') {
+    // 1. Check if authenticated Supabase session exists
+    const session = getStoredSession();
+    if (session?.user) {
+      const email = session.user.email || 'user@wevids.app';
+      const name = session.user.user_metadata?.full_name || session.user.user_metadata?.name || email.split('@')[0];
+      const avatarImg = session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture;
+      return {
+        id: session.user.id || 'auth_user',
+        name: name,
+        handle: `@${name.toLowerCase().replace(/\s+/g, '_')}`,
+        avatar: name.charAt(0).toUpperCase() || 'U',
+        avatarImage: avatarImg,
+        color: 'linear-gradient(135deg, #00e5ff, #ff2d95)',
+        location: 'Verified Cloud Node',
+        bio: 'Verified WEVIDS creator account.',
+        followers: 120,
+        following: 15,
+        followingIds: ['user_aiko', 'user_carlos'],
+        followerIds: ['user_aiko'],
+        videos: 2,
+        likes: 450,
+        views: '1.2K',
+        joined: '2026',
+        verified: true,
+        walletBalance: 150,
+        isCreator: true,
+        isGuest: false,
+        email: email
+      };
+    }
+
+    // 2. Check stored guest profile
+    const GUEST_STORAGE_KEY = 'wevids_guest_profile_v3';
     try {
       const saved = localStorage.getItem(GUEST_STORAGE_KEY);
       if (saved) {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return { ...parsed, isGuest: true };
       }
     } catch {
       // ignore
     }
   }
 
+  // 3. Fallback fresh guest
   const randomGuestNum = Math.floor(1000 + Math.random() * 9000);
   const colors = [
     'linear-gradient(135deg, #ff2d95, #00e5ff)',
@@ -43,11 +78,12 @@ function getOrCreateGuestProfile(): UserProfile {
     verified: false,
     walletBalance: 50,
     isCreator: true,
+    isGuest: true,
   };
 
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(profile));
+      localStorage.setItem('wevids_guest_profile_v3', JSON.stringify(profile));
     } catch {
       // ignore
     }
@@ -56,7 +92,7 @@ function getOrCreateGuestProfile(): UserProfile {
   return profile;
 }
 
-export const CURRENT_USER: UserProfile = getOrCreateGuestProfile();
+export const CURRENT_USER: UserProfile = getInitialUserProfile();
 
 export const MOCK_USERS: Record<string, UserProfile> = {
   [CURRENT_USER.id]: CURRENT_USER,
@@ -70,6 +106,8 @@ export const MOCK_USERS: Record<string, UserProfile> = {
     bio: 'Anime voxel artist and 3D visual researcher on WEVIDS.',
     followers: 1420,
     following: 110,
+    followingIds: ['user_carlos'],
+    followerIds: [],
     videos: 12,
     likes: 8500,
     views: '45K',
@@ -77,6 +115,7 @@ export const MOCK_USERS: Record<string, UserProfile> = {
     verified: true,
     walletBalance: 320,
     isCreator: true,
+    isGuest: false,
   },
   'user_carlos': {
     id: 'user_carlos',
@@ -88,6 +127,8 @@ export const MOCK_USERS: Record<string, UserProfile> = {
     bio: 'Snapdragon overclocking kernels and HyperOS China port maintainer.',
     followers: 3200,
     following: 85,
+    followingIds: ['user_aiko'],
+    followerIds: [],
     videos: 28,
     likes: 19400,
     views: '120K',
@@ -95,6 +136,7 @@ export const MOCK_USERS: Record<string, UserProfile> = {
     verified: true,
     walletBalance: 850,
     isCreator: true,
+    isGuest: false,
   },
   'user_sara': {
     id: 'user_sara',
@@ -106,6 +148,8 @@ export const MOCK_USERS: Record<string, UserProfile> = {
     bio: 'Cinematographer & synthwave audio producer.',
     followers: 890,
     following: 42,
+    followingIds: [],
+    followerIds: [],
     videos: 7,
     likes: 4200,
     views: '22K',
@@ -113,6 +157,7 @@ export const MOCK_USERS: Record<string, UserProfile> = {
     verified: true,
     walletBalance: 210,
     isCreator: true,
+    isGuest: false,
   },
   'user_dexter': {
     id: 'user_dexter',
@@ -124,6 +169,8 @@ export const MOCK_USERS: Record<string, UserProfile> = {
     bio: 'Building low-latency Android kernels and Magisk thermal modules.',
     followers: 2100,
     following: 150,
+    followingIds: [],
+    followerIds: [],
     videos: 19,
     likes: 11300,
     views: '78K',
@@ -131,6 +178,7 @@ export const MOCK_USERS: Record<string, UserProfile> = {
     verified: true,
     walletBalance: 600,
     isCreator: true,
+    isGuest: false,
   }
 };
 

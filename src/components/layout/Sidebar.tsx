@@ -12,11 +12,13 @@ import {
   MessageSquareText, 
   UserCheck, 
   Volume2, 
-  VolumeX,
+  VolumeX, 
   Video,
   Bookmark,
   UserPlus,
-  Check
+  Check,
+  ShieldCheck,
+  User
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
 
@@ -125,10 +127,10 @@ export const Sidebar: React.FC = () => {
 
   // Recommended friends catalog
   const recommendedCreators = [
-    { id: 'user_aiko', name: 'Aiko Tanaka', handle: '@aiko_visuals', avatar: '🌸', color: 'linear-gradient(135deg, #ff2d95, #fbbf24)' },
-    { id: 'user_carlos', name: 'Carlos Vance', handle: '@carlos_modder', avatar: '⚡', color: 'linear-gradient(135deg, #00e5ff, #9333ea)' },
-    { id: 'user_sara', name: 'Sara Saffron', handle: '@sara_tehran', avatar: '☕', color: 'linear-gradient(135deg, #fbbf24, #ff2d95)' },
-    { id: 'user_dexter', name: 'Dexter Kernel', handle: '@dexter_hyperos', avatar: '🤖', color: 'linear-gradient(135deg, #10b981, #00e5ff)' },
+    { id: 'user_aiko', name: 'Aiko Tanaka', handle: '@aiko_visuals', avatar: '🌸', color: 'linear-gradient(135deg, #ff2d95, #fbbf24)', isGuest: false },
+    { id: 'user_carlos', name: 'Carlos Vance', handle: '@carlos_modder', avatar: '⚡', color: 'linear-gradient(135deg, #00e5ff, #9333ea)', isGuest: false },
+    { id: 'user_sara', name: 'Sara Saffron', handle: '@sara_tehran', avatar: '☕', color: 'linear-gradient(135deg, #fbbf24, #ff2d95)', isGuest: false },
+    { id: 'user_dexter', name: 'Dexter Kernel', handle: '@dexter_hyperos', avatar: '🤖', color: 'linear-gradient(135deg, #10b981, #00e5ff)', isGuest: false },
   ];
 
   return (
@@ -219,7 +221,10 @@ export const Sidebar: React.FC = () => {
                       {rec.avatar}
                     </div>
                     <div className="truncate min-w-0">
-                      <div className="font-bold text-white text-[11px] truncate">{rec.name}</div>
+                      <div className="font-bold text-white text-[11px] truncate flex items-center gap-1">
+                        {rec.name}
+                        <ShieldCheck className="w-3 h-3 text-[#00e5ff]" />
+                      </div>
                       <div className="text-[9px] text-[#8a8aa8] truncate">{rec.handle}</div>
                     </div>
                   </div>
@@ -247,7 +252,7 @@ export const Sidebar: React.FC = () => {
         <div className="flex items-center justify-between px-1 text-xs text-[#8a8aa8]">
           <div className="flex items-center gap-1.5 text-[10px] text-[#00e5ff]">
             <span className="w-2 h-2 rounded-full bg-[#10b981] animate-ping" />
-            <span>Encrypted Node v3.1</span>
+            <span>{currentUser?.isGuest ? 'Guest Node' : 'Verified Account'}</span>
           </div>
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
@@ -276,6 +281,11 @@ export const Sidebar: React.FC = () => {
           <div className="flex-1 min-w-0">
             <div className="text-xs font-bold text-white truncate flex items-center gap-1">
               {currentUser?.name || 'Guest Creator'}
+              {currentUser?.isGuest ? (
+                <span className="text-[8px] bg-white/10 text-[#8a8aa8] px-1 py-0.2 rounded font-sans">Guest</span>
+              ) : (
+                <ShieldCheck className="w-3 h-3 text-[#00e5ff] flex-shrink-0" />
+              )}
             </div>
             <div className="text-[10px] text-[#00e5ff] font-orbitron truncate">
               {currentUser?.handle || '@guest'}
