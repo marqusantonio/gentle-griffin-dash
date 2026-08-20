@@ -28,9 +28,7 @@ export interface SupabaseSession {
 export const sanitizeSupabaseUrl = (inputUrl: string): string => {
   if (!inputUrl) return '';
   let cleaned = inputUrl.trim();
-  // Strip trailing slashes
   cleaned = cleaned.replace(/\/+$/, '');
-  // Strip accidental path suffixes if user pasted full REST/auth URL
   cleaned = cleaned.replace(/\/rest\/v1.*$/, '');
   cleaned = cleaned.replace(/\/auth\/v1.*$/, '');
   return cleaned;
@@ -116,7 +114,7 @@ export class SupabaseClient {
   public async signInWithGoogle(): Promise<{ url?: string; error?: string }> {
     const { url, anonKey } = getSupabaseConfig();
     if (!url || !anonKey) {
-      return { error: 'Please configure your Supabase URL & Public Anon Key first in Link Cloud.' };
+      return { error: 'Please configure your Supabase URL & Public Anon Key first.' };
     }
 
     const redirectUrl = typeof window !== 'undefined' ? window.location.origin : '';
@@ -128,37 +126,43 @@ export class SupabaseClient {
     return { url: oauthUrl };
   }
 
-  // Parse OAuth access_token from hash fragments upon return
-  public parseOAuthCallback(): SupabaseSession | null {
+  // Parse OAuth access_token or error params from hash fragments / query strings upon return
+  public parseOAuthCallback(): { session?: SupabaseSession; error?: string } | null {
     if (typeof window === 'undefined') return null;
     const hash = window.location.hash;
-    if (!hash || !hash.includes('access_token=')) return null;
+    const search = window.location.search;
+    
+    const hashParams = new URLSearchParams(hash ? hash.replace(/^#/, '') : '');
+    const searchParams = new URLSearchParams(search ? search.replace(/^\?/, '') : '');
 
-    try {
-      const params = new URLSearchParams(hash.replace(/^#/, ''));
-      const accessToken = params.get('access_token');
-      const refreshToken = params.get('refresh_token') || '';
-      const expiresIn = Number(params.get('expires_in')) || 3600;
-      const tokenType = params.get('token_type') || 'bearer';
-
-      if (accessToken) {
-        const session: SupabaseSession = {
-          access_token: accessToken,
-          refresh_token: refreshToken,
-          expires_in: expiresIn,
-          token_type: tokenType,
-          user: {
-            id: 'oauth_user',
-            email: 'google_user@wevids.app',
-          }
-        };
-        saveStoredSession(session);
-        window.history.replaceState(null, '', window.location.pathname);
-        return session;
-      }
-    } catch {
-      // Safe ignore
+    // Check for provider error in query or hash
+    const errorDescription = hashParams.get('error_description') || searchParams.get('error_description') || searchParams.get('error');
+    if (errorDescription) {
+      window.history.replaceState(null, '', window.location.pathname);
+      return { error: decodeURIComponent(errorDescription.replace(/\+/g, ' ')) };
     }
+
+    const accessToken = hashParams.get('access_token');
+    const refreshToken = hashParams.get('refresh_token') || '';
+    const expiresIn = Number(hashParams.get('expires_in')) || 3600;
+    const tokenType = hashParams.get('token_type') || 'bearer';
+
+    if (accessToken) {
+      const session: SupabaseSession = {
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        expires_in: expiresIn,
+        token_type: tokenType,
+        user: {
+          id: 'oauth_user',
+          email: 'google_user@wevids.app',
+        }
+      };
+      saveStoredSession(session);
+      window.history.replaceState(null, '', window.location.pathname);
+      return { session };
+    }
+
     return null;
   }
 
@@ -305,7 +309,6 @@ export class SupabaseClient {
       return { ok: false, message: 'URL and Anon Key are missing.' };
     }
     try {
-      // Use the auth health endpoint or OpenAPI root endpoint to avoid PGRST125 path errors
       const res = await fetch(`${url}/auth/v1/health?apikey=${encodeURIComponent(anonKey)}`, {
         method: 'GET',
         headers: {
@@ -316,7 +319,6 @@ export class SupabaseClient {
         return { ok: true, message: 'Connected to Supabase successfully!' };
       }
 
-      // Secondary fallback to OpenAPI schema endpoint
       const restRes = await fetch(`${url}/rest/v1/?apikey=${encodeURIComponent(anonKey)}`, {
         method: 'GET',
         headers: {
