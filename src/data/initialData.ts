@@ -182,8 +182,85 @@ export const MOCK_USERS: Record<string, UserProfile> = {
   }
 };
 
-export const INITIAL_POSTS: PostItem[] = [];
-export const INITIAL_CLIPS: ShortClipItem[] = [];
+export const INITIAL_POSTS: PostItem[] = [
+  {
+    id: 'post-init-1',
+    userId: 'user_carlos',
+    authorName: 'Carlos Vance',
+    authorHandle: '@carlos_modder',
+    authorAvatar: '⚡',
+    authorColor: 'linear-gradient(135deg, #00e5ff, #9333ea)',
+    location: 'Berlin Node',
+    time: '10m ago',
+    content: '🚀 HyperOS 2.0 kernel scheduler optimized for Snapdragon 8 Gen 3! Dropped touch latency down to 4.2ms. Check the ROM Vault to flash the ZIP.',
+    tags: ['#CustomROM', '#Tech', '#WEVIDS'],
+    likes: 34,
+    dislikes: 0,
+    shares: 8,
+    comments: [
+      {
+        id: 'c-init-1',
+        user: 'user_dexter',
+        userName: 'Dexter Kernel',
+        userAvatar: '🤖',
+        userColor: 'linear-gradient(135deg, #10b981, #00e5ff)',
+        text: 'Clean thermals! Testing on Xiaomi 14 right now.',
+        timestamp: '5m ago',
+        likes: 4
+      }
+    ],
+    created_at: new Date(Date.now() - 600000).toISOString()
+  },
+  {
+    id: 'post-init-2',
+    userId: 'user_aiko',
+    authorName: 'Aiko Tanaka',
+    authorHandle: '@aiko_visuals',
+    authorAvatar: '🌸',
+    authorColor: 'linear-gradient(135deg, #ff2d95, #fbbf24)',
+    location: 'Tokyo, Japan',
+    time: '25m ago',
+    content: '✨ Cyberpunk anime render test finished in 8K Octane with liquid reflections. What do you think?',
+    mediaUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1000&q=80',
+    mediaType: 'image',
+    tags: ['#Anime', '#Cyberpunk', '#WEVIDS'],
+    likes: 58,
+    dislikes: 0,
+    shares: 14,
+    comments: [],
+    created_at: new Date(Date.now() - 1500000).toISOString()
+  }
+];
+
+export const INITIAL_CLIPS: ShortClipItem[] = [
+  {
+    id: 'clip-init-1',
+    userId: 'user_aiko',
+    title: 'Neon Drift Cyber City ⚡',
+    description: 'Real-time raytracing test in Unreal Engine 5.5 mobile viewport.',
+    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+    audioTrack: 'Aiko Tanaka · Tokyo Neon Night',
+    likes: 142,
+    dislikes: 2,
+    shares: 38,
+    comments: [],
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'clip-init-2',
+    userId: 'user_carlos',
+    title: 'Flashing Custom Recovery Live 🛠️',
+    description: 'Step-by-step fastboot flash script tutorial.',
+    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
+    audioTrack: 'Carlos Vance · Synth Beats',
+    likes: 89,
+    dislikes: 0,
+    shares: 19,
+    comments: [],
+    created_at: new Date().toISOString()
+  }
+];
+
 export const INITIAL_CONVERSATIONS: Conversation[] = [];
 export const INITIAL_LONG_VIDEOS: LongVideoItem[] = [];
 export const INITIAL_ROMS: RomItem[] = [];

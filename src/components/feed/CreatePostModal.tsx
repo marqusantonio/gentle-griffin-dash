@@ -8,8 +8,7 @@ import {
   Send, 
   Film,
   Music2,
-  Tv,
-  ShieldAlert
+  Tv
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
 import { checkContentModeration } from '../../lib/supabase';
@@ -91,6 +90,13 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     reader.readAsDataURL(file);
   };
 
+  const resetForm = () => {
+    setContent('');
+    setTitle('');
+    setMediaUrl(null);
+    setFileName('');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -102,24 +108,25 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     }
 
     if (targetType === 'clips') {
-      if (!mediaUrl && !content.trim()) {
-        toast.error('Please upload a video or provide a video URL for your Clip');
+      if (!mediaUrl && !content.trim() && !title.trim()) {
+        toast.error('Please upload a video or provide a title for your Clip');
         return;
       }
 
       await addClip({
         id: `clip-${Date.now()}`,
-        userId: currentUser.id,
+        userId: currentUser?.id || 'guest',
         title: title.trim() || 'New Creator Short Clip',
         description: content.trim() || 'Vertical short clip uploaded on WEVIDS',
         videoUrl: mediaUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-        audioTrack: audioTrack.trim() || `${currentUser.name} · Original Audio`,
+        audioTrack: audioTrack.trim() || `${currentUser?.name || 'Creator'} · Original Audio`,
         likes: 0,
         dislikes: 0,
         shares: 0,
         comments: []
       });
 
+      resetForm();
       setActiveView('clips');
       onClose();
       return;
@@ -131,12 +138,12 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     }
 
     const success = await addPost({
-      userId: currentUser.id,
-      authorName: currentUser.name,
-      authorHandle: currentUser.handle,
-      authorAvatar: currentUser.avatar,
-      authorColor: currentUser.color,
-      location: currentUser.location,
+      userId: currentUser?.id || 'guest',
+      authorName: currentUser?.name || 'Creator',
+      authorHandle: currentUser?.handle || '@creator',
+      authorAvatar: currentUser?.avatar || 'C',
+      authorColor: currentUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
+      location: currentUser?.location || 'Earth Node',
       time: 'Just now',
       content: content.trim(),
       mediaUrl: mediaUrl || undefined,
@@ -145,6 +152,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     });
 
     if (success) {
+      resetForm();
       setActiveView('feed');
       onClose();
     }
@@ -164,13 +172,13 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         <div className="flex items-center gap-3 pb-3 border-b border-white/10">
           <div
             className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-900 text-sm shadow-md"
-            style={{ background: currentUser.color }}
+            style={{ background: currentUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
           >
-            {currentUser.avatar}
+            {currentUser?.avatar || 'G'}
           </div>
           <div>
             <h3 className="font-orbitron font-bold text-base text-white">Publish Creator Content</h3>
-            <div className="text-xs text-[#00e5ff]">Posting as {currentUser.name} ({currentUser.handle})</div>
+            <div className="text-xs text-[#00e5ff]">Posting as {currentUser?.name || 'Creator'} ({currentUser?.handle || '@creator'})</div>
           </div>
         </div>
 

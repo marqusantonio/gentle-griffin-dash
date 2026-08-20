@@ -11,7 +11,8 @@ import {
   CheckCircle2,
   Film,
   Radio,
-  Trash2
+  Trash2,
+  Send
 } from 'lucide-react';
 import { RichCommentInput } from '../comments/RichCommentInput';
 import { CreatePostModal } from './CreatePostModal';
@@ -27,12 +28,16 @@ export const DualFeedView: React.FC = () => {
     openShareModal, 
     openUserProfileModal,
     addPost,
-    deletePost
+    deletePost,
+    togglePostLike,
+    addPostComment
   } = useWevids();
 
   const [selectedTopic, setSelectedTopic] = useState('All');
   const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
   const [composerTarget, setComposerTarget] = useState<'feed' | 'clips'>('feed');
+  const [quickInputText, setQuickInputText] = useState('');
+  const [openCommentsPostId, setOpenCommentsPostId] = useState<string | null>(null);
 
   // Listen for real-time inserts and deletes using Supabase Realtime channel
   useEffect(() => {
@@ -60,11 +65,7 @@ export const DualFeedView: React.FC = () => {
           }
         }
       )
-      .subscribe((status: string) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('Realtime posts-channel subscribed successfully');
-        }
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -82,6 +83,20 @@ export const DualFeedView: React.FC = () => {
     sounds.pop();
     setComposerTarget(target);
     setIsCreatePostOpen(true);
+  };
+
+  const handleQuickSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickInputText.trim()) return;
+
+    const success = await addPost({
+      content: quickInputText.trim(),
+      tags: ['#WEVIDS']
+    });
+
+    if (success) {
+      setQuickInputText('');
+    }
   };
 
   const handleDelete = (postId: string) => {
@@ -126,32 +141,55 @@ export const DualFeedView: React.FC = () => {
         </div>
       </div>
 
-      {/* In-Feed Composer Input Bar */}
-      <div 
-        onClick={() => handleOpenComposer('feed')}
-        className="liquid-glass-card rounded-2xl p-4 border border-white/10 flex items-center justify-between gap-3 cursor-pointer hover:border-[#00e5ff]/50 transition-all shadow-md"
+      {/* In-Feed Quick Composer Input Bar */}
+      <form 
+        onSubmit={handleQuickSubmit}
+        className="liquid-glass-card rounded-2xl p-3 sm:p-4 border border-white/10 flex items-center justify-between gap-3 shadow-md focus-within:border-[#00e5ff]/60 transition-all"
       >
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div
-            className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-900 text-xs shadow-md flex-shrink-0"
-            style={{ background: currentUser.color }}
-          >
-            {currentUser.avatar}
-          </div>
-          <span className="text-xs text-[#8a8aa8] truncate">
-            Share a new video or thought, {currentUser.name}...
-          </span>
+        <div
+          className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-900 text-xs shadow-md flex-shrink-0"
+          style={{ background: currentUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
+        >
+          {currentUser?.avatar || 'G'}
         </div>
 
-        <div className="flex items-center gap-2">
-          <button className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-[#fbbf24]">
+        <input
+          type="text"
+          value={quickInputText}
+          onChange={(e) => setQuickInputText(e.target.value)}
+          placeholder={`Share a thought or link, ${currentUser?.name || 'creator'}...`}
+          className="flex-1 bg-transparent text-xs text-white placeholder-[#8a8aa8] focus:outline-none py-1"
+        />
+
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => handleOpenComposer('feed')}
+            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-[#fbbf24] transition-colors"
+            title="Attach Media / Details"
+          >
             <ImageIcon className="w-4 h-4" />
           </button>
-          <button className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-[#00e5ff]">
+          
+          <button
+            type="button"
+            onClick={() => handleOpenComposer('clips')}
+            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-[#00e5ff] transition-colors"
+            title="Upload Clip"
+          >
             <VideoIcon className="w-4 h-4" />
           </button>
+
+          <button
+            type="submit"
+            disabled={!quickInputText.trim()}
+            className="p-2 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-bold hover:scale-105 transition-transform disabled:opacity-40"
+            title="Publish"
+          >
+            <Send className="w-4 h-4" />
+          </button>
         </div>
-      </div>
+      </form>
 
       {/* Topic Filter Pills */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
@@ -181,9 +219,9 @@ export const DualFeedView: React.FC = () => {
               <Sparkles className="w-8 h-8 animate-pulse" />
             </div>
             <div className="space-y-1">
-              <h3 className="font-orbitron font-bold text-lg text-white">No posts in the feed yet!</h3>
+              <h3 className="font-orbitron font-bold text-lg text-white">No posts matching this topic!</h3>
               <p className="text-xs text-[#8a8aa8] max-w-sm mx-auto">
-                Be the first person to publish a video, thought, or photo to the global network.
+                Be the first person to publish a thought, screenshot, or video to this stream.
               </p>
             </div>
             <button
@@ -207,11 +245,12 @@ export const DualFeedView: React.FC = () => {
             };
 
             const isAuthor = post.userId === currentUser.id;
+            const areCommentsOpen = openCommentsPostId === post.id;
 
             return (
               <div
                 key={post.id}
-                className="liquid-glass rounded-3xl p-6 border border-white/15 shadow-2xl space-y-4 hover:border-white/25 transition-all"
+                className="liquid-glass rounded-3xl p-5 sm:p-6 border border-white/15 shadow-2xl space-y-4 hover:border-white/25 transition-all"
               >
                 {/* Author Info & Creator Delete Option */}
                 <div className="flex items-center justify-between">
@@ -235,7 +274,7 @@ export const DualFeedView: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-[#8a8aa8]">{post.location}</span>
+                    <span className="text-xs text-[#8a8aa8] hidden sm:inline">{post.location}</span>
                     {isAuthor && (
                       <button
                         onClick={() => handleDelete(post.id)}
@@ -285,14 +324,22 @@ export const DualFeedView: React.FC = () => {
                 <div className="pt-3 border-t border-white/10 flex items-center justify-between text-xs text-[#8a8aa8]">
                   <div className="flex items-center gap-4">
                     <button
-                      onClick={() => sounds.like()}
-                      className="flex items-center gap-1.5 hover:text-[#ff2d95] transition-colors"
+                      onClick={() => togglePostLike(post.id)}
+                      className={`flex items-center gap-1.5 transition-colors ${
+                        post.isLiked ? 'text-[#ff2d95] font-bold' : 'hover:text-[#ff2d95]'
+                      }`}
                     >
-                      <Heart className="w-4 h-4 text-[#ff2d95]" />
-                      <span className="font-bold">{post.likes}</span>
+                      <Heart className={`w-4 h-4 ${post.isLiked ? 'fill-current text-[#ff2d95]' : ''}`} />
+                      <span>{post.likes || 0}</span>
                     </button>
 
-                    <button className="flex items-center gap-1.5 hover:text-[#00e5ff] transition-colors">
+                    <button 
+                      onClick={() => {
+                        sounds.click();
+                        setOpenCommentsPostId(areCommentsOpen ? null : post.id);
+                      }}
+                      className="flex items-center gap-1.5 hover:text-[#00e5ff] transition-colors"
+                    >
                       <MessageCircle className="w-4 h-4 text-[#00e5ff]" />
                       <span className="font-bold">{post.comments?.length || 0}</span>
                     </button>
@@ -302,18 +349,52 @@ export const DualFeedView: React.FC = () => {
                       className="flex items-center gap-1.5 hover:text-white transition-colors"
                     >
                       <Share2 className="w-4 h-4" />
-                      <span>{post.shares}</span>
+                      <span>{post.shares || 0}</span>
                     </button>
                   </div>
                 </div>
 
+                {/* Comments Stream (Toggleable or Expandable) */}
+                {post.comments && post.comments.length > 0 && (
+                  <div className="space-y-2 pt-2 border-t border-white/5 max-h-48 overflow-y-auto pr-1">
+                    {post.comments.map((c) => (
+                      <div key={c.id} className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5 text-xs space-y-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-bold text-white flex items-center gap-1.5">
+                            <span 
+                              className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] text-slate-900 font-bold"
+                              style={{ background: c.userColor || '#00e5ff' }}
+                            >
+                              {c.userAvatar || 'U'}
+                            </span>
+                            {c.userName}
+                          </span>
+                          <span className="text-[10px] text-[#8a8aa8]">{c.timestamp}</span>
+                        </div>
+                        <p className="text-[#e8e8f4] pl-5">{c.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {/* Rich Comment Input */}
                 <div className="pt-2">
                   <RichCommentInput
-                    onSend={() => {
-                      sounds.success();
+                    onSend={(commentData) => {
+                      addPostComment(post.id, {
+                        id: `c-${Date.now()}`,
+                        user: currentUser.id,
+                        userName: currentUser.name,
+                        userAvatar: currentUser.avatar,
+                        userColor: currentUser.color,
+                        text: commentData.text,
+                        media: commentData.media,
+                        mediaType: commentData.mediaType,
+                        timestamp: 'Just now',
+                        likes: 0
+                      });
                     }}
-                    placeholder="Leave a comment with GIF, sticker, or voice note..."
+                    placeholder="Write a comment with GIF, sticker, or voice note..."
                   />
                 </div>
               </div>

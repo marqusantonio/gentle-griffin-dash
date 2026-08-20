@@ -12,7 +12,8 @@ import {
   AudioTrackItem, 
   FilmItem,
   ViewName,
-  DirectMessageItem 
+  DirectMessageItem,
+  CommentItem
 } from '../types/wevids';
 import { 
   CURRENT_USER, 
@@ -26,6 +27,7 @@ import {
   INITIAL_BOOKMARKS 
 } from '../data/initialData';
 import { INITIAL_AUDIO_TRACKS, INITIAL_FILMS, INITIAL_FILES } from '../data/mediaData';
+import { loadLocalSyncData } from '../lib/syncService';
 
 export interface WevidsState {
   posts: PostItem[];
@@ -57,19 +59,22 @@ export interface WevidsState {
   lastCloudSync: string | null;
 }
 
+// Pre-load persisted posts and clips from local storage
+const cachedData = loadLocalSyncData();
+
 export const initialWevidsState: WevidsState = {
-  posts: INITIAL_POSTS,
-  clips: INITIAL_CLIPS,
+  posts: (cachedData.posts && cachedData.posts.length > 0) ? cachedData.posts : INITIAL_POSTS,
+  clips: (cachedData.clips && cachedData.clips.length > 0) ? cachedData.clips : INITIAL_CLIPS,
   longVideos: INITIAL_LONG_VIDEOS,
-  roms: INITIAL_ROMS,
-  products: INITIAL_PRODUCTS,
-  files: INITIAL_FILES,
-  audioTracks: INITIAL_AUDIO_TRACKS,
-  films: INITIAL_FILMS,
+  roms: (cachedData.roms && cachedData.roms.length > 0) ? cachedData.roms : INITIAL_ROMS,
+  products: (cachedData.products && cachedData.products.length > 0) ? cachedData.products : INITIAL_PRODUCTS,
+  files: (cachedData.files && cachedData.files.length > 0) ? cachedData.files : INITIAL_FILES,
+  audioTracks: (cachedData.audioTracks && cachedData.audioTracks.length > 0) ? cachedData.audioTracks : INITIAL_AUDIO_TRACKS,
+  films: (cachedData.films && cachedData.films.length > 0) ? cachedData.films : INITIAL_FILMS,
   conversations: INITIAL_CONVERSATIONS,
   directMessages: [],
   activeView: 'feed',
-  activeConvId: 'conv-group-1',
+  activeConvId: null,
   activeCallUser: null,
   isCartOpen: false,
   isVideoCallOpen: false,
@@ -98,6 +103,8 @@ export type WevidsAction =
   | { type: 'SET_IS_SUPABASE_MODAL_OPEN'; payload: boolean }
   | { type: 'UPDATE_CURRENT_USER'; payload: Partial<UserProfile> }
   | { type: 'TOGGLE_FOLLOW_USER'; payload: { userId: string; isFollowing: boolean } }
+  | { type: 'TOGGLE_POST_LIKE'; payload: { postId: string } }
+  | { type: 'ADD_POST_COMMENT'; payload: { postId: string; comment: CommentItem } }
   | { type: 'TOGGLE_CLIP_LIKE'; payload: { clipId: string } }
   | { type: 'TOGGLE_CLIP_DISLIKE'; payload: { clipId: string } }
   | { type: 'TOGGLE_CLIP_BOOKMARK'; payload: { clipId: string } }
@@ -130,11 +137,14 @@ export type WevidsAction =
   | { type: 'SET_CLOUD_SYNCING'; payload: boolean }
   | { type: 'SET_LAST_CLOUD_SYNC'; payload: string };
 
-function mergeItems<T extends { id: string }>(newList: T[], oldList: T[]): T[] {
+function mergeItems<T extends { id: string }>(incomingList: T[], currentList: T[]): T[] {
   const map = new Map<string, T>();
-  newList.forEach(item => map.set(item.id, item));
-  oldList.forEach(item => {
-    if (!map.has(item.id)) map.set(item.id, item);
+  // Current user's newly created items come first
+  currentList.forEach(item => map.set(item.id, item));
+  incomingList.forEach(item => {
+    if (!map.has(item.id)) {
+      map.set(item.id, item);
+    }
   });
   return Array.from(map.values());
 }
@@ -198,6 +208,31 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
         },
       };
     }
+    case 'TOGGLE_POST_LIKE':
+      return {
+        ...state,
+        posts: state.posts.map(p =>
+          p.id === action.payload.postId
+            ? {
+                ...p,
+                isLiked: !p.isLiked,
+                likes: p.isLiked ? Math.max(0, p.likes - 1) : p.likes + 1
+              }
+            : p
+        )
+      };
+    case 'ADD_POST_COMMENT':
+      return {
+        ...state,
+        posts: state.posts.map(p =>
+          p.id === action.payload.postId
+            ? {
+                ...p,
+                comments: [action.payload.comment, ...(p.comments || [])]
+              }
+            : p
+        )
+      };
     case 'TOGGLE_CLIP_LIKE':
       return {
         ...state,
