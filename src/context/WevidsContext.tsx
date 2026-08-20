@@ -162,7 +162,7 @@ const initialState: WevidsState = {
   audioTracks: INITIAL_AUDIO_TRACKS,
   films: INITIAL_FILMS,
   conversations: INITIAL_CONVERSATIONS,
-  activeView: 'clips',
+  activeView: 'feed',
   activeConvId: 'conv-group-1',
   activeCallUser: null,
   isCartOpen: false,
@@ -216,14 +216,14 @@ const reducer = (state: WevidsState, action: any): WevidsState => {
         ...state,
         currentUser: {
           ...state.currentUser,
-          following: isFollowing ? state.currentUser.following - 1 : state.currentUser.following + 1,
+          following: isFollowing ? Math.max(0, state.currentUser.following - 1) : state.currentUser.following + 1,
           followingIds: newFollowingIds
         },
         allUsers: {
           ...state.allUsers,
           [userId]: {
             ...targetUser,
-            followers: isFollowing ? targetUser.followers - 1 : targetUser.followers + 1,
+            followers: isFollowing ? Math.max(0, targetUser.followers - 1) : targetUser.followers + 1,
           },
         },
       };
@@ -303,6 +303,13 @@ const reducer = (state: WevidsState, action: any): WevidsState => {
               }
             : c
         )
+      };
+    }
+    case 'ADD_CONVERSATION': {
+      return {
+        ...state,
+        conversations: [action.payload, ...state.conversations],
+        activeConvId: action.payload.id
       };
     }
     case 'SET_CONVERSATION_STATUS': {
@@ -451,15 +458,13 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     sounds.enabled = state.soundEnabled;
   }, [state.soundEnabled]);
 
-  // Initial pull from Supabase on mount
+  // Initial auto sync (Safe for guests without any manual key configuration)
   const syncWithSupabase = async () => {
     if (!isSupabaseConfigured()) {
-      toast.info('Supabase cloud is in local cache mode. Tap "Link Cloud" to connect your URL & Key.');
       return;
     }
 
     dispatch({ type: 'SET_CLOUD_SYNCING', payload: true });
-    sounds.pop();
     
     try {
       const [audioRes, filmRes] = await Promise.all([
@@ -483,7 +488,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           createdAt: item.created_at
         }));
         
-        // Merge without duplicates
         const existingIds = new Set(mappedAudio.map(a => a.id));
         const combined = [...mappedAudio, ...INITIAL_AUDIO_TRACKS.filter(a => !existingIds.has(a.id))];
         dispatch({ type: 'SET_AUDIO_TRACKS', payload: combined });
@@ -514,19 +518,15 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       }
 
       dispatch({ type: 'SET_LAST_CLOUD_SYNC', payload: new Date().toLocaleTimeString() });
-      sounds.success();
-      toast.success(`Supabase Synced! Pulled ${syncCount} live cloud records.`);
-    } catch (err: any) {
-      toast.error(`Sync error: ${err.message || 'Could not query Supabase tables'}`);
+    } catch {
+      // Safe offline fallback for guests
     } finally {
       dispatch({ type: 'SET_CLOUD_SYNCING', payload: false });
     }
   };
 
   useEffect(() => {
-    if (isSupabaseConfigured()) {
-      syncWithSupabase();
-    }
+    syncWithSupabase();
   }, []);
 
   const addPost = async (post: Partial<PostItem>) => {
@@ -541,7 +541,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       time: 'Just now',
       content: post.content || '',
       mediaUrl: post.mediaUrl,
-      mediaType: post.mediaType || 'image',
+      mediaType: post.mediaType || (post.mediaUrl ? 'image' : undefined),
       likes: 0,
       dislikes: 0,
       shares: 0,
@@ -550,8 +550,29 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
 
     sounds.success();
-    toast.success('Post created successfully!');
+    toast.success('Post published to Global Feed!');
     dispatch({ type: 'ADD_POST', payload: fullPost });
+
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.upsert('posts', {
+          id: fullPost.id,
+          user_id: fullPost.userId,
+          author_name: fullPost.authorName,
+          author_handle: fullPost.authorHandle,
+          author_avatar: fullPost.authorAvatar,
+          author_color: fullPost.authorColor,
+          content: fullPost.content,
+          media_url: fullPost.mediaUrl,
+          media_type: fullPost.mediaType,
+          likes: fullPost.likes,
+          shares: fullPost.shares,
+          tags: fullPost.tags
+        });
+      } catch {
+        // Offline-first
+      }
+    }
   };
 
   const addAudioTrack = async (track: Partial<AudioTrackItem>) => {
@@ -572,10 +593,9 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     sounds.success();
     toast.success(`"${fullTrack.title}" added to Audio Deck!`);
 
-    // Sync to Supabase table
     if (isSupabaseConfigured()) {
       try {
-        const res = await supabase.upsert('audio_tracks', {
+        await supabase.upsert('audio_tracks', {
           id: fullTrack.id,
           title: fullTrack.title,
           artist: fullTrack.artist,
@@ -586,13 +606,8 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           cover: fullTrack.cover,
           uploader_id: fullTrack.uploaderId
         });
-        if (res.error) {
-          toast.info(`Saved locally (Supabase info: ${res.error})`);
-        } else {
-          toast.success('Audio track verified & synced to Supabase database!');
-        }
       } catch {
-        // Safe offline fallback
+        // Offline-first
       }
     }
   };
@@ -618,10 +633,9 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     sounds.success();
     toast.success(`Film "${fullFilm.title}" premiered to Cinema Hub!`);
 
-    // Sync to Supabase table
     if (isSupabaseConfigured()) {
       try {
-        const res = await supabase.upsert('films', {
+        await supabase.upsert('films', {
           id: fullFilm.id,
           title: fullFilm.title,
           synopsis: fullFilm.synopsis,
@@ -635,13 +649,8 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           backdrop_url: fullFilm.backdropUrl,
           uploader_id: fullFilm.uploaderId
         });
-        if (res.error) {
-          toast.info(`Saved locally (Supabase info: ${res.error})`);
-        } else {
-          toast.success('Film verified & synced to Supabase database!');
-        }
       } catch {
-        // Safe offline fallback
+        // Offline-first
       }
     }
   };
@@ -769,7 +778,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     sounds.click();
     const currentlyFollowing = isFollowing(userId);
     dispatch({ type: 'TOGGLE_FOLLOW_USER', payload: { userId, isFollowing: currentlyFollowing } });
-    toast.success(currentlyFollowing ? 'Unfollowed user' : 'Following user!');
+    toast.success(currentlyFollowing ? 'Unfollowed creator' : 'Following creator! 🚀');
   };
 
   const toggleClipLike = (clipId: string) => {
@@ -793,6 +802,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     dispatch({ type: 'ADD_CLIP_COMMENT', payload: { clipId, comment } });
   };
 
+  // 1-Message Request Initiator for new contacts
   const startOrOpenChatWithUser = (userId: string) => {
     sounds.click();
     const existingConv = state.conversations.find(c => 
@@ -810,14 +820,17 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         avatar: otherUser?.avatar || 'U',
         color: otherUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
         members: [state.currentUser.id, userId],
-        lastMsg: 'Started conversation',
+        lastMsg: '1-Message Connection Request',
         time: 'Just now',
         unread: 0,
         messages: [],
-        status: 'active',
+        status: 'pending_request',
+        requestedBy: state.currentUser.id,
       };
+      dispatch({ type: 'ADD_CONVERSATION', payload: newConv });
       setActiveConvId(newConv.id);
       setActiveView('messages');
+      toast.info(`Connection request initiated for ${otherUser?.name || 'user'}. You can send 1 message.`);
     }
   };
 
@@ -839,13 +852,13 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const acceptMessageRequest = (convId: string) => {
     sounds.success();
-    toast.success('Message request accepted!');
+    toast.success('Connection request accepted! Full direct chat unlocked.');
     dispatch({ type: 'SET_CONVERSATION_STATUS', payload: { convId, status: 'active' } });
   };
 
   const declineMessageRequest = (convId: string) => {
     sounds.click();
-    toast.info('Message request declined');
+    toast.info('Connection request declined');
     dispatch({ type: 'REMOVE_CONVERSATION', payload: { convId } });
   };
 
