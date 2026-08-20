@@ -2,22 +2,12 @@ import React, { useState } from 'react';
 import { useWevids } from '../../context/WevidsContext';
 import { 
   Clapperboard, 
-  Play, 
   Star, 
   Upload, 
-  Film, 
-  Eye, 
-  Sparkles, 
   Share2, 
-  Bookmark, 
-  Info,
-  Maximize2,
-  Tv,
-  RefreshCw,
-  Database
+  Tv
 } from 'lucide-react';
 import { FilmItem } from '../../types/wevids';
-import { isSupabaseConfigured } from '../../lib/supabase';
 import { sounds } from '../../lib/soundFx';
 import { toast } from 'sonner';
 
@@ -26,13 +16,10 @@ export const FilmsHubView: React.FC = () => {
     films, 
     addFilm, 
     openShareModal, 
-    syncWithSupabase, 
-    isCloudSyncing, 
-    lastCloudSync, 
     currentUser 
   } = useWevids();
   
-  const [selectedFilmId, setSelectedFilmId] = useState<string>(films[0]?.id || 'film-1');
+  const [selectedFilmId, setSelectedFilmId] = useState<string>(films[0]?.id || '');
   const [selectedGenre, setSelectedGenre] = useState<string>('All');
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isCinemaMode, setIsCinemaMode] = useState(false);
@@ -47,7 +34,6 @@ export const FilmsHubView: React.FC = () => {
   const [videoUrl, setVideoUrl] = useState('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4');
   const [posterUrl, setPosterUrl] = useState('https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=800&q=80');
 
-  const isCloudLinked = isSupabaseConfigured();
   const genres = ['All', 'Cyberpunk Sci-Fi', 'Anime Cinema', 'Tech Documentary', 'Gaming Lore', 'Open Source Action'];
 
   const selectedFilm = films.find(f => f.id === selectedFilmId) || films[0];
@@ -87,10 +73,10 @@ export const FilmsHubView: React.FC = () => {
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#ff2d95]/20 border border-[#ff2d95]/30 text-[#ff2d95] font-bold text-xs mb-2">
             <Clapperboard className="w-3.5 h-3.5" />
-            <span>4K HDR INDIE CINEMA & DOCUMENTARY STAGE</span>
+            <span>4K CINEMA & DOCUMENTARY STAGE</span>
           </div>
           <h1 className="text-3xl font-bold font-orbitron neon-gradient-text tracking-wide">
-            WEVIDS Cinema & Feature Films
+            Cinema & Feature Films
           </h1>
           <p className="text-xs text-[#8a8aa8]">
             Full-length cyberpunk movies, open source documentaries, and community cinematic releases.
@@ -98,21 +84,6 @@ export const FilmsHubView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Cloud Sync Button */}
-          <button
-            onClick={() => syncWithSupabase()}
-            disabled={isCloudSyncing}
-            className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl border text-xs font-orbitron font-bold transition-all ${
-              isCloudLinked
-                ? 'bg-[#3ecf8e]/15 border-[#3ecf8e]/40 text-[#3ecf8e] hover:bg-[#3ecf8e]/25'
-                : 'bg-white/5 border-white/10 text-[#8a8aa8] hover:text-white'
-            }`}
-            title="Sync with Supabase public.films table"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isCloudSyncing ? 'animate-spin text-[#3ecf8e]' : ''}`} />
-            <span>{isCloudSyncing ? 'Syncing...' : 'Sync Supabase'}</span>
-          </button>
-
           <button
             onClick={() => {
               sounds.pop();
@@ -137,22 +108,6 @@ export const FilmsHubView: React.FC = () => {
             <span>PREMIERE FILM</span>
           </button>
         </div>
-      </div>
-
-      {/* Cloud Sync Status Indicator */}
-      <div className="px-4 py-2.5 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-between text-xs text-[#8a8aa8]">
-        <div className="flex items-center gap-2">
-          <Database className={`w-3.5 h-3.5 ${isCloudLinked ? 'text-[#3ecf8e]' : 'text-[#fbbf24]'}`} />
-          <span>
-            Database Status:{' '}
-            <strong className={isCloudLinked ? 'text-[#3ecf8e]' : 'text-[#fbbf24]'}>
-              {isCloudLinked ? 'Supabase Table "films" Connected' : 'Local Storage Cache (Link Cloud in header)'}
-            </strong>
-          </span>
-        </div>
-        {lastCloudSync && (
-          <span className="text-[11px] font-mono text-[#00e5ff]">Last synced at {lastCloudSync}</span>
-        )}
       </div>
 
       {/* Hero Cinema Feature Player */}
@@ -221,42 +176,52 @@ export const FilmsHubView: React.FC = () => {
       </div>
 
       {/* Film Catalog Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        {filteredFilms.map((film) => {
-          const isSelected = film.id === selectedFilmId;
-          return (
-            <div
-              key={film.id}
-              onClick={() => {
-                sounds.click();
-                setSelectedFilmId(film.id);
-                window.scrollTo({ top: 120, behavior: 'smooth' });
-              }}
-              className={`liquid-glass-card rounded-3xl overflow-hidden border cursor-pointer group transition-all ${
-                isSelected ? 'border-[#00e5ff] ring-2 ring-[#00e5ff]/30 scale-102' : 'border-white/10 hover:border-[#ff2d95]'
-              }`}
-            >
-              <div className="relative aspect-[3/4] bg-black overflow-hidden">
-                <img
-                  src={film.posterUrl}
-                  alt={film.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent flex flex-col justify-end p-4">
-                  <div className="flex items-center justify-between text-[10px] text-[#fbbf24] mb-1">
-                    <span className="px-2 py-0.5 rounded-full bg-black/70 backdrop-blur-md font-orbitron">{film.genre}</span>
-                    <span className="flex items-center gap-1 font-bold">★ {film.rating}</span>
+      {filteredFilms.length === 0 ? (
+        <div className="liquid-glass rounded-3xl p-12 border border-white/10 text-center space-y-3 shadow-xl">
+          <Clapperboard className="w-12 h-12 text-[#ff2d95] mx-auto opacity-50 animate-pulse" />
+          <h3 className="font-orbitron font-bold text-base text-white">No feature films premiered yet</h3>
+          <p className="text-xs text-[#8a8aa8] max-w-sm mx-auto">
+            Click "Premiere Film" to add a full 4K stream or trailer to the cinema schedule.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+          {filteredFilms.map((film) => {
+            const isSelected = film.id === selectedFilmId;
+            return (
+              <div
+                key={film.id}
+                onClick={() => {
+                  sounds.click();
+                  setSelectedFilmId(film.id);
+                  window.scrollTo({ top: 120, behavior: 'smooth' });
+                }}
+                className={`liquid-glass-card rounded-3xl overflow-hidden border cursor-pointer group transition-all ${
+                  isSelected ? 'border-[#00e5ff] ring-2 ring-[#00e5ff]/30 scale-102' : 'border-white/10 hover:border-[#ff2d95]'
+                }`}
+              >
+                <div className="relative aspect-[3/4] bg-black overflow-hidden">
+                  <img
+                    src={film.posterUrl}
+                    alt={film.title}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent flex flex-col justify-end p-4">
+                    <div className="flex items-center justify-between text-[10px] text-[#fbbf24] mb-1">
+                      <span className="px-2 py-0.5 rounded-full bg-black/70 backdrop-blur-md font-orbitron">{film.genre}</span>
+                      <span className="flex items-center gap-1 font-bold">★ {film.rating}</span>
+                    </div>
+                    <h3 className="font-bold text-sm text-white line-clamp-1 group-hover:text-[#00e5ff] transition-colors">
+                      {film.title}
+                    </h3>
+                    <div className="text-[11px] text-[#8a8aa8]">{film.duration} · {film.releaseYear}</div>
                   </div>
-                  <h3 className="font-bold text-sm text-white line-clamp-1 group-hover:text-[#00e5ff] transition-colors">
-                    {film.title}
-                  </h3>
-                  <div className="text-[11px] text-[#8a8aa8]">{film.duration} · {film.releaseYear}</div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Upload Film Modal */}
       {isUploadOpen && (
@@ -277,7 +242,7 @@ export const FilmsHubView: React.FC = () => {
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Cyberpunk: The Ghost Terminal"
+                  placeholder="e.g. Neon Ghost Cyberpunk"
                   className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white"
                   required
                 />
@@ -332,7 +297,7 @@ export const FilmsHubView: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-[#8a8aa8] font-bold block mb-1">Video Stream URL (MP4 / HLS CDN)</label>
+                <label className="text-[#8a8aa8] font-bold block mb-1">Video Stream URL (MP4)</label>
                 <input
                   type="text"
                   value={videoUrl}
@@ -340,17 +305,6 @@ export const FilmsHubView: React.FC = () => {
                   placeholder="https://..."
                   className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white font-mono"
                   required
-                />
-              </div>
-
-              <div>
-                <label className="text-[#8a8aa8] font-bold block mb-1">Vertical Poster URL</label>
-                <input
-                  type="text"
-                  value={posterUrl}
-                  onChange={(e) => setPosterUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white"
                 />
               </div>
 
@@ -366,7 +320,7 @@ export const FilmsHubView: React.FC = () => {
                   type="submit"
                   className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold shadow-md"
                 >
-                  ⚡ Sync & Premiere Film
+                  ⚡ Premiere Film
                 </button>
               </div>
             </form>
