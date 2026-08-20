@@ -109,17 +109,31 @@ export type WevidsAction =
   | { type: 'CLEAR_CART' }
   | { type: 'SET_SOUND_ENABLED'; payload: boolean }
   | { type: 'ADD_POST'; payload: PostItem }
+  | { type: 'SET_POSTS'; payload: PostItem[] }
   | { type: 'ADD_CLIP'; payload: ShortClipItem }
+  | { type: 'SET_CLIPS'; payload: ShortClipItem[] }
   | { type: 'ADD_LONG_VIDEO'; payload: LongVideoItem }
   | { type: 'ADD_ROM'; payload: RomItem }
+  | { type: 'SET_ROMS'; payload: RomItem[] }
   | { type: 'ADD_PRODUCT'; payload: ProductItem }
+  | { type: 'SET_PRODUCTS'; payload: ProductItem[] }
   | { type: 'ADD_SHARED_FILE'; payload: SharedFileItem }
+  | { type: 'SET_SHARED_FILES'; payload: SharedFileItem[] }
   | { type: 'ADD_AUDIO_TRACK'; payload: AudioTrackItem }
   | { type: 'SET_AUDIO_TRACKS'; payload: AudioTrackItem[] }
   | { type: 'ADD_FILM'; payload: FilmItem }
   | { type: 'SET_FILMS'; payload: FilmItem[] }
   | { type: 'SET_CLOUD_SYNCING'; payload: boolean }
   | { type: 'SET_LAST_CLOUD_SYNC'; payload: string };
+
+function mergeItems<T extends { id: string }>(newList: T[], oldList: T[]): T[] {
+  const map = new Map<string, T>();
+  newList.forEach(item => map.set(item.id, item));
+  oldList.forEach(item => {
+    if (!map.has(item.id)) map.set(item.id, item);
+  });
+  return Array.from(map.values());
+}
 
 export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsState => {
   switch (action.type) {
@@ -144,7 +158,14 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
     case 'SET_IS_SUPABASE_MODAL_OPEN':
       return { ...state, isSupabaseModalOpen: action.payload };
     case 'UPDATE_CURRENT_USER':
-      return { ...state, currentUser: { ...state.currentUser, ...action.payload } };
+      return { 
+        ...state, 
+        currentUser: { ...state.currentUser, ...action.payload },
+        allUsers: {
+          ...state.allUsers,
+          [state.currentUser.id]: { ...state.currentUser, ...action.payload }
+        }
+      };
     case 'TOGGLE_FOLLOW_USER': {
       const { userId, isFollowing } = action.payload;
       const targetUser = state.allUsers[userId];
@@ -300,25 +321,35 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
     case 'SET_SOUND_ENABLED':
       return { ...state, soundEnabled: action.payload };
     case 'ADD_POST':
-      return { ...state, posts: [action.payload, ...state.posts] };
+      return { ...state, posts: [action.payload, ...state.posts.filter(p => p.id !== action.payload.id)] };
+    case 'SET_POSTS':
+      return { ...state, posts: mergeItems(action.payload, state.posts) };
     case 'ADD_CLIP':
-      return { ...state, clips: [action.payload, ...state.clips] };
+      return { ...state, clips: [action.payload, ...state.clips.filter(c => c.id !== action.payload.id)] };
+    case 'SET_CLIPS':
+      return { ...state, clips: mergeItems(action.payload, state.clips) };
     case 'ADD_LONG_VIDEO':
       return { ...state, longVideos: [action.payload, ...state.longVideos] };
     case 'ADD_ROM':
-      return { ...state, roms: [action.payload, ...state.roms] };
+      return { ...state, roms: [action.payload, ...state.roms.filter(r => r.id !== action.payload.id)] };
+    case 'SET_ROMS':
+      return { ...state, roms: mergeItems(action.payload, state.roms) };
     case 'ADD_PRODUCT':
-      return { ...state, products: [action.payload, ...state.products] };
+      return { ...state, products: [action.payload, ...state.products.filter(p => p.id !== action.payload.id)] };
+    case 'SET_PRODUCTS':
+      return { ...state, products: mergeItems(action.payload, state.products) };
     case 'ADD_SHARED_FILE':
-      return { ...state, files: [action.payload, ...state.files] };
+      return { ...state, files: [action.payload, ...state.files.filter(f => f.id !== action.payload.id)] };
+    case 'SET_SHARED_FILES':
+      return { ...state, files: mergeItems(action.payload, state.files) };
     case 'ADD_AUDIO_TRACK':
-      return { ...state, audioTracks: [action.payload, ...state.audioTracks] };
+      return { ...state, audioTracks: [action.payload, ...state.audioTracks.filter(a => a.id !== action.payload.id)] };
     case 'SET_AUDIO_TRACKS':
-      return { ...state, audioTracks: action.payload };
+      return { ...state, audioTracks: mergeItems(action.payload, state.audioTracks) };
     case 'ADD_FILM':
-      return { ...state, films: [action.payload, ...state.films] };
+      return { ...state, films: [action.payload, ...state.films.filter(f => f.id !== action.payload.id)] };
     case 'SET_FILMS':
-      return { ...state, films: action.payload };
+      return { ...state, films: mergeItems(action.payload, state.films) };
     case 'SET_CLOUD_SYNCING':
       return { ...state, isCloudSyncing: action.payload };
     case 'SET_LAST_CLOUD_SYNC':

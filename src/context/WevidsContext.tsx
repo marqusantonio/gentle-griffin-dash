@@ -14,8 +14,8 @@ import {
 } from '../types/wevids';
 import { wevidsReducer, initialWevidsState, WevidsState } from './wevidsReducer';
 import { INITIAL_AUDIO_TRACKS, INITIAL_FILMS } from '../data/mediaData';
-import { supabase, isSupabaseConfigured, getStoredSession } from '../lib/supabase';
-import { loadLocalSyncData, saveLocalSyncData, fetchGlobalCloudState } from '../lib/syncService';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { loadLocalSyncData, saveLocalSyncData, fetchGlobalCloudState, pushGlobalCloudState } from '../lib/syncService';
 import { sounds } from '../lib/soundFx';
 import { toast } from 'sonner';
 
@@ -78,15 +78,11 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       const cloudData = await fetchGlobalCloudState();
       if (cloudData) {
         if (cloudData.posts && cloudData.posts.length > 0) {
-          const postMap = new Map();
-          [...cloudData.posts, ...state.posts].forEach(p => {
-            if (!postMap.has(p.id)) postMap.set(p.id, p);
-          });
-          cloudData.posts.forEach(p => dispatch({ type: 'ADD_POST', payload: p }));
+          dispatch({ type: 'SET_POSTS', payload: cloudData.posts });
         }
 
         if (cloudData.clips && cloudData.clips.length > 0) {
-          cloudData.clips.forEach(c => dispatch({ type: 'ADD_CLIP', payload: c }));
+          dispatch({ type: 'SET_CLIPS', payload: cloudData.clips });
         }
 
         if (cloudData.audioTracks && cloudData.audioTracks.length > 0) {
@@ -98,11 +94,15 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         }
 
         if (cloudData.roms && cloudData.roms.length > 0) {
-          cloudData.roms.forEach(r => dispatch({ type: 'ADD_ROM', payload: r }));
+          dispatch({ type: 'SET_ROMS', payload: cloudData.roms });
         }
 
         if (cloudData.files && cloudData.files.length > 0) {
-          cloudData.files.forEach(f => dispatch({ type: 'ADD_SHARED_FILE', payload: f }));
+          dispatch({ type: 'SET_SHARED_FILES', payload: cloudData.files });
+        }
+
+        if (cloudData.products && cloudData.products.length > 0) {
+          dispatch({ type: 'SET_PRODUCTS', payload: cloudData.products });
         }
       }
 
@@ -114,16 +114,25 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-  // Initial load + periodic polling for multi-device sync
+  // Initial load + immediate sync on tab focus + 4-second poll for cross-device updates
   useEffect(() => {
     syncWithSupabase();
-    const interval = setInterval(syncWithSupabase, 15000); // 15s poll
-    return () => clearInterval(interval);
+    
+    const handleFocus = () => {
+      syncWithSupabase();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    const interval = setInterval(syncWithSupabase, 4000); // Fast 4s poll
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   const addPost = async (post: Partial<PostItem>) => {
     const fullPost: PostItem = {
-      id: `post-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: `post-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       userId: post.userId || state.currentUser.id,
       authorName: post.authorName || state.currentUser.name,
       authorHandle: post.authorHandle || state.currentUser.handle,
@@ -142,35 +151,34 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
 
     sounds.success();
-    toast.success('Post published to Global Feed!');
+    toast.success('Post published and broadcasted to all devices!');
     dispatch({ type: 'ADD_POST', payload: fullPost });
 
-    // Save to local & cloud storage
-    const currentPosts = [fullPost, ...state.posts];
-    saveLocalSyncData({ posts: currentPosts });
+    const currentPosts = [fullPost, ...state.posts.filter(p => p.id !== fullPost.id)];
+    pushGlobalCloudState({ posts: currentPosts });
 
     if (isSupabaseConfigured()) {
       try {
         await supabase.upsert('posts', fullPost);
       } catch {
-        // Safe offline
+        // safe offline
       }
     }
   };
 
   const addClip = async (clip: ShortClipItem) => {
     sounds.success();
-    toast.success('Clip added to Global Shorts!');
+    toast.success('Clip published to Global Shorts on all devices!');
     dispatch({ type: 'ADD_CLIP', payload: clip });
 
-    const currentClips = [clip, ...state.clips];
-    saveLocalSyncData({ clips: currentClips });
+    const currentClips = [clip, ...state.clips.filter(c => c.id !== clip.id)];
+    pushGlobalCloudState({ clips: currentClips });
 
     if (isSupabaseConfigured()) {
       try {
         await supabase.upsert('clips', clip);
       } catch {
-        // Safe offline
+        // safe offline
       }
     }
   };
@@ -191,16 +199,16 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     dispatch({ type: 'ADD_AUDIO_TRACK', payload: fullTrack });
     sounds.success();
-    toast.success(`"${fullTrack.title}" added to Audio Deck!`);
+    toast.success(`"${fullTrack.title}" synced to Audio Deck!`);
 
-    const currentTracks = [fullTrack, ...state.audioTracks];
-    saveLocalSyncData({ audioTracks: currentTracks });
+    const currentTracks = [fullTrack, ...state.audioTracks.filter(a => a.id !== fullTrack.id)];
+    pushGlobalCloudState({ audioTracks: currentTracks });
 
     if (isSupabaseConfigured()) {
       try {
         await supabase.upsert('audio_tracks', fullTrack);
       } catch {
-        // Safe offline
+        // safe offline
       }
     }
   };
@@ -224,16 +232,16 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     dispatch({ type: 'ADD_FILM', payload: fullFilm });
     sounds.success();
-    toast.success(`Film "${fullFilm.title}" premiered to Cinema Hub!`);
+    toast.success(`Film "${fullFilm.title}" premiered and synced!`);
 
-    const currentFilms = [fullFilm, ...state.films];
-    saveLocalSyncData({ films: currentFilms });
+    const currentFilms = [fullFilm, ...state.films.filter(f => f.id !== fullFilm.id)];
+    pushGlobalCloudState({ films: currentFilms });
 
     if (isSupabaseConfigured()) {
       try {
         await supabase.upsert('films', fullFilm);
       } catch {
-        // Safe offline
+        // safe offline
       }
     }
   };
@@ -259,17 +267,17 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       changelog: rom.changelog || ['Initial release build']
     };
     sounds.success();
-    toast.success('ROM package submitted to Vault!');
+    toast.success('ROM package submitted and synced to Vault!');
     dispatch({ type: 'ADD_ROM', payload: fullRom });
 
-    const currentRoms = [fullRom, ...state.roms];
-    saveLocalSyncData({ roms: currentRoms });
+    const currentRoms = [fullRom, ...state.roms.filter(r => r.id !== fullRom.id)];
+    pushGlobalCloudState({ roms: currentRoms });
 
     if (isSupabaseConfigured()) {
       try {
         await supabase.upsert('roms', fullRom);
       } catch {
-        // Safe offline
+        // safe offline
       }
     }
   };
@@ -279,14 +287,14 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     toast.success('Product added to Mall!');
     dispatch({ type: 'ADD_PRODUCT', payload: product });
 
-    const currentProds = [product, ...state.products];
-    saveLocalSyncData({ products: currentProds });
+    const currentProds = [product, ...state.products.filter(p => p.id !== product.id)];
+    pushGlobalCloudState({ products: currentProds });
 
     if (isSupabaseConfigured()) {
       try {
         await supabase.upsert('products', product);
       } catch {
-        // Safe offline
+        // safe offline
       }
     }
   };
@@ -306,17 +314,17 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       uploadedAt: 'Just now'
     };
     sounds.success();
-    toast.success('File package shared to Vault!');
+    toast.success('File package shared to Vault on all devices!');
     dispatch({ type: 'ADD_SHARED_FILE', payload: fullFile });
 
-    const currentFiles = [fullFile, ...state.files];
-    saveLocalSyncData({ files: currentFiles });
+    const currentFiles = [fullFile, ...state.files.filter(f => f.id !== fullFile.id)];
+    pushGlobalCloudState({ files: currentFiles });
 
     if (isSupabaseConfigured()) {
       try {
         await supabase.upsert('files', fullFile);
       } catch {
-        // Safe offline
+        // safe offline
       }
     }
   };
@@ -381,7 +389,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const targetUser = state.allUsers[userId];
     const followingThem = (state.currentUser.followingIds || []).includes(userId);
     const theyFollowMe = (targetUser?.followingIds || []).includes(state.currentUser.id);
-    return followingThem && (theyFollowMe || true); // Allow mutual connection for responsive DM experience
+    return followingThem && (theyFollowMe || true);
   };
 
   const toggleFollowUser = (userId: string) => {
