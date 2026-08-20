@@ -55,7 +55,7 @@ export const clearSupabaseCredentials = () => {
 
 export const isSupabaseConfigured = (): boolean => {
   const { url, anonKey } = getSupabaseConfig();
-  return Boolean(url && anonKey && url.startsWith('https://') && anonKey.length > 20);
+  return Boolean(url && anonKey && url.startsWith('https://') && anonKey.length > 15);
 };
 
 export const getStoredSession = (): SupabaseSession | null => {
@@ -96,14 +96,16 @@ export class SupabaseClient {
     return headers;
   }
 
-  // Google OAuth 2.0 Login
+  // Google OAuth 2.0 Login with explicit apikey param for Supabase Gateway Kong
   public async signInWithGoogle(): Promise<{ url?: string; error?: string }> {
-    const { url } = getSupabaseConfig();
-    if (!url) return { error: 'Supabase URL is not configured. Please add your credentials in Link Cloud.' };
+    const { url, anonKey } = getSupabaseConfig();
+    if (!url || !anonKey) {
+      return { error: 'Please configure your Supabase URL & Public Anon Key first in Link Cloud.' };
+    }
 
     const redirectUrl = typeof window !== 'undefined' ? window.location.origin : '';
-    // Standard Supabase GoTrue OAuth provider endpoint
-    const oauthUrl = `${url}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUrl)}`;
+    // Append both redirect_to and apikey so Supabase Kong gateway authorizes the request
+    const oauthUrl = `${url}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUrl)}&apikey=${encodeURIComponent(anonKey)}`;
     
     if (typeof window !== 'undefined') {
       window.location.href = oauthUrl;
@@ -125,7 +127,6 @@ export class SupabaseClient {
       const tokenType = params.get('token_type') || 'bearer';
 
       if (accessToken) {
-        // Base structure; will be enriched by getUser()
         const session: SupabaseSession = {
           access_token: accessToken,
           refresh_token: refreshToken,
@@ -137,7 +138,7 @@ export class SupabaseClient {
           }
         };
         saveStoredSession(session);
-        // Clear the URL hash cleanly without reload
+        // Clean URL hash smoothly without reloading page
         window.history.replaceState(null, '', window.location.pathname);
         return session;
       }
@@ -149,19 +150,19 @@ export class SupabaseClient {
 
   // Fetch current user details with access_token
   public async getUser(token?: string): Promise<{ user?: SupabaseUser; error?: string }> {
-    const { url } = getSupabaseConfig();
+    const { url, anonKey } = getSupabaseConfig();
     const session = getStoredSession();
     const activeToken = token || session?.access_token;
     if (!url || !activeToken) return { error: 'Not authenticated' };
 
     try {
-      const res = await fetch(`${url}/auth/v1/user`, {
+      const res = await fetch(`${url}/auth/v1/user?apikey=${encodeURIComponent(anonKey)}`, {
         method: 'GET',
         headers: this.getHeaders(activeToken),
       });
       const data = await res.json();
       if (!res.ok) {
-        return { error: data.message || 'Failed to fetch user profile' };
+        return { error: data.message || data.msg || 'Failed to fetch user profile' };
       }
       if (session) {
         session.user = data;
@@ -174,11 +175,11 @@ export class SupabaseClient {
   }
 
   public async signUp(email: string, password: string, name?: string): Promise<{ user?: SupabaseUser; session?: SupabaseSession; error?: string }> {
-    const { url } = getSupabaseConfig();
-    if (!url) return { error: 'Supabase URL is not configured' };
+    const { url, anonKey } = getSupabaseConfig();
+    if (!url || !anonKey) return { error: 'Supabase URL & Anon Key are required.' };
 
     try {
-      const res = await fetch(`${url}/auth/v1/signup`, {
+      const res = await fetch(`${url}/auth/v1/signup?apikey=${encodeURIComponent(anonKey)}`, {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({ 
@@ -201,11 +202,11 @@ export class SupabaseClient {
   }
 
   public async signIn(email: string, password: string): Promise<{ user?: SupabaseUser; session?: SupabaseSession; error?: string }> {
-    const { url } = getSupabaseConfig();
-    if (!url) return { error: 'Supabase URL is not configured' };
+    const { url, anonKey } = getSupabaseConfig();
+    if (!url || !anonKey) return { error: 'Supabase URL & Anon Key are required.' };
 
     try {
-      const res = await fetch(`${url}/auth/v1/token?grant_type=password`, {
+      const res = await fetch(`${url}/auth/v1/token?grant_type=password&apikey=${encodeURIComponent(anonKey)}`, {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({ email, password }),
@@ -222,11 +223,11 @@ export class SupabaseClient {
   }
 
   public async signOut(): Promise<void> {
-    const { url } = getSupabaseConfig();
+    const { url, anonKey } = getSupabaseConfig();
     const session = getStoredSession();
     if (url && session?.access_token) {
       try {
-        await fetch(`${url}/auth/v1/logout`, {
+        await fetch(`${url}/auth/v1/logout?apikey=${encodeURIComponent(anonKey)}`, {
           method: 'POST',
           headers: this.getHeaders(session.access_token),
         });
@@ -238,7 +239,7 @@ export class SupabaseClient {
   }
 
   public async select(table: string, query: string = '*'): Promise<{ data?: any[]; error?: string }> {
-    const { url } = getSupabaseConfig();
+    const { url, anonKey } = getSupabaseConfig();
     if (!url) return { error: 'Supabase URL not configured' };
 
     try {

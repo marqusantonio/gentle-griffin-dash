@@ -4,11 +4,7 @@ import {
   Search, 
   Radio, 
   ShoppingBag, 
-  Sparkles, 
-  Globe,
   Database,
-  UserCheck,
-  LogIn
 } from 'lucide-react';
 import { isSupabaseConfigured, getStoredSession, supabase } from '../../lib/supabase';
 import { sounds } from '../../lib/soundFx';
@@ -65,7 +61,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => 
   const handleGoogleQuickSignIn = async () => {
     sounds.click();
     if (!isCloudConnected) {
-      toast.info('Please link your Supabase URL & Anon Key first');
+      toast.error('Please enter your Supabase URL & Public Anon Key in the Link Cloud popup first!');
       onOpenSupabaseModal?.();
       return;
     }
@@ -73,6 +69,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => 
     const res = await supabase.signInWithGoogle();
     if (res.error) {
       toast.error(res.error);
+      onOpenSupabaseModal?.();
     }
   };
 
