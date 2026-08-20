@@ -9,7 +9,11 @@ import {
   KeyRound, 
   LogOut,
   X,
-  Zap
+  Zap,
+  UserPlus,
+  LogIn,
+  Gamepad2,
+  Share2
 } from 'lucide-react';
 import { 
   getSupabaseConfig,
@@ -19,6 +23,7 @@ import {
   getStoredSession,
   supabase 
 } from '../../lib/supabase';
+import { useWevids } from '../../context/WevidsContext';
 import { sounds } from '../../lib/soundFx';
 import { toast } from 'sonner';
 
@@ -28,19 +33,23 @@ interface SupabaseConnectModalProps {
 }
 
 export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOpen, onClose }) => {
+  const { updateCurrentUser, syncWithSupabase } = useWevids();
+  
   const [url, setUrl] = useState(() => getSupabaseConfig().url || '');
   const [anonKey, setAnonKey] = useState(() => getSupabaseConfig().anonKey || '');
   const [connected, setConnected] = useState(isSupabaseConfigured());
   const [testingConnection, setTestingConnection] = useState(false);
-  const [activeTab, setActiveTab] = useState<'status' | 'auth' | 'sql' | 'test'>('status');
+  const [activeTab, setActiveTab] = useState<'status' | 'auth' | 'sql' | 'test'>('auth');
   
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [currentSessionUser, setCurrentSessionUser] = useState<string | null>(() => getStoredSession()?.user?.email || null);
   const [copiedSql, setCopiedSql] = useState(false);
 
-  const [testTableName, setTestTableName] = useState('audio_tracks');
+  const [testTableName, setTestTableName] = useState('posts');
   const [testQueryResult, setTestQueryResult] = useState<string | null>(null);
   const [isQuerying, setIsQuerying] = useState(false);
 
@@ -79,9 +88,10 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
       setConnected(true);
       sounds.success();
       toast.success('Successfully connected to Supabase!');
+      syncWithSupabase();
     } else {
       setConnected(true);
-      toast.info('Credentials saved! You can now run live auth, audio tracks, and films tables.');
+      toast.info('Credentials saved! You can now run live auth, posts, and games tables.');
     }
   };
 
@@ -95,6 +105,20 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
     toast.info('Disconnected Supabase credentials');
   };
 
+  const handleGoogleLogin = async () => {
+    if (!isSupabaseConfigured()) {
+      toast.error('Please configure your Supabase URL & Key first in the Connection tab!');
+      setActiveTab('status');
+      return;
+    }
+    sounds.pop();
+    toast.loading('Redirecting to Google OAuth...');
+    const res = await supabase.signInWithGoogle();
+    if (res.error) {
+      toast.error(res.error);
+    }
+  };
+
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
@@ -102,7 +126,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
       return;
     }
     setAuthLoading(true);
-    const res = await supabase.signUp(email, password);
+    const res = await supabase.signUp(email, password, name);
     setAuthLoading(false);
 
     if (res.error) {
@@ -111,9 +135,13 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
       sounds.success();
       if (res.session?.user?.email) {
         setCurrentSessionUser(res.session.user.email);
-        toast.success(`Registered & signed in as ${res.session.user.email}!`);
+        updateCurrentUser({ 
+          name: name || res.session.user.email.split('@')[0], 
+          handle: `@${(name || res.session.user.email.split('@')[0]).toLowerCase().replace(/\s+/g, '_')}` 
+        });
+        toast.success(`Account created & signed in as ${res.session.user.email}!`);
       } else {
-        toast.success('Sign up complete! If email confirmation is enabled, check your inbox.');
+        toast.success('Account created! Please check your email to confirm registration.');
       }
     }
   };
@@ -134,8 +162,14 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
       sounds.success();
       if (res.user?.email) {
         setCurrentSessionUser(res.user.email);
+        const displayName = res.user.user_metadata?.full_name || res.user.email.split('@')[0];
+        updateCurrentUser({ 
+          name: displayName, 
+          handle: `@${displayName.toLowerCase().replace(/\s+/g, '_')}` 
+        });
       }
       toast.success('Signed in with Supabase successfully!');
+      syncWithSupabase();
     }
   };
 
@@ -162,10 +196,10 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
     }
   };
 
-  const sqlSchema = `-- WEVIDS Online Database Schema with Audio & Films
--- Run in your Supabase SQL Editor: https://supabase.com/dashboard/project/_/sql
+  const sqlSchema = `-- WEVIDS Full Cloud Sync Schema (Auth, Posts, Game Scores, Audio & Films)
+-- Run this in your Supabase SQL Editor: https://supabase.com/dashboard/project/_/sql
 
--- 1. Profiles Table
+-- 1. Profiles Table (Auto-synced with Google & Email Auth)
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
   handle TEXT UNIQUE,
@@ -176,7 +210,34 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2. Audio & MP3 Tracks Table
+-- 2. Social Posts Table
+CREATE TABLE IF NOT EXISTS public.posts (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  author_name TEXT NOT NULL,
+  author_handle TEXT,
+  author_avatar TEXT,
+  author_color TEXT,
+  content TEXT NOT NULL,
+  media_url TEXT,
+  media_type TEXT DEFAULT 'image',
+  likes INT DEFAULT 0,
+  shares INT DEFAULT 0,
+  tags TEXT[],
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. Multiplayer & Game Leaderboard Scores
+CREATE TABLE IF NOT EXISTS public.game_scores (
+  id TEXT PRIMARY KEY,
+  game_id TEXT NOT NULL,
+  player_name TEXT NOT NULL,
+  player_handle TEXT,
+  score INT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. Audio & MP3 Tracks Table
 CREATE TABLE IF NOT EXISTS public.audio_tracks (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -190,7 +251,7 @@ CREATE TABLE IF NOT EXISTS public.audio_tracks (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Feature Films & Cinema Table
+-- 5. Feature Films & Cinema Table
 CREATE TABLE IF NOT EXISTS public.films (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -207,25 +268,30 @@ CREATE TABLE IF NOT EXISTS public.films (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. Enable Row Level Security (RLS)
+-- 6. Enable Row Level Security (RLS)
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.game_scores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audio_tracks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.films ENABLE ROW LEVEL SECURITY;
 
--- 5. Open Read & Authenticated Insert Policies
+-- 7. Public Read & Insert Policies
 CREATE POLICY "Public profiles read" ON public.profiles FOR SELECT USING (true);
+CREATE POLICY "Public posts read" ON public.posts FOR SELECT USING (true);
+CREATE POLICY "Public posts insert" ON public.posts FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public game scores read" ON public.game_scores FOR SELECT USING (true);
+CREATE POLICY "Public game scores insert" ON public.game_scores FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public audio read" ON public.audio_tracks FOR SELECT USING (true);
+CREATE POLICY "Public audio insert" ON public.audio_tracks FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public films read" ON public.films FOR SELECT USING (true);
-
-CREATE POLICY "Open audio insert" ON public.audio_tracks FOR INSERT WITH CHECK (true);
-CREATE POLICY "Open films insert" ON public.films FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public films insert" ON public.films FOR INSERT WITH CHECK (true);
 `;
 
   const copySql = () => {
     navigator.clipboard.writeText(sqlSchema);
     setCopiedSql(true);
     sounds.click();
-    toast.success('SQL schema copied to clipboard!');
+    toast.success('Complete SQL schema copied to clipboard!');
     setTimeout(() => setCopiedSql(false), 2000);
   };
 
@@ -246,34 +312,34 @@ CREATE POLICY "Open films insert" ON public.films FOR INSERT WITH CHECK (true);
           </div>
           <div>
             <div className="font-orbitron font-bold text-base text-white flex items-center gap-2">
-              Supabase Online Database
+              Supabase Auth & Cloud Sync
               <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
                 connected ? 'bg-[#10b981]/20 text-[#10b981] border border-[#10b981]/40' : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
               }`}>
-                {connected ? 'ONLINE LINKED' : 'LOCAL CACHE / READY'}
+                {connected ? 'ONLINE LINKED' : 'READY TO CONNECT'}
               </span>
             </div>
-            <p className="text-xs text-[#8a8aa8]">Connect live authentication, MP3 tracks, films, and cloud storage</p>
+            <p className="text-xs text-[#8a8aa8]">Google OAuth login, account creation, and live table synchronization</p>
           </div>
         </div>
 
         {/* Tabs */}
         <div className="flex items-center p-1 rounded-xl bg-white/5 border border-white/10 text-xs">
           <button
-            onClick={() => setActiveTab('status')}
-            className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${
-              activeTab === 'status' ? 'bg-[#3ecf8e] text-slate-900 shadow-md' : 'text-[#8a8aa8] hover:text-white'
-            }`}
-          >
-            Connection
-          </button>
-          <button
             onClick={() => setActiveTab('auth')}
             className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${
               activeTab === 'auth' ? 'bg-[#00e5ff] text-slate-900 shadow-md' : 'text-[#8a8aa8] hover:text-white'
             }`}
           >
-            Live Auth Test
+            Google / Account
+          </button>
+          <button
+            onClick={() => setActiveTab('status')}
+            className={`flex-1 py-1.5 rounded-lg font-bold transition-all ${
+              activeTab === 'status' ? 'bg-[#3ecf8e] text-slate-900 shadow-md' : 'text-[#8a8aa8] hover:text-white'
+            }`}
+          >
+            API Keys & Vercel
           </button>
           <button
             onClick={() => setActiveTab('test')}
@@ -281,7 +347,7 @@ CREATE POLICY "Open films insert" ON public.films FOR INSERT WITH CHECK (true);
               activeTab === 'test' ? 'bg-[#fbbf24] text-slate-900 shadow-md' : 'text-[#8a8aa8] hover:text-white'
             }`}
           >
-            REST Query Test
+            REST Query
           </button>
           <button
             onClick={() => setActiveTab('sql')}
@@ -293,7 +359,115 @@ CREATE POLICY "Open films insert" ON public.films FOR INSERT WITH CHECK (true);
           </button>
         </div>
 
-        {/* TAB 1: CONNECTION */}
+        {/* TAB 1: AUTH & GOOGLE LOGIN */}
+        {activeTab === 'auth' && (
+          <div className="space-y-4 text-xs">
+            {currentSessionUser ? (
+              <div className="p-4 rounded-2xl bg-[#3ecf8e]/10 border border-[#3ecf8e]/30 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-[#3ecf8e] font-bold">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Logged In with Supabase</span>
+                  </div>
+                  <button
+                    onClick={handleSignOut}
+                    className="px-3 py-1 rounded-xl bg-white/10 hover:bg-red-500/20 text-white hover:text-red-400 transition-colors flex items-center gap-1 font-semibold"
+                  >
+                    <LogOut className="w-3.5 h-3.5" /> Sign Out
+                  </button>
+                </div>
+                <div className="text-white font-mono bg-black/40 p-2.5 rounded-xl border border-white/10">
+                  {currentSessionUser}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {/* Google OAuth Button */}
+                <button
+                  onClick={handleGoogleLogin}
+                  className="w-full py-3 rounded-2xl bg-white hover:bg-gray-100 text-gray-900 font-bold text-xs flex items-center justify-center gap-2.5 shadow-lg transition-transform hover:scale-102"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                  </svg>
+                  <span>Continue with Google</span>
+                </button>
+
+                <div className="flex items-center gap-2 text-center text-[#8a8aa8] text-[11px] my-2">
+                  <div className="flex-1 h-px bg-white/10" />
+                  <span>OR WITH EMAIL</span>
+                  <div className="flex-1 h-px bg-white/10" />
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-2.5">
+                  {isRegistering && (
+                    <div>
+                      <label className="font-bold text-white block mb-1">Display Name</label>
+                      <input
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="Alex Vance"
+                        className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="font-bold text-white block mb-1">Email Address</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="creator@wevids.app"
+                      className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-white block mb-1">Password</label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••••••"
+                      className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white"
+                    />
+                  </div>
+
+                  <button
+                    onClick={isRegistering ? handleSignUp : handleSignIn}
+                    disabled={authLoading}
+                    className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold shadow-md hover:scale-102 transition-transform disabled:opacity-50"
+                  >
+                    {authLoading 
+                      ? 'AUTHENTICATING...' 
+                      : isRegistering 
+                      ? '⚡ CREATE NEW ACCOUNT' 
+                      : '⚡ SIGN IN TO WEVIDS'}
+                  </button>
+
+                  <div className="text-center pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsRegistering(!isRegistering)}
+                      className="text-xs text-[#00e5ff] hover:underline"
+                    >
+                      {isRegistering 
+                        ? 'Already have an account? Sign In' 
+                        : 'Don’t have an account? Create Account'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 2: CREDENTIALS & VERCEL */}
         {activeTab === 'status' && (
           <form onSubmit={handleSaveConnection} className="space-y-3 text-xs">
             <div className="p-3 rounded-2xl bg-white/5 border border-white/10 space-y-1.5">
@@ -324,6 +498,13 @@ CREATE POLICY "Open films insert" ON public.films FOR INSERT WITH CHECK (true);
               />
             </div>
 
+            <div className="p-3 rounded-2xl bg-black/40 border border-white/10 text-[11px] text-[#8a8aa8] space-y-1">
+              <span className="font-bold text-white">For Vercel Deployment:</span>
+              <p>Add these environment variables in your <strong>Vercel Project Settings → Environment Variables</strong>:</p>
+              <code className="text-[#00e5ff] block">VITE_SUPABASE_URL = your_supabase_url</code>
+              <code className="text-[#00e5ff] block">VITE_SUPABASE_ANON_KEY = your_anon_key</code>
+            </div>
+
             <div className="flex gap-2 pt-2">
               <button
                 type="submit"
@@ -346,76 +527,7 @@ CREATE POLICY "Open films insert" ON public.films FOR INSERT WITH CHECK (true);
           </form>
         )}
 
-        {/* TAB 2: AUTH */}
-        {activeTab === 'auth' && (
-          <div className="space-y-3 text-xs">
-            {currentSessionUser ? (
-              <div className="p-4 rounded-2xl bg-[#3ecf8e]/10 border border-[#3ecf8e]/30 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-[#3ecf8e] font-bold">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Logged In Online</span>
-                  </div>
-                  <button
-                    onClick={handleSignOut}
-                    className="px-3 py-1 rounded-xl bg-white/10 hover:bg-red-500/20 text-white hover:text-red-400 transition-colors flex items-center gap-1 font-semibold"
-                  >
-                    <LogOut className="w-3.5 h-3.5" /> Sign Out
-                  </button>
-                </div>
-                <div className="text-white font-mono bg-black/40 p-2.5 rounded-xl border border-white/10">
-                  {currentSessionUser}
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="p-3 rounded-2xl bg-white/5 border border-white/10 space-y-2">
-                  <div className="font-bold text-white flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-[#00e5ff]" />
-                    Email
-                  </div>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="creator@wevids.app"
-                    className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white"
-                  />
-                  <div className="font-bold text-white flex items-center gap-1.5 pt-1">
-                    <Lock className="w-3.5 h-3.5 text-[#ff2d95]" />
-                    Password
-                  </div>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••••••"
-                    className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={handleSignIn}
-                    disabled={authLoading}
-                    className="py-2.5 rounded-xl bg-gradient-to-r from-[#00e5ff] to-[#3ecf8e] text-slate-900 font-orbitron font-bold shadow-md hover:scale-102 transition-transform"
-                  >
-                    {authLoading ? 'Signing in...' : 'Sign In'}
-                  </button>
-                  <button
-                    onClick={handleSignUp}
-                    disabled={authLoading}
-                    className="py-2.5 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#9333ea] text-white font-orbitron font-bold shadow-md hover:scale-102 transition-transform"
-                  >
-                    {authLoading ? 'Signing up...' : 'Sign Up'}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* TAB 3: TEST QUERY */}
+        {/* TAB 3: REST QUERY TEST */}
         {activeTab === 'test' && (
           <div className="space-y-3 text-xs">
             <div className="p-3 rounded-2xl bg-white/5 border border-white/10 space-y-2">
@@ -428,7 +540,7 @@ CREATE POLICY "Open films insert" ON public.films FOR INSERT WITH CHECK (true);
                   type="text"
                   value={testTableName}
                   onChange={(e) => setTestTableName(e.target.value)}
-                  placeholder="audio_tracks or films"
+                  placeholder="posts, game_scores, audio_tracks, films"
                   className="flex-1 px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white font-mono"
                 />
                 <button
@@ -449,11 +561,11 @@ CREATE POLICY "Open films insert" ON public.films FOR INSERT WITH CHECK (true);
           </div>
         )}
 
-        {/* TAB 4: SQL SCHEMA */}
+        {/* TAB 4: COMPLETE SQL SCHEMA */}
         {activeTab === 'sql' && (
           <div className="space-y-3 text-xs">
             <div className="flex items-center justify-between">
-              <span className="text-[#8a8aa8]">One-click SQL script for Supabase tables</span>
+              <span className="text-[#8a8aa8]">One-click SQL script for all WEVIDS tables</span>
               <button
                 onClick={copySql}
                 className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#ff2d95] text-white font-bold hover:scale-105 transition-transform"

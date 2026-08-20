@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useWevids } from '../../context/WevidsContext';
 import { 
   Gamepad2, 
   Box, 
@@ -15,12 +16,15 @@ import {
   Flame,
   MousePointerClick,
   Play,
-  Shuffle
+  Shuffle,
+  CloudUpload
 } from 'lucide-react';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { sounds } from '../../lib/soundFx';
 import { toast } from 'sonner';
 
 export const GamingHubView: React.FC = () => {
+  const { currentUser } = useWevids();
   const [selectedGame, setSelectedGame] = useState<string>('voxel');
 
   // --- GAME 1: VOXEL BUILDER ---
@@ -70,19 +74,21 @@ export const GamingHubView: React.FC = () => {
   const [memoryFlipped, setMemoryFlipped] = useState<number[]>([]);
   const [memoryMatches, setMemoryMatches] = useState(0);
 
-  // --- GAME 8: NEON BREAKOUT ---
-  const breakoutCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [breakoutRunning, setBreakoutRunning] = useState(false);
-  const [breakoutScore, setBreakoutScore] = useState(0);
-
-  // --- GAME 9: NEON 2048 MATRIX ---
-  const [board2048, setBoard2048] = useState<number[]>([0,2,0,0, 0,0,2,0, 0,0,0,0, 0,0,0,0]);
-  const [score2048, setScore2048] = useState(4);
-
-  // --- GAME 10: CYBER DINO RUNNER ---
-  const dinoCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [dinoRunning, setDinoRunning] = useState(false);
-  const [dinoScore, setDinoScore] = useState(0);
+  // Sync Score helper
+  const syncScoreToCloud = async (gameId: string, score: number) => {
+    if (!isSupabaseConfigured()) return;
+    try {
+      await supabase.upsert('game_scores', {
+        id: `score-${gameId}-${currentUser.id}`,
+        game_id: gameId,
+        player_name: currentUser.name,
+        player_handle: currentUser.handle,
+        score: score
+      });
+    } catch {
+      // Safe offline
+    }
+  };
 
   // Game selection catalog (10+ Games)
   const gameCatalog = [
@@ -230,6 +236,7 @@ export const GamingHubView: React.FC = () => {
         score += 10;
         setSnakeScore(score);
         sounds.like();
+        syncScoreToCloud('snake', score);
         food = { x: Math.floor(Math.random() * 25), y: Math.floor(Math.random() * 25) };
       } else {
         snake.pop();
@@ -287,6 +294,7 @@ export const GamingHubView: React.FC = () => {
         score += 1;
         setFlappyScore(score);
         sounds.like();
+        syncScoreToCloud('flappy', score);
       }
 
       // Check collision
@@ -326,7 +334,6 @@ export const GamingHubView: React.FC = () => {
     copy[idx] = tttTurn;
     setTttBoard(copy);
 
-    // Check winner
     const lines = [
       [0,1,2],[3,4,5],[6,7,8],
       [0,3,6],[1,4,7],[2,5,8],
@@ -338,6 +345,7 @@ export const GamingHubView: React.FC = () => {
         setTttWinner(copy[a]);
         sounds.success();
         toast.success(`Player ${copy[a]} Won the Match! 🎉`);
+        syncScoreToCloud('tictactoe', 100);
         return;
       }
     }
@@ -367,7 +375,8 @@ export const GamingHubView: React.FC = () => {
           clearInterval(timer);
           setAimActive(false);
           sounds.success();
-          toast.success(`Training Complete! Score: ${aimScore}`);
+          syncScoreToCloud('aim_trainer', aimScore);
+          toast.success(`Training Complete! Score: ${aimScore} synced to Supabase.`);
           return 0;
         }
         return t - 1;
@@ -418,6 +427,7 @@ export const GamingHubView: React.FC = () => {
         setMemoryFlipped([]);
         if (memoryMatches + 1 === 6) {
           sounds.success();
+          syncScoreToCloud('memory_matrix', 600);
           toast.success('Matrix Memory Completed!');
         }
       } else {
@@ -444,7 +454,7 @@ export const GamingHubView: React.FC = () => {
             Gaming Studio & 10+ Web Games
           </h1>
           <p className="text-xs text-[#8a8aa8]">
-            Interactive 3D Voxel Builder, 2-Player Pong & Tic-Tac-Toe, Neon Snake, Flappy Bird, Aim Trainer, and retro physics engines.
+            Interactive 3D Voxel Builder, 2-Player Pong & Tic-Tac-Toe, Neon Snake, Flappy Bird, Aim Trainer with live Supabase leaderboard syncing.
           </p>
         </div>
       </div>

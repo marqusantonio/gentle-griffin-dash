@@ -6,6 +6,7 @@ export interface SupabaseConfig {
 export interface SupabaseUser {
   id: string;
   email?: string;
+  user_metadata?: Record<string, any>;
   created_at?: string;
 }
 
@@ -71,7 +72,6 @@ export const saveStoredSession = (session: SupabaseSession | null) => {
   }
 };
 
-// Pure fetch client for Supabase REST & Auth APIs
 export class SupabaseClient {
   private getHeaders(token?: string, isUpsert = false) {
     const { anonKey } = getSupabaseConfig();
@@ -90,7 +90,21 @@ export class SupabaseClient {
     return headers;
   }
 
-  public async signUp(email: string, password: string): Promise<{ user?: SupabaseUser; session?: SupabaseSession; error?: string }> {
+  // Google OAuth Login
+  public async signInWithGoogle(): Promise<{ url?: string; error?: string }> {
+    const { url, anonKey } = getSupabaseConfig();
+    if (!url) return { error: 'Supabase URL is not configured' };
+
+    const redirectUrl = typeof window !== 'undefined' ? window.location.origin : '';
+    const oauthUrl = `${url}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUrl)}`;
+    
+    if (typeof window !== 'undefined') {
+      window.location.href = oauthUrl;
+    }
+    return { url: oauthUrl };
+  }
+
+  public async signUp(email: string, password: string, name?: string): Promise<{ user?: SupabaseUser; session?: SupabaseSession; error?: string }> {
     const { url } = getSupabaseConfig();
     if (!url) return { error: 'Supabase URL is not configured' };
 
@@ -98,7 +112,11 @@ export class SupabaseClient {
       const res = await fetch(`${url}/auth/v1/signup`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ 
+          email, 
+          password,
+          data: { full_name: name || email.split('@')[0] }
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
