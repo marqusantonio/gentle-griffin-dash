@@ -395,7 +395,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
                 Supabase Project API Configuration
               </div>
               <p className="text-[11px] text-[#8a8aa8]">
-                Get your Project URL & Public Anon Key from Supabase Dashboard > Project Settings > API.
+                Get your Project URL & Public Anon Key from Supabase Dashboard &rarr; Project Settings &rarr; API.
               </p>
             </div>
 
