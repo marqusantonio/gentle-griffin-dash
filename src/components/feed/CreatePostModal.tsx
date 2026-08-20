@@ -6,10 +6,9 @@ import {
   Sparkles, 
   X, 
   Send, 
-  Hash, 
-  MapPin,
   Film,
-  UploadCloud
+  Music2,
+  Tv
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
 import { toast } from 'sonner';
@@ -17,15 +16,23 @@ import { toast } from 'sonner';
 interface CreatePostModalProps {
   isOpen: boolean;
   onClose: () => void;
+  defaultTarget?: 'feed' | 'clips';
 }
 
-export const CreatePostModal: React.FC<CreatePostModalProps> = ({ isOpen, onClose }) => {
-  const { addPost, currentUser } = useWevids();
+export const CreatePostModal: React.FC<CreatePostModalProps> = ({ 
+  isOpen, 
+  onClose,
+  defaultTarget = 'feed'
+}) => {
+  const { addPost, addClip, currentUser, setActiveView } = useWevids();
   
+  const [targetType, setTargetType] = useState<'feed' | 'clips'>(defaultTarget);
   const [content, setContent] = useState('');
+  const [title, setTitle] = useState('');
+  const [audioTrack, setAudioTrack] = useState('Original Audio Track');
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [mediaType, setMediaType] = useState<'image' | 'video'>('image');
-  const [selectedTag, setSelectedTag] = useState('#WEVIDS31');
+  const [selectedTag, setSelectedTag] = useState('#WEVIDS');
   const [isUploading, setIsUploading] = useState(false);
   const [fileName, setFileName] = useState('');
 
@@ -34,7 +41,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({ isOpen, onClos
 
   if (!isOpen) return null;
 
-  const popularTags = ['#WEVIDS31', '#HyperOS', '#AndroidModding', '#AnimeCinema', '#Cyberpunk', '#Minecraft', '#LoFiBeats'];
+  const popularTags = ['#WEVIDS', '#Tech', '#CustomROM', '#Anime', '#Gaming', '#Cyberpunk', '#Music'];
 
   const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -64,7 +71,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({ isOpen, onClos
     if (!file) return;
 
     if (!file.type.startsWith('video/')) {
-      toast.error('Please select a valid MP4 or WebM video file');
+      toast.error('Please select a valid video file (MP4, WebM)');
       return;
     }
 
@@ -84,6 +91,34 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({ isOpen, onClos
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (targetType === 'clips') {
+      if (!mediaUrl && !content.trim()) {
+        toast.error('Please upload a video or provide a video URL for your Clip');
+        return;
+      }
+
+      addClip({
+        id: `clip-${Date.now()}`,
+        userId: currentUser.id,
+        title: title.trim() || 'New Creator Short Clip',
+        description: content.trim() || 'Vertical short clip uploaded on WEVIDS',
+        videoUrl: mediaUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+        audioTrack: audioTrack.trim() || `${currentUser.name} · Original Audio`,
+        likes: 0,
+        dislikes: 0,
+        shares: 0,
+        comments: []
+      });
+
+      sounds.success();
+      toast.success('Clip published directly to Clips Feed! 🎬');
+      setActiveView('clips');
+      onClose();
+      return;
+    }
+
+    // Otherwise standard Feed Post
     if (!content.trim() && !mediaUrl) {
       toast.error('Please type a message or upload media');
       return;
@@ -104,14 +139,14 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({ isOpen, onClos
     });
 
     sounds.success();
-    setContent('');
-    setMediaUrl(null);
+    toast.success('Post published to Community Feed!');
+    setActiveView('feed');
     onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
-      <div className="liquid-glass rounded-3xl p-6 border border-white/20 max-w-lg w-full space-y-4 shadow-2xl relative">
+      <div className="liquid-glass rounded-3xl p-6 border border-white/20 max-w-lg w-full space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-[#8a8aa8] hover:text-white p-1"
@@ -128,19 +163,94 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({ isOpen, onClos
             {currentUser.avatar}
           </div>
           <div>
-            <h3 className="font-orbitron font-bold text-base text-white">Create Feed Post</h3>
+            <h3 className="font-orbitron font-bold text-base text-white">Publish Creator Content</h3>
             <div className="text-xs text-[#00e5ff]">Posting as {currentUser.name} ({currentUser.handle})</div>
           </div>
         </div>
 
+        {/* Target Destination Selector */}
+        <div>
+          <label className="text-[11px] font-bold text-[#8a8aa8] uppercase tracking-wider block mb-1.5">
+            Select Destination:
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                sounds.click();
+                setTargetType('feed');
+              }}
+              className={`p-3 rounded-2xl border text-xs font-bold font-orbitron flex items-center justify-center gap-2 transition-all ${
+                targetType === 'feed'
+                  ? 'bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 shadow-md border-transparent'
+                  : 'bg-white/5 border-white/10 text-[#8a8aa8] hover:text-white'
+              }`}
+            >
+              <Tv className="w-4 h-4" />
+              <span>Community Feed</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                sounds.click();
+                setTargetType('clips');
+                setMediaType('video');
+              }}
+              className={`p-3 rounded-2xl border text-xs font-bold font-orbitron flex items-center justify-center gap-2 transition-all ${
+                targetType === 'clips'
+                  ? 'bg-gradient-to-r from-[#00e5ff] to-[#ff2d95] text-slate-900 shadow-md border-transparent'
+                  : 'bg-white/5 border-white/10 text-[#8a8aa8] hover:text-white'
+              }`}
+            >
+              <Film className="w-4 h-4" />
+              <span>Shorts Clip (Vertical)</span>
+            </button>
+          </div>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4">
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            rows={3}
-            placeholder="Share your latest ROM flash, gameplay clip, synth beats, or video render..."
-            className="w-full px-4 py-3 rounded-2xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:outline-none focus:border-[#00e5ff] focus:ring-1 focus:ring-[#00e5ff]/30 resize-none"
-          />
+          {targetType === 'clips' && (
+            <>
+              <div>
+                <label className="text-xs font-bold text-white block mb-1">Clip Title</label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="e.g. Crazy Gaming Combo or Shader Test"
+                  className="w-full px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:border-[#00e5ff] focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-white block mb-1 flex items-center gap-1">
+                  <Music2 className="w-3.5 h-3.5 text-[#ff2d95]" /> Audio Track Name
+                </label>
+                <input
+                  type="text"
+                  value={audioTrack}
+                  onChange={(e) => setAudioTrack(e.target.value)}
+                  placeholder="e.g. Neon Horizon · Original Sound"
+                  className="w-full px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:border-[#00e5ff] focus:outline-none"
+                />
+              </div>
+            </>
+          )}
+
+          <div>
+            <label className="text-xs font-bold text-white block mb-1">
+              {targetType === 'clips' ? 'Clip Description' : 'Post Thoughts / Text'}
+            </label>
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              rows={targetType === 'clips' ? 2 : 3}
+              placeholder={targetType === 'clips' ? 'Tell viewers about this vertical clip...' : 'What did you build, discover, or play today?'}
+              className="w-full px-4 py-3 rounded-2xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:outline-none focus:border-[#00e5ff] resize-none"
+            />
+          </div>
 
           {/* Hidden File Inputs */}
           <input
@@ -160,11 +270,11 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({ isOpen, onClos
 
           {/* Media Preview Box */}
           {mediaUrl && (
-            <div className="relative rounded-2xl overflow-hidden border border-white/20 bg-black max-h-56 flex items-center justify-center">
+            <div className="relative rounded-2xl overflow-hidden border border-white/20 bg-black max-h-52 flex items-center justify-center">
               {mediaType === 'image' ? (
-                <img src={mediaUrl} alt="Upload preview" className="w-full h-full object-cover max-h-56" />
+                <img src={mediaUrl} alt="Upload preview" className="w-full h-full object-cover max-h-52" />
               ) : (
-                <video src={mediaUrl} controls autoPlay loop className="w-full h-full object-cover max-h-56" />
+                <video src={mediaUrl} controls autoPlay loop className="w-full h-full object-cover max-h-52" />
               )}
 
               <button
@@ -180,55 +290,59 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({ isOpen, onClos
               </button>
 
               <span className="absolute bottom-2 left-2 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md text-[10px] font-bold text-white uppercase">
-                {mediaType}: {fileName || 'Attached'}
+                {mediaType}: {fileName || 'Ready'}
               </span>
             </div>
           )}
 
-          {/* Tags picker */}
-          <div>
-            <label className="text-[11px] font-bold text-[#8a8aa8] block mb-1.5 uppercase tracking-wider">
-              Topic Tag
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {popularTags.map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => setSelectedTag(tag)}
-                  className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
-                    selectedTag === tag
-                      ? 'bg-[#ff2d95] text-slate-900 font-bold shadow-md'
-                      : 'bg-white/5 text-[#8a8aa8] hover:text-white border border-white/5'
-                  }`}
-                >
-                  {tag}
-                </button>
-              ))}
+          {/* Topic Tags */}
+          {targetType === 'feed' && (
+            <div>
+              <label className="text-[11px] font-bold text-[#8a8aa8] block mb-1.5 uppercase tracking-wider">
+                Topic Tag
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {popularTags.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => setSelectedTag(tag)}
+                    className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
+                      selectedTag === tag
+                        ? 'bg-[#ff2d95] text-slate-900 font-bold shadow-md'
+                        : 'bg-white/5 text-[#8a8aa8] hover:text-white border border-white/5'
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Action Toolbar */}
           <div className="pt-2 flex items-center justify-between border-t border-white/10">
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => imageInputRef.current?.click()}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-white border border-white/10 transition-colors"
-                title="Attach Photo"
-              >
-                <ImageIcon className="w-4 h-4 text-[#fbbf24]" />
-                <span className="hidden sm:inline">Add Photo</span>
-              </button>
+              {targetType === 'feed' && (
+                <button
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-white border border-white/10 transition-colors"
+                  title="Attach Photo"
+                >
+                  <ImageIcon className="w-4 h-4 text-[#fbbf24]" />
+                  <span>Photo</span>
+                </button>
+              )}
 
               <button
                 type="button"
                 onClick={() => videoInputRef.current?.click()}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-white border border-white/10 transition-colors"
-                title="Attach Video"
+                title="Attach Video File"
               >
                 <VideoIcon className="w-4 h-4 text-[#00e5ff]" />
-                <span className="hidden sm:inline">Add Video</span>
+                <span>Upload Video</span>
               </button>
             </div>
 
@@ -238,7 +352,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({ isOpen, onClos
               className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold text-xs shadow-lg hover:scale-105 transition-transform flex items-center gap-1.5 disabled:opacity-50"
             >
               <Send className="w-3.5 h-3.5" />
-              <span>{isUploading ? 'ATTACHING...' : 'PUBLISH POST'}</span>
+              <span>{isUploading ? 'UPLOADING...' : targetType === 'clips' ? 'PUBLISH CLIP' : 'PUBLISH POST'}</span>
             </button>
           </div>
         </form>

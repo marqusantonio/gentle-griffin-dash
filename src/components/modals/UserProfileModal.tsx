@@ -6,11 +6,11 @@ import {
   Music2, 
   Play, 
   Pause, 
-  UserPlus, 
-  Check, 
-  X
+  Lock,
+  X 
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
+import { toast } from 'sonner';
 
 export const UserProfileModal: React.FC = () => {
   const { 
@@ -44,6 +44,15 @@ export const UserProfileModal: React.FC = () => {
     }
   };
 
+  const handleMessageClick = () => {
+    if (!mutualFriend) {
+      toast.info(`You and ${viewingProfileUser.name} need to follow each other to start direct messaging.`);
+      return;
+    }
+    closeUserProfileModal();
+    startOrOpenChatWithUser(viewingProfileUser.id);
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
       <div className="liquid-glass rounded-3xl p-6 border border-white/20 max-w-md w-full space-y-4 shadow-2xl relative animate-slide-in">
@@ -72,11 +81,15 @@ export const UserProfileModal: React.FC = () => {
               {viewingProfileUser.verified && <CheckCircle2 className="w-4 h-4 text-[#00e5ff]" />}
             </h2>
             <div className="text-xs text-[#8a8aa8]">{viewingProfileUser.handle} · {viewingProfileUser.location}</div>
-            {mutualFriend && (
+            {mutualFriend ? (
               <span className="text-[10px] font-bold text-[#10b981] bg-[#10b981]/20 px-2 py-0.5 rounded-full border border-[#10b981]/40 mt-1 inline-block">
                 Mutual Friends 🤝
               </span>
-            )}
+            ) : following ? (
+              <span className="text-[10px] text-[#00e5ff] font-semibold mt-1 inline-block">
+                Awaiting follow back to chat
+              </span>
+            ) : null}
           </div>
         </div>
 
@@ -137,14 +150,15 @@ export const UserProfileModal: React.FC = () => {
             </button>
 
             <button
-              onClick={() => {
-                closeUserProfileModal();
-                startOrOpenChatWithUser(viewingProfileUser.id);
-              }}
-              className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-orbitron font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
+              onClick={handleMessageClick}
+              className={`px-5 py-2.5 rounded-xl font-orbitron font-bold text-xs flex items-center justify-center gap-1.5 transition-colors ${
+                mutualFriend
+                  ? 'bg-[#00e5ff] text-slate-900 shadow-md'
+                  : 'bg-white/5 text-[#8a8aa8] border border-white/10 hover:text-white'
+              }`}
             >
-              <MessageSquare className="w-3.5 h-3.5 text-[#00e5ff]" />
-              Message
+              {mutualFriend ? <MessageSquare className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+              <span>{mutualFriend ? 'Message' : 'Locked'}</span>
             </button>
           </div>
         )}

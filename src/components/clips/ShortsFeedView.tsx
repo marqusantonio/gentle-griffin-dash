@@ -4,16 +4,18 @@ import {
   Heart, 
   MessageCircle, 
   Share2, 
-  Bookmark, 
   Volume2, 
   VolumeX, 
   ChevronUp, 
   ChevronDown, 
   ThumbsDown, 
   CheckCircle2, 
-  Music2 
+  Music2,
+  Plus,
+  Film
 } from 'lucide-react';
 import { RichCommentInput } from '../comments/RichCommentInput';
+import { CreatePostModal } from '../feed/CreatePostModal';
 import { sounds } from '../../lib/soundFx';
 
 export const ShortsFeedView: React.FC = () => {
@@ -34,6 +36,40 @@ export const ShortsFeedView: React.FC = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(true);
   const [showComments, setShowComments] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+
+  if (clips.length === 0) {
+    return (
+      <div className="max-w-md mx-auto py-20 text-center space-y-5">
+        <div className="w-20 h-20 rounded-3xl liquid-glass border border-[#ff2d95]/40 flex items-center justify-center mx-auto text-[#ff2d95] shadow-2xl">
+          <Film className="w-10 h-10 animate-pulse" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="font-orbitron font-bold text-2xl text-white">No Clips Uploaded Yet</h2>
+          <p className="text-xs text-[#8a8aa8]">
+            Vertical short clips uploaded by creators appear here in full 60FPS vertical video.
+          </p>
+        </div>
+
+        <button
+          onClick={() => {
+            sounds.pop();
+            setIsCreateOpen(true);
+          }}
+          className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold text-xs shadow-lg hover:scale-105 transition-transform inline-flex items-center gap-2"
+        >
+          <Plus className="w-4 h-4" />
+          <span>UPLOAD FIRST SHORT CLIP</span>
+        </button>
+
+        <CreatePostModal
+          isOpen={isCreateOpen}
+          onClose={() => setIsCreateOpen(false)}
+          defaultTarget="clips"
+        />
+      </div>
+    );
+  }
 
   const activeClip = clips[currentIndex] || clips[0];
   const clipAuthor = allUsers[activeClip?.userId] || currentUser;
@@ -64,11 +100,22 @@ export const ShortsFeedView: React.FC = () => {
 
         <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
           <span className="px-3 py-1 rounded-full bg-black/70 backdrop-blur-md text-[10px] font-bold text-[#00e5ff] border border-[#00e5ff]/30 font-orbitron">
-            TRENDING CLIP {currentIndex + 1}/{clips.length}
+            CLIP {currentIndex + 1}/{clips.length}
           </span>
         </div>
 
         <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+          <button
+            onClick={() => {
+              sounds.pop();
+              setIsCreateOpen(true);
+            }}
+            className="p-2.5 rounded-full bg-black/60 backdrop-blur-md text-white hover:bg-[#00e5ff] hover:text-slate-900 transition-all border border-white/10 shadow-lg"
+            title="Upload Clip"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+
           <button
             onClick={() => {
               sounds.pop();
@@ -80,22 +127,24 @@ export const ShortsFeedView: React.FC = () => {
           </button>
         </div>
 
-        <div className="absolute right-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
-          <button
-            onClick={handlePrev}
-            className="p-2 rounded-full bg-black/70 hover:bg-[#00e5ff] text-white hover:text-slate-900 transition-all border border-white/10 shadow-lg"
-            title="Previous Short"
-          >
-            <ChevronUp className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleNext}
-            className="p-2 rounded-full bg-black/70 hover:bg-[#ff2d95] text-white transition-all border border-white/10 shadow-lg"
-            title="Next Short"
-          >
-            <ChevronDown className="w-4 h-4" />
-          </button>
-        </div>
+        {clips.length > 1 && (
+          <div className="absolute right-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
+            <button
+              onClick={handlePrev}
+              className="p-2 rounded-full bg-black/70 hover:bg-[#00e5ff] text-white hover:text-slate-900 transition-all border border-white/10 shadow-lg"
+              title="Previous Short"
+            >
+              <ChevronUp className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleNext}
+              className="p-2 rounded-full bg-black/70 hover:bg-[#ff2d95] text-white transition-all border border-white/10 shadow-lg"
+              title="Next Short"
+            >
+              <ChevronDown className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         <div className="absolute bottom-0 left-0 right-16 p-5 z-20 bg-gradient-to-t from-black/95 via-black/50 to-transparent space-y-2">
           <div className="flex items-center gap-2.5">
@@ -173,7 +222,7 @@ export const ShortsFeedView: React.FC = () => {
             <div className="p-3 rounded-full bg-black/60 backdrop-blur-md text-white hover:bg-[#00e5ff]/40 transition-all border border-white/10 shadow-lg">
               <MessageCircle className="w-5 h-5" />
             </div>
-            <span className="text-[10px] font-bold text-white mt-1 drop-shadow">{activeClip.comments.length}</span>
+            <span className="text-[10px] font-bold text-white mt-1 drop-shadow">{activeClip.comments?.length || 0}</span>
           </button>
 
           <button onClick={() => openShareModal(activeClip.title, `https://wevids.app/clip/${activeClip.id}`)} className="flex flex-col items-center group">
@@ -185,22 +234,22 @@ export const ShortsFeedView: React.FC = () => {
         </div>
       </div>
 
-      {/* Slide-out Comments Drawer with GIPHY & Voice */}
+      {/* Slide-out Comments Drawer */}
       {showComments && (
         <div className="w-full lg:w-96 liquid-glass rounded-3xl p-5 border border-white/15 shadow-2xl flex flex-col h-[680px] animate-fade-in">
           <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-3">
             <h3 className="font-orbitron font-bold text-sm text-white flex items-center gap-2">
               <MessageCircle className="w-4 h-4 text-[#00e5ff]" />
-              Clip Comments ({activeClip.comments.length})
+              Clip Comments ({activeClip.comments?.length || 0})
             </h3>
             <button onClick={() => setShowComments(false)} className="text-xs text-[#8a8aa8] hover:text-white">✕</button>
           </div>
 
           {/* Comments List */}
           <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
-            {activeClip.comments.length === 0 ? (
+            {!activeClip.comments || activeClip.comments.length === 0 ? (
               <div className="text-center py-20 text-xs text-[#8a8aa8]">
-                No comments yet! Post a GIF, sticker, or voice note.
+                No comments yet! Post a reaction.
               </div>
             ) : (
               activeClip.comments.map(c => (
@@ -210,28 +259,11 @@ export const ShortsFeedView: React.FC = () => {
                     <span className="text-[10px] text-[#8a8aa8]">{c.timestamp}</span>
                   </div>
                   {c.text && <p className="text-xs text-[#e8e8f4] leading-relaxed">{c.text}</p>}
-
-                  {c.media && c.mediaType === 'gif' && (
-                    <img src={c.media} alt="GIF" className="rounded-xl max-h-32 object-cover border border-white/10" />
-                  )}
-                  {c.media && c.mediaType === 'image' && (
-                    <img src={c.media} alt="Photo" className="rounded-xl max-h-32 object-cover border border-white/10" />
-                  )}
-                  {c.media && c.mediaType === 'sticker' && (
-                    <img src={c.media} alt="Sticker" className="w-14 h-14 rounded-lg object-cover" />
-                  )}
-                  {c.mediaType === 'audio' && (
-                    <div className="p-2 rounded-xl bg-white/10 border border-[#00e5ff]/40 text-xs text-[#00e5ff] flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-[#ff2d95] animate-ping" />
-                      <span>🎤 Voice Note (0:08s)</span>
-                    </div>
-                  )}
                 </div>
               ))
             )}
           </div>
 
-          {/* Rich Comment Input */}
           <div className="pt-2 border-t border-white/10">
             <RichCommentInput
               onSend={(comment) => {
@@ -245,11 +277,17 @@ export const ShortsFeedView: React.FC = () => {
                   mediaType: comment.mediaType
                 });
               }}
-              placeholder="Post a GIF, sticker, or voice note..."
+              placeholder="Write a comment..."
             />
           </div>
         </div>
       )}
+
+      <CreatePostModal
+        isOpen={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
+        defaultTarget="clips"
+      />
     </div>
   );
 };
