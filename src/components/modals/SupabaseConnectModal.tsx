@@ -10,7 +10,8 @@ import {
   Copy,
   Check,
   Zap,
-  Code
+  Code,
+  RefreshCw
 } from 'lucide-react';
 import { 
   getStoredSession,
@@ -32,9 +33,9 @@ interface SupabaseConnectModalProps {
 }
 
 export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOpen, onClose }) => {
-  const { updateCurrentUser, syncWithSupabase } = useWevids();
+  const { updateCurrentUser, syncWithSupabase, isCloudSyncing, lastCloudSync, posts, clips } = useWevids();
   
-  const [activeTab, setActiveTab] = useState<'auth' | 'database' | 'schema'>('auth');
+  const [activeTab, setActiveTab] = useState<'auth' | 'database' | 'schema'>('database');
   
   // Auth state
   const [isRegistering, setIsRegistering] = useState(false);
@@ -48,6 +49,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
   const [supabaseUrl, setSupabaseUrl] = useState(() => getSupabaseConfig().url);
   const [supabaseAnonKey, setSupabaseAnonKey] = useState(() => getSupabaseConfig().anonKey);
   const [isTesting, setIsTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [copiedSchema, setCopiedSchema] = useState(false);
 
   useEffect(() => {
@@ -57,6 +59,9 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
       const conf = getSupabaseConfig();
       setSupabaseUrl(conf.url);
       setSupabaseAnonKey(conf.anonKey);
+      if (isSupabaseConfigured()) {
+        supabase.testConnection().then(setTestResult);
+      }
     }
   }, [isOpen]);
 
@@ -71,23 +76,32 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
 
     setIsTesting(true);
     saveSupabaseCredentials(supabaseUrl, supabaseAnonKey);
-    const testResult = await supabase.testConnection();
+    const result = await supabase.testConnection();
     setIsTesting(false);
+    setTestResult(result);
 
-    if (testResult.ok) {
+    if (result.ok) {
       sounds.success();
       toast.success('Connected to Supabase! Syncing tables...');
       syncWithSupabase();
     } else {
-      toast.error(`Connection check: ${testResult.message}`);
+      toast.error(`Connection check: ${result.message}`);
     }
+  };
+
+  const handleManualSync = async () => {
+    sounds.pop();
+    toast.loading('Syncing all tables with Supabase...');
+    await syncWithSupabase();
+    toast.dismiss();
+    toast.success('Supabase sync complete!');
   };
 
   const handleCopySchema = () => {
     sounds.click();
     navigator.clipboard.writeText(SUPABASE_SQL_SCHEMA);
     setCopiedSchema(true);
-    toast.success('SQL Schema copied to clipboard! Paste in Supabase SQL Editor.');
+    toast.success('SQL Schema copied! Paste into Supabase SQL Editor.');
     setTimeout(() => setCopiedSchema(false), 3000);
   };
 
@@ -211,31 +225,46 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
 
         {/* Header */}
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[#ff2d95] to-[#00e5ff] flex items-center justify-center text-slate-900 shadow-md">
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[#00e5ff] to-[#ff2d95] flex items-center justify-center text-slate-900 shadow-md">
             <Database className="w-6 h-6 text-slate-900" />
           </div>
           <div>
             <div className="font-orbitron font-bold text-base text-white flex items-center gap-2">
-              Supabase Cloud & Account Sync
+              Supabase Cloud Database & Auth
             </div>
-            <p className="text-xs text-[#8a8aa8]">Sync posts, clips, audio, ROMs, files, and mall products across all devices</p>
+            <p className="text-xs text-[#8a8aa8]">Connect your Supabase project to sync posts, clips, files, and users in real-time</p>
           </div>
+        </div>
+
+        {/* Live Sync Status Banner */}
+        <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2">
+            <span className={`w-2.5 h-2.5 rounded-full ${isSupabaseConfigured() ? 'bg-[#10b981] animate-ping' : 'bg-amber-400'}`} />
+            <div>
+              <span className="font-bold text-white">
+                {isSupabaseConfigured() ? 'Supabase Connected' : 'Local Mode (No Supabase URL)'}
+              </span>
+              <div className="text-[10px] text-[#8a8aa8]">
+                {lastCloudSync ? `Last synced: ${lastCloudSync}` : 'Ready to sync'} · {posts.length} Posts · {clips.length} Clips
+              </div>
+            </div>
+          </div>
+
+          {isSupabaseConfigured() && (
+            <button
+              type="button"
+              onClick={handleManualSync}
+              disabled={isCloudSyncing}
+              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-[#00e5ff] font-orbitron font-bold text-[10px] flex items-center gap-1.5 transition-colors"
+            >
+              <RefreshCw className={`w-3 h-3 ${isCloudSyncing ? 'animate-spin' : ''}`} />
+              <span>Sync Now</span>
+            </button>
+          )}
         </div>
 
         {/* Tabs Bar */}
         <div className="flex rounded-xl bg-white/5 p-1 border border-white/10 text-xs font-orbitron font-bold">
-          <button
-            type="button"
-            onClick={() => {
-              sounds.click();
-              setActiveTab('auth');
-            }}
-            className={`flex-1 py-2 rounded-lg transition-all ${
-              activeTab === 'auth' ? 'bg-[#ff2d95] text-slate-900 shadow-md' : 'text-[#8a8aa8] hover:text-white'
-            }`}
-          >
-            User Account
-          </button>
           <button
             type="button"
             onClick={() => {
@@ -258,11 +287,125 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
               activeTab === 'schema' ? 'bg-[#fbbf24] text-slate-900 shadow-md' : 'text-[#8a8aa8] hover:text-white'
             }`}
           >
-            SQL Tables
+            SQL Setup
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              sounds.click();
+              setActiveTab('auth');
+            }}
+            className={`flex-1 py-2 rounded-lg transition-all ${
+              activeTab === 'auth' ? 'bg-[#ff2d95] text-slate-900 shadow-md' : 'text-[#8a8aa8] hover:text-white'
+            }`}
+          >
+            User Auth
           </button>
         </div>
 
-        {/* TAB 1: AUTH */}
+        {/* TAB 1: DATABASE CREDENTIALS */}
+        {activeTab === 'database' && (
+          <form onSubmit={handleSaveCredentials} className="space-y-4 text-xs">
+            <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-1">
+              <div className="text-white font-bold flex items-center gap-1.5">
+                <Key className="w-4 h-4 text-[#00e5ff]" />
+                Supabase Project API Configuration
+              </div>
+              <p className="text-[11px] text-[#8a8aa8]">
+                Get your Project URL & Public Anon Key from Supabase Dashboard &rarr; Project Settings &rarr; API.
+              </p>
+            </div>
+
+            <div>
+              <label className="font-bold text-white block mb-1">Project URL</label>
+              <input
+                type="url"
+                value={supabaseUrl}
+                onChange={(e) => setSupabaseUrl(e.target.value)}
+                placeholder="https://xyzcompany.supabase.co"
+                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white font-mono text-xs focus:border-[#00e5ff] focus:outline-none"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="font-bold text-white block mb-1">Public Anon Key (anon/public)</label>
+              <textarea
+                value={supabaseAnonKey}
+                onChange={(e) => setSupabaseAnonKey(e.target.value)}
+                rows={3}
+                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white font-mono text-xs focus:border-[#00e5ff] focus:outline-none"
+                required
+              />
+            </div>
+
+            {testResult && (
+              <div className={`p-2.5 rounded-xl border text-[11px] flex items-center gap-2 ${
+                testResult.ok ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400'
+              }`}>
+                {testResult.ok ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> : <X className="w-4 h-4 flex-shrink-0" />}
+                <span>{testResult.message}</span>
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="submit"
+                disabled={isTesting}
+                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-[#00e5ff] to-[#ff2d95] text-slate-900 font-orbitron font-bold text-xs shadow-md hover:scale-102 transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <Zap className="w-4 h-4" />
+                <span>{isTesting ? 'TESTING CONNECTION...' : 'SAVE & CONNECT SUPABASE'}</span>
+              </button>
+
+              {isSupabaseConfigured() && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearSupabaseCredentials();
+                    setSupabaseUrl('');
+                    setSupabaseAnonKey('');
+                    setTestResult(null);
+                    toast.info('Supabase credentials cleared. Using local sync.');
+                  }}
+                  className="px-4 py-3 rounded-xl bg-white/10 hover:bg-red-500/20 text-white hover:text-red-400 font-bold"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </form>
+        )}
+
+        {/* TAB 2: SQL SCHEMA */}
+        {activeTab === 'schema' && (
+          <div className="space-y-3 text-xs">
+            <div className="flex items-center justify-between">
+              <div className="text-white font-bold flex items-center gap-1.5">
+                <Code className="w-4 h-4 text-[#fbbf24]" />
+                Supabase Tables SQL Script
+              </div>
+              <button
+                onClick={handleCopySchema}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#fbbf24] text-slate-900 font-orbitron font-bold text-[11px] shadow hover:scale-105 transition-transform"
+              >
+                {copiedSchema ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedSchema ? 'COPIED!' : 'COPY SQL SCRIPT'}</span>
+              </button>
+            </div>
+
+            <p className="text-[11px] text-[#8a8aa8]">
+              Copy and execute this script once in your Supabase SQL Editor (supabase.com &rarr; Project &rarr; SQL Editor) to create the tables for posts, clips, audio, films, ROMs, files, and products.
+            </p>
+
+            <pre className="p-3 rounded-2xl bg-black/70 border border-white/10 text-[11px] text-[#00e5ff] font-mono overflow-x-auto max-h-60 leading-relaxed">
+              {SUPABASE_SQL_SCHEMA}
+            </pre>
+          </div>
+        )}
+
+        {/* TAB 3: AUTH */}
         {activeTab === 'auth' && (
           <div>
             {currentSessionUser ? (
@@ -383,98 +526,6 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
                 </form>
               </div>
             )}
-          </div>
-        )}
-
-        {/* TAB 2: DATABASE CREDENTIALS */}
-        {activeTab === 'database' && (
-          <form onSubmit={handleSaveCredentials} className="space-y-4 text-xs">
-            <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-1">
-              <div className="text-white font-bold flex items-center gap-1.5">
-                <Key className="w-4 h-4 text-[#00e5ff]" />
-                Supabase Project API Configuration
-              </div>
-              <p className="text-[11px] text-[#8a8aa8]">
-                Get your Project URL & Public Anon Key from Supabase Dashboard &rarr; Project Settings &rarr; API.
-              </p>
-            </div>
-
-            <div>
-              <label className="font-bold text-white block mb-1">Project URL</label>
-              <input
-                type="url"
-                value={supabaseUrl}
-                onChange={(e) => setSupabaseUrl(e.target.value)}
-                placeholder="https://xyzcompany.supabase.co"
-                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white font-mono text-xs focus:border-[#00e5ff] focus:outline-none"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="font-bold text-white block mb-1">Public Anon Key (anon/public)</label>
-              <textarea
-                value={supabaseAnonKey}
-                onChange={(e) => setSupabaseAnonKey(e.target.value)}
-                rows={3}
-                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white font-mono text-xs focus:border-[#00e5ff] focus:outline-none"
-                required
-              />
-            </div>
-
-            <div className="flex gap-2 pt-1">
-              <button
-                type="submit"
-                disabled={isTesting}
-                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-[#00e5ff] to-[#ff2d95] text-slate-900 font-orbitron font-bold text-xs shadow-md hover:scale-102 transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                <Zap className="w-4 h-4" />
-                <span>{isTesting ? 'TESTING CONNECTION...' : 'SAVE & CONNECT DATABASE'}</span>
-              </button>
-
-              {isSupabaseConfigured() && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    clearSupabaseCredentials();
-                    setSupabaseUrl('');
-                    setSupabaseAnonKey('');
-                    toast.info('Credentials cleared');
-                  }}
-                  className="px-4 py-3 rounded-xl bg-white/10 hover:bg-red-500/20 text-white hover:text-red-400 font-bold"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </form>
-        )}
-
-        {/* TAB 3: SQL SCHEMA */}
-        {activeTab === 'schema' && (
-          <div className="space-y-3 text-xs">
-            <div className="flex items-center justify-between">
-              <div className="text-white font-bold flex items-center gap-1.5">
-                <Code className="w-4 h-4 text-[#fbbf24]" />
-                Supabase Tables SQL Script
-              </div>
-              <button
-                onClick={handleCopySchema}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#fbbf24] text-slate-900 font-orbitron font-bold text-[11px] shadow hover:scale-105 transition-transform"
-              >
-                {copiedSchema ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedSchema ? 'COPIED!' : 'COPY SQL SCRIPT'}</span>
-              </button>
-            </div>
-
-            <p className="text-[11px] text-[#8a8aa8]">
-              Copy and execute this script once in your Supabase SQL Editor to create the tables for posts, clips, audio, films, ROMs, files, and products.
-            </p>
-
-            <pre className="p-3 rounded-2xl bg-black/70 border border-white/10 text-[11px] text-[#00e5ff] font-mono overflow-x-auto max-h-60 leading-relaxed">
-              {SUPABASE_SQL_SCHEMA}
-            </pre>
           </div>
         )}
       </div>

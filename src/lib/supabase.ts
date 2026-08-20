@@ -111,52 +111,10 @@ export const checkContentModeration = (text: string): { flagged: boolean; reason
   return { flagged: false };
 };
 
-// Complete Production SQL Schema with RLS, Follows, Direct Messages, Friends View & Content Moderation Trigger
-export const SUPABASE_SQL_SCHEMA = `-- Run this in your Supabase SQL Editor (supabase.com -> Project -> SQL Editor)
+// Complete Production SQL Schema with RLS, Posts, Clips, Audio, Films, ROMs, Files, Products, and Games
+export const SUPABASE_SQL_SCHEMA = `-- Run this script in your Supabase SQL Editor (supabase.com -> Project -> SQL Editor)
 
--- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- 1. Profiles Table (Extends auth.users)
-CREATE TABLE IF NOT EXISTS public.profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  username TEXT UNIQUE,
-  avatar_url TEXT,
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-
--- 2. Follows Table (Composite Primary Key)
-CREATE TABLE IF NOT EXISTS public.follows (
-  follower_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
-  following_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  PRIMARY KEY (follower_id, following_id)
-);
-
--- 3. Direct Messages Table
-CREATE TABLE IF NOT EXISTS public.direct_messages (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  sender_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
-  receiver_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
-  content TEXT NOT NULL,
-  is_friend_request BOOLEAN DEFAULT false,
-  is_approved BOOLEAN DEFAULT NULL, -- NULL: pending, TRUE: accepted, FALSE: declined
-  is_blocked BOOLEAN DEFAULT false,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
--- 4. Mutual Friends View
-CREATE OR REPLACE VIEW public.friends AS
-SELECT 
-  f1.follower_id AS user_a,
-  f1.following_id AS user_b,
-  f1.created_at
-FROM public.follows f1
-INNER JOIN public.follows f2 
-  ON f1.follower_id = f2.following_id 
- AND f1.following_id = f2.follower_id;
-
--- 5. Posts Table
+-- 1. Posts Table
 CREATE TABLE IF NOT EXISTS public.posts (
   id TEXT PRIMARY KEY,
   "userId" TEXT,
@@ -177,7 +135,7 @@ CREATE TABLE IF NOT EXISTS public.posts (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 6. Clips Table
+-- 2. Clips Table
 CREATE TABLE IF NOT EXISTS public.clips (
   id TEXT PRIMARY KEY,
   "userId" TEXT,
@@ -192,60 +150,168 @@ CREATE TABLE IF NOT EXISTS public.clips (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 7. Moderation Trigger Function on Posts (BEFORE INSERT)
-CREATE OR REPLACE FUNCTION public.moderate_post_content()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF NEW.content ~* '(kill|harass|hate_speech|nazi|doxx|scam|abuse|terrorism)' THEN
-    RAISE EXCEPTION 'Post rejected: Content contains prohibited terms under community safety policy.';
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS tr_moderate_post ON public.posts;
-CREATE TRIGGER tr_moderate_post
-BEFORE INSERT ON public.posts
-FOR EACH ROW EXECUTE FUNCTION public.moderate_post_content();
-
--- Enable Row Level Security (RLS)
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.follows ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.direct_messages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.clips ENABLE ROW LEVEL SECURITY;
-
--- Profiles Policies
-CREATE POLICY "Public profiles are viewable by everyone" ON public.profiles FOR SELECT USING (true);
-CREATE POLICY "Users can update their own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
-
--- Follows Policies
-CREATE POLICY "Anyone can read follows" ON public.follows FOR SELECT USING (true);
-CREATE POLICY "Authenticated users can follow" ON public.follows FOR INSERT WITH CHECK (auth.uid() = follower_id);
-CREATE POLICY "Users can unfollow" ON public.follows FOR DELETE USING (auth.uid() = follower_id);
-
--- Direct Messages Policies
-CREATE POLICY "Users can view their sent or received DMs" ON public.direct_messages
-  FOR SELECT USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
-
-CREATE POLICY "Users can insert DMs" ON public.direct_messages
-  FOR INSERT WITH CHECK (auth.uid() = sender_id);
-
-CREATE POLICY "Receivers can update DM status (Accept/Decline/Block)" ON public.direct_messages
-  FOR UPDATE USING (auth.uid() = receiver_id);
-
--- Posts Policies (Creators can delete their own posts)
-CREATE POLICY "Posts viewable by everyone" ON public.posts FOR SELECT USING (true);
-CREATE POLICY "Authenticated can create posts" ON public.posts FOR INSERT WITH CHECK (true);
-CREATE POLICY "Creators can delete their own posts" ON public.posts FOR DELETE USING (
-  auth.uid()::text = "userId" OR "userId" IS NOT NULL
+-- 3. Audio Tracks Table
+CREATE TABLE IF NOT EXISTS public.audio_tracks (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  artist TEXT,
+  duration TEXT,
+  genre TEXT,
+  bpm INT DEFAULT 120,
+  url TEXT,
+  cover TEXT,
+  "uploaderId" TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Enable Realtime
+-- 4. Films Table
+CREATE TABLE IF NOT EXISTS public.films (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  synopsis TEXT,
+  director TEXT,
+  "releaseYear" INT DEFAULT 2026,
+  duration TEXT,
+  genre TEXT,
+  rating NUMERIC DEFAULT 5.0,
+  "videoUrl" TEXT,
+  "posterUrl" TEXT,
+  "backdropUrl" TEXT,
+  "uploaderId" TEXT,
+  views TEXT DEFAULT '0',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 5. ROMs Table
+CREATE TABLE IF NOT EXISTS public.roms (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  device TEXT,
+  brand TEXT,
+  "romType" TEXT,
+  status TEXT DEFAULT 'Official',
+  maintainer TEXT,
+  "maintainerHandle" TEXT,
+  version TEXT,
+  "androidVersion" TEXT DEFAULT 'Android 15',
+  "fileSize" TEXT,
+  checksum TEXT,
+  "downloadCount" INT DEFAULT 0,
+  "downloadUrl" TEXT,
+  "githubUrl" TEXT,
+  "releaseDate" TEXT,
+  changelog JSONB DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 6. Files Table
+CREATE TABLE IF NOT EXISTS public.files (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  "fileName" TEXT,
+  "fileSize" TEXT,
+  category TEXT,
+  "uploaderId" TEXT,
+  "uploaderName" TEXT,
+  "downloadUrl" TEXT,
+  checksum TEXT,
+  downloads INT DEFAULT 0,
+  "uploadedAt" TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 7. Products Table
+CREATE TABLE IF NOT EXISTS public.products (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  category TEXT,
+  price NUMERIC DEFAULT 0,
+  currency TEXT DEFAULT 'USD',
+  "creatorId" TEXT,
+  "creatorName" TEXT,
+  rating NUMERIC DEFAULT 5.0,
+  "salesCount" INT DEFAULT 0,
+  "previewUrl" TEXT,
+  description TEXT,
+  "affiliateCommission" NUMERIC DEFAULT 10,
+  "isDigital" BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 8. Game Scores Table
+CREATE TABLE IF NOT EXISTS public.game_scores (
+  id TEXT PRIMARY KEY,
+  game_id TEXT NOT NULL,
+  player_name TEXT,
+  player_handle TEXT,
+  score INT DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 9. Direct Messages Table
+CREATE TABLE IF NOT EXISTS public.direct_messages (
+  id TEXT PRIMARY KEY,
+  sender_id TEXT,
+  receiver_id TEXT,
+  content TEXT,
+  is_friend_request BOOLEAN DEFAULT false,
+  is_approved BOOLEAN DEFAULT NULL,
+  is_blocked BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Enable Row Level Security (RLS) and grant permissive access
+ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.clips ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audio_tracks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.films ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.roms ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.files ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.game_scores ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.direct_messages ENABLE ROW LEVEL SECURITY;
+
+-- Allow public read & write access so both Guests and Accounts sync seamlessly
+DO $$ 
+BEGIN
+  CREATE POLICY "Public Read Posts" ON public.posts FOR SELECT USING (true);
+  CREATE POLICY "Public Write Posts" ON public.posts FOR INSERT WITH CHECK (true);
+  CREATE POLICY "Public Update Posts" ON public.posts FOR UPDATE USING (true);
+  CREATE POLICY "Public Delete Posts" ON public.posts FOR DELETE USING (true);
+
+  CREATE POLICY "Public Read Clips" ON public.clips FOR SELECT USING (true);
+  CREATE POLICY "Public Write Clips" ON public.clips FOR INSERT WITH CHECK (true);
+  CREATE POLICY "Public Update Clips" ON public.clips FOR UPDATE USING (true);
+
+  CREATE POLICY "Public Read Audio" ON public.audio_tracks FOR SELECT USING (true);
+  CREATE POLICY "Public Write Audio" ON public.audio_tracks FOR INSERT WITH CHECK (true);
+
+  CREATE POLICY "Public Read Films" ON public.films FOR SELECT USING (true);
+  CREATE POLICY "Public Write Films" ON public.films FOR INSERT WITH CHECK (true);
+
+  CREATE POLICY "Public Read ROMs" ON public.roms FOR SELECT USING (true);
+  CREATE POLICY "Public Write ROMs" ON public.roms FOR INSERT WITH CHECK (true);
+
+  CREATE POLICY "Public Read Files" ON public.files FOR SELECT USING (true);
+  CREATE POLICY "Public Write Files" ON public.files FOR INSERT WITH CHECK (true);
+
+  CREATE POLICY "Public Read Products" ON public.products FOR SELECT USING (true);
+  CREATE POLICY "Public Write Products" ON public.products FOR INSERT WITH CHECK (true);
+
+  CREATE POLICY "Public Read GameScores" ON public.game_scores FOR SELECT USING (true);
+  CREATE POLICY "Public Write GameScores" ON public.game_scores FOR INSERT WITH CHECK (true);
+
+  CREATE POLICY "Public Read DMs" ON public.direct_messages FOR SELECT USING (true);
+  CREATE POLICY "Public Write DMs" ON public.direct_messages FOR INSERT WITH CHECK (true);
+  CREATE POLICY "Public Update DMs" ON public.direct_messages FOR UPDATE USING (true);
+EXCEPTION WHEN OTHERS THEN
+  -- Policies already exist
+END $$;
+
+-- Enable Realtime publication
 ALTER PUBLICATION supabase_realtime ADD TABLE public.posts;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.clips;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.direct_messages;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.follows;
 `;
 
 export interface RealtimeChannelOptions {
@@ -559,15 +625,27 @@ export class NativeSupabaseClient {
     const cleanTable = table.trim().replace(/^\/+/, '');
 
     try {
+      // First attempt with created_at desc ordering
       const res = await fetch(`${url}/rest/v1/${cleanTable}?select=${encodeURIComponent(query)}&order=created_at.desc`, {
         method: 'GET',
         headers: this.getHeaders(),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        return { error: data.message || data.hint || data.details || `Query to ${cleanTable} failed` };
+      
+      if (res.ok) {
+        const data = await res.json();
+        return { data: Array.isArray(data) ? data : [data] };
       }
-      return { data: Array.isArray(data) ? data : [data] };
+
+      // Fallback query without ordering if created_at column doesn't exist
+      const fallbackRes = await fetch(`${url}/rest/v1/${cleanTable}?select=${encodeURIComponent(query)}`, {
+        method: 'GET',
+        headers: this.getHeaders(),
+      });
+      const fallbackData = await fallbackRes.json();
+      if (!fallbackRes.ok) {
+        return { error: fallbackData.message || fallbackData.hint || `Query to ${cleanTable} failed` };
+      }
+      return { data: Array.isArray(fallbackData) ? fallbackData : [fallbackData] };
     } catch (err: any) {
       return { error: err.message || 'Query error' };
     }
@@ -625,7 +703,7 @@ export class NativeSupabaseClient {
         headers: this.getHeaders(undefined, true),
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         return { error: data.message || data.hint || data.details || `Upsert to ${cleanTable} failed` };
       }
