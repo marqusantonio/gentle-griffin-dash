@@ -14,9 +14,7 @@ import {
   FileText,
   UserPlus,
   UserCheck,
-  Send,
-  Eye,
-  Sparkles
+  Send
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
 import { toast } from 'sonner';
@@ -42,29 +40,31 @@ export const UserProfileModal: React.FC = () => {
 
   if (!viewingProfileUser) return null;
 
-  const following = isFollowing(viewingProfileUser.id);
-  const mutualFriend = isMutualFriend(viewingProfileUser.id);
-  const isMe = viewingProfileUser.id === currentUser.id;
+  const targetId = viewingProfileUser.id || 'unknown';
+  const currentUserId = currentUser?.id || 'guest';
+  const following = isFollowing(targetId);
+  const mutualFriend = isMutualFriend(targetId);
+  const isMe = targetId === currentUserId;
 
-  // Filter user's clips and posts
-  const userClips = clips.filter(c => c.userId === viewingProfileUser.id);
-  const userPosts = posts.filter(p => p.userId === viewingProfileUser.id);
+  // Filter user's clips and posts safely
+  const userClips = (clips || []).filter(c => c && c.userId === targetId);
+  const userPosts = (posts || []).filter(p => p && p.userId === targetId);
 
   // Calculate dynamic total likes from all content + profile baseline
-  const dynamicClipLikes = userClips.reduce((acc, c) => acc + (c.likes || 0), 0);
-  const dynamicPostLikes = userPosts.reduce((acc, p) => acc + (p.likes || 0), 0);
-  const totalLikes = Math.max(
-    viewingProfileUser.likes || 0,
-    dynamicClipLikes + dynamicPostLikes
-  );
+  const dynamicClipLikes = userClips.reduce((acc, c) => acc + (Number(c?.likes) || 0), 0);
+  const dynamicPostLikes = userPosts.reduce((acc, p) => acc + (Number(p?.likes) || 0), 0);
+  const baseLikes = Number(viewingProfileUser.likes) || 0;
+  const totalLikes = Math.max(baseLikes, dynamicClipLikes + dynamicPostLikes);
 
   // Check if a request is already pending
-  const existingConv = conversations.find(c =>
+  const existingConv = (conversations || []).find(c =>
+    c &&
     !c.isGroup &&
-    c.members.includes(viewingProfileUser.id) &&
-    c.members.includes(currentUser.id)
+    Array.isArray(c.members) &&
+    c.members.includes(targetId) &&
+    c.members.includes(currentUserId)
   );
-  const isRequestPending = !mutualFriend && existingConv?.status === 'pending_request' && existingConv.requestedBy === currentUser.id;
+  const isRequestPending = !mutualFriend && existingConv?.status === 'pending_request' && existingConv.requestedBy === currentUserId;
 
   const toggleAudio = () => {
     if (!audioRef.current) return;
@@ -72,7 +72,7 @@ export const UserProfileModal: React.FC = () => {
       audioRef.current.pause();
       setIsPlayingAudio(false);
     } else {
-      audioRef.current.play();
+      audioRef.current.play().catch(() => {});
       setIsPlayingAudio(true);
       sounds.pop();
     }
@@ -81,14 +81,14 @@ export const UserProfileModal: React.FC = () => {
   const handleMessageClick = () => {
     sounds.click();
     closeUserProfileModal();
-    startOrOpenChatWithUser(viewingProfileUser.id);
+    startOrOpenChatWithUser(targetId);
 
     if (mutualFriend) {
-      toast.success(`Connected with ${viewingProfileUser.name}! You are mutual friends and can chat freely. 🤝`);
+      toast.success(`Connected with ${viewingProfileUser.name || 'creator'}! You are mutual friends and can chat freely. 🤝`);
     } else if (isRequestPending) {
       toast.info('Message request already pending approval from this creator.');
     } else {
-      toast.info(`Message request mode: You can send 1 message until ${viewingProfileUser.name} follows you back or accepts your request.`);
+      toast.info(`Message request mode: You can send 1 message until ${viewingProfileUser.name || 'this creator'} follows you back or accepts your request.`);
     }
   };
 
@@ -98,12 +98,19 @@ export const UserProfileModal: React.FC = () => {
     setActiveView('clips');
   };
 
+  const avatarColor = viewingProfileUser.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)';
+  const displayName = viewingProfileUser.name || 'Creator';
+  const handleName = viewingProfileUser.handle || `@${displayName.toLowerCase().replace(/\s+/g, '_')}`;
+  const locationName = viewingProfileUser.location || 'WEVIDS Node';
+  const followersCount = Number(viewingProfileUser.followers) || 0;
+
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
       <div className="liquid-glass rounded-3xl p-6 border border-white/20 max-w-lg w-full space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto animate-slide-in">
         <button
           onClick={closeUserProfileModal}
-          className="absolute top-4 right-4 text-[#8a8aa8] hover:text-white p-1 rounded-full hover:bg-white/10"
+          className="absolute top-4 right-4 text-[#8a8aa8] hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors"
+          title="Close"
         >
           <X className="w-5 h-5" />
         </button>
@@ -112,20 +119,20 @@ export const UserProfileModal: React.FC = () => {
         <div className="flex items-center gap-4">
           <div
             className="w-16 h-16 rounded-full flex items-center justify-center font-bold text-slate-900 text-xl shadow-lg flex-shrink-0"
-            style={{ background: viewingProfileUser.color }}
+            style={{ background: avatarColor }}
           >
             {viewingProfileUser.avatarImage ? (
               <img src={viewingProfileUser.avatarImage} alt="Avatar" className="w-full h-full object-cover rounded-full" />
             ) : (
-              viewingProfileUser.avatar
+              viewingProfileUser.avatar || displayName.charAt(0) || 'U'
             )}
           </div>
           <div className="flex-1 min-w-0">
             <h2 className="text-base font-bold text-white flex items-center gap-1.5 truncate">
-              {viewingProfileUser.name}
-              {viewingProfileUser.verified && <CheckCircle2 className="w-4 h-4 text-[#00e5ff]" />}
+              <span>{displayName}</span>
+              {viewingProfileUser.verified && <CheckCircle2 className="w-4 h-4 text-[#00e5ff] flex-shrink-0" />}
             </h2>
-            <div className="text-xs text-[#8a8aa8]">{viewingProfileUser.handle} · {viewingProfileUser.location}</div>
+            <div className="text-xs text-[#8a8aa8] truncate">{handleName} · {locationName}</div>
             
             {/* Status Badges */}
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -173,7 +180,7 @@ export const UserProfileModal: React.FC = () => {
         {/* Dynamic Stats Row with Total Likes */}
         <div className="grid grid-cols-3 gap-2 text-center text-xs">
           <div className="p-2.5 rounded-xl bg-white/5 border border-white/5">
-            <div className="font-bold font-orbitron text-[#00e5ff]">{(viewingProfileUser.followers || 0).toLocaleString()}</div>
+            <div className="font-bold font-orbitron text-[#00e5ff]">{followersCount.toLocaleString()}</div>
             <div className="text-[10px] text-[#8a8aa8]">Followers</div>
           </div>
           <div className="p-2.5 rounded-xl bg-white/5 border border-white/5">
@@ -193,7 +200,7 @@ export const UserProfileModal: React.FC = () => {
         {!isMe && (
           <div className="flex gap-2 pt-1">
             <button
-              onClick={() => toggleFollowUser(viewingProfileUser.id)}
+              onClick={() => toggleFollowUser(targetId)}
               className={`flex-1 py-2.5 rounded-xl text-xs font-orbitron font-bold flex items-center justify-center gap-1.5 transition-transform hover:scale-102 ${
                 mutualFriend
                   ? 'bg-gradient-to-r from-[#10b981] to-[#00e5ff] text-slate-900 shadow-md'

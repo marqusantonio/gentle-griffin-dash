@@ -1,34 +1,27 @@
 import React, { useState, useRef } from 'react';
 import { useWevids } from '../../context/WevidsContext';
 import { 
-  UserCheck, 
   Edit3, 
   Camera, 
   Music2, 
   Play, 
-  Pause, 
-  Sparkles,
-  MessageSquare,
-  UserPlus,
-  ShieldCheck,
-  Check
+  Pause
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
 
 export const ProfileView: React.FC = () => {
   const { 
     currentUser, 
-    updateCurrentUser, 
-    startOrOpenChatWithUser 
+    updateCurrentUser
   } = useWevids();
   
   const [isEditing, setIsEditing] = useState(false);
-  const [name, setName] = useState(currentUser.name);
-  const [handle, setHandle] = useState(currentUser.handle);
-  const [bio, setBio] = useState(currentUser.bio);
-  const [location, setLocation] = useState(currentUser.location);
-  const [pronouns, setPronouns] = useState(currentUser.pronouns || 'they/them');
-  const [bioAudioTitle, setBioAudioTitle] = useState(currentUser.bioAudioTitle || 'Ambient Neon Theme');
+  const [name, setName] = useState(currentUser?.name || 'Guest Creator');
+  const [handle, setHandle] = useState(currentUser?.handle || '@guest');
+  const [bio, setBio] = useState(currentUser?.bio || '');
+  const [location, setLocation] = useState(currentUser?.location || 'Earth Node');
+  const [pronouns, setPronouns] = useState(currentUser?.pronouns || 'they/them');
+  const [bioAudioTitle, setBioAudioTitle] = useState(currentUser?.bioAudioTitle || 'Ambient Neon Theme');
 
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -49,7 +42,7 @@ export const ProfileView: React.FC = () => {
       audioRef.current.pause();
       setIsPlayingAudio(false);
     } else {
-      audioRef.current.play();
+      audioRef.current.play().catch(() => {});
       setIsPlayingAudio(true);
       sounds.pop();
     }
@@ -67,6 +60,8 @@ export const ProfileView: React.FC = () => {
     });
     setIsEditing(false);
   };
+
+  const walletBalanceNumber = Number(currentUser?.walletBalance) || 50;
 
   return (
     <div className="space-y-6 pb-20 max-w-4xl mx-auto">
@@ -91,12 +86,12 @@ export const ProfileView: React.FC = () => {
             <div className="relative group">
               <div
                 className="w-28 h-28 rounded-full border-4 border-[#0a0a1a] shadow-2xl flex items-center justify-center font-bold text-slate-900 text-3xl overflow-hidden"
-                style={{ background: currentUser.color }}
+                style={{ background: currentUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
               >
-                {currentUser.avatarImage ? (
+                {currentUser?.avatarImage ? (
                   <img src={currentUser.avatarImage} alt="Avatar" className="w-full h-full object-cover" />
                 ) : (
-                  currentUser.avatar
+                  currentUser?.avatar || 'G'
                 )}
               </div>
 
@@ -109,15 +104,15 @@ export const ProfileView: React.FC = () => {
 
             <div className="flex items-center gap-4">
               <div className="text-center p-2 rounded-xl bg-white/5 border border-white/5">
-                <div className="font-orbitron font-bold text-sm text-[#00e5ff]">{(currentUser.followers || 0).toLocaleString()}</div>
+                <div className="font-orbitron font-bold text-sm text-[#00e5ff]">{(currentUser?.followers || 0).toLocaleString()}</div>
                 <div className="text-[10px] text-[#8a8aa8]">Followers</div>
               </div>
               <div className="text-center p-2 rounded-xl bg-white/5 border border-white/5">
-                <div className="font-orbitron font-bold text-sm text-[#ff2d95]">{(currentUser.following || 0).toLocaleString()}</div>
+                <div className="font-orbitron font-bold text-sm text-[#ff2d95]">{(currentUser?.following || 0).toLocaleString()}</div>
                 <div className="text-[10px] text-[#8a8aa8]">Following</div>
               </div>
               <div className="text-center p-2 rounded-xl bg-white/5 border border-white/5">
-                <div className="font-orbitron font-bold text-sm text-[#fbbf24]">{currentUser.walletBalance.toFixed(0)} WVDS</div>
+                <div className="font-orbitron font-bold text-sm text-[#fbbf24]">{walletBalanceNumber.toFixed(0)} WVDS</div>
                 <div className="text-[10px] text-[#8a8aa8]">Token Balance</div>
               </div>
             </div>
@@ -127,18 +122,18 @@ export const ProfileView: React.FC = () => {
             <div className="space-y-3">
               <div>
                 <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-bold font-orbitron text-white">{currentUser.name}</h1>
+                  <h1 className="text-2xl font-bold font-orbitron text-white">{currentUser?.name || 'Creator'}</h1>
                   <span className="px-2 py-0.5 rounded-full bg-[#00e5ff]/20 text-[#00e5ff] text-[10px] font-bold">
                     VERIFIED CREATOR
                   </span>
                 </div>
                 <div className="text-xs text-[#8a8aa8] mt-0.5">
-                  {currentUser.handle} · {currentUser.pronouns} · {currentUser.location}
+                  {currentUser?.handle || '@guest'} · {currentUser?.pronouns || 'they/them'} · {currentUser?.location || 'Earth Node'}
                 </div>
               </div>
 
               {/* Bio Audio / Voice Note player */}
-              {currentUser.bioAudioUrl && (
+              {currentUser?.bioAudioUrl && (
                 <div className="p-3 rounded-2xl bg-white/5 border border-[#00e5ff]/30 flex items-center justify-between max-w-md">
                   <div className="flex items-center gap-2.5">
                     <button
@@ -150,7 +145,7 @@ export const ProfileView: React.FC = () => {
                     <div>
                       <div className="text-xs font-bold text-white flex items-center gap-1.5">
                         <Music2 className="w-3.5 h-3.5 text-[#ff2d95]" />
-                        <span>{currentUser.bioAudioTitle || 'Bio Audio Track'}</span>
+                        <span>{currentUser?.bioAudioTitle || 'Bio Audio Track'}</span>
                       </div>
                       <div className="text-[10px] text-[#8a8aa8]">Featured Creator Audio</div>
                     </div>
@@ -159,7 +154,7 @@ export const ProfileView: React.FC = () => {
                 </div>
               )}
 
-              <p className="text-xs text-[#e8e8f4] max-w-2xl leading-relaxed pt-1">{currentUser.bio}</p>
+              <p className="text-xs text-[#e8e8f4] max-w-2xl leading-relaxed pt-1">{currentUser?.bio || 'Exploring WEVIDS.'}</p>
             </div>
           ) : (
             <form onSubmit={handleSave} className="space-y-3 pt-2 text-xs">
