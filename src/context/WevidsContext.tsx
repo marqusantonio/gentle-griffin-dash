@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import { 
   PostItem, 
   ShortClipItem, 
@@ -7,411 +7,20 @@ import {
   ProductItem, 
   Conversation, 
   UserProfile, 
-  CartItem, 
-  SavedCollection, 
   SharedFileItem, 
   AudioTrackItem, 
   FilmItem,
   ViewName 
 } from '../types/wevids';
-import { 
-  CURRENT_USER, 
-  MOCK_USERS, 
-  INITIAL_POSTS, 
-  INITIAL_CLIPS, 
-  INITIAL_LONG_VIDEOS, 
-  INITIAL_ROMS, 
-  INITIAL_PRODUCTS, 
-  INITIAL_CONVERSATIONS, 
-  INITIAL_BOOKMARKS 
-} from '../data/initialData';
+import { wevidsReducer, initialWevidsState, WevidsState } from './wevidsReducer';
+import { INITIAL_AUDIO_TRACKS, INITIAL_FILMS } from '../data/mediaData';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { sounds } from '../lib/soundFx';
 import { toast } from 'sonner';
 
-export const INITIAL_AUDIO_TRACKS: AudioTrackItem[] = [
-  {
-    id: 't-1',
-    title: 'Neon Tokyo Midnight Rain',
-    artist: 'Aiko Tanaka x WEVIDS Synth Lab',
-    duration: '03:45',
-    genre: 'Synthwave / Cyberpunk',
-    bpm: 120,
-    url: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=lofi-study-112191.mp3',
-    cover: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80'
-  },
-  {
-    id: 't-2',
-    title: 'Persian Saffron Sunset Acoustic',
-    artist: 'Sara from Tehran',
-    duration: '04:12',
-    genre: 'Ambient World Fusion',
-    bpm: 88,
-    url: 'https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3?filename=lofi-chill-medium-version-159456.mp3',
-    cover: 'https://images.unsplash.com/photo-1517256064527-09c73fc73e38?auto=format&fit=crop&w=400&q=80'
-  },
-  {
-    id: 't-3',
-    title: 'Snapdragon Hyper Overclock Pulse',
-    artist: 'Carlos Mendez (ROM Dev)',
-    duration: '02:50',
-    genre: 'Hard Techno Glitch',
-    bpm: 144,
-    url: 'https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=cyberpunk-2099-10701.mp3',
-    cover: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=400&q=80'
-  }
-];
+export { INITIAL_AUDIO_TRACKS, INITIAL_FILMS } from '../data/mediaData';
 
-export const INITIAL_FILMS: FilmItem[] = [
-  {
-    id: 'film-1',
-    title: 'Neo-Genesis 2088: The Silicon Frontier',
-    synopsis: 'A rogue neural programmer discovers an encrypted kernel anomaly inside Tokyo’s quantum power grid that allows human consciousness transfer.',
-    director: 'Aiko Tanaka',
-    releaseYear: 2026,
-    duration: '1h 48m',
-    genre: 'Cyberpunk Sci-Fi',
-    rating: 4.9,
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-    posterUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=800&q=80',
-    backdropUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1400&q=80',
-    views: '482K'
-  },
-  {
-    id: 'film-2',
-    title: 'Open Source Revolution: The Kernel Chronicles',
-    synopsis: 'An inside documentary investigating the worldwide underground network of Android ROM porters, Linux kernel hackers, and custom hardware modders.',
-    director: 'Carlos Mendez',
-    releaseYear: 2026,
-    duration: '1h 22m',
-    genre: 'Tech Documentary',
-    rating: 4.8,
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-    posterUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=800&q=80',
-    backdropUrl: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=1400&q=80',
-    views: '320K'
-  },
-  {
-    id: 'film-3',
-    title: 'Echoes of Tehran: The Saffron Road',
-    synopsis: 'A visually breathtaking journey through ancient Persian architectural marvels, modern poetry, and the enduring human spirit connecting continents.',
-    director: 'Sara from Tehran',
-    releaseYear: 2026,
-    duration: '1h 35m',
-    genre: 'Open Source Action',
-    rating: 5.0,
-    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-    posterUrl: 'https://images.unsplash.com/photo-1517256064527-09c73fc73e38?auto=format&fit=crop&w=800&q=80',
-    backdropUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1400&q=80',
-    views: '610K'
-  }
-];
-
-interface WevidsState {
-  posts: PostItem[];
-  clips: ShortClipItem[];
-  longVideos: LongVideoItem[];
-  roms: RomItem[];
-  products: ProductItem[];
-  files: SharedFileItem[];
-  audioTracks: AudioTrackItem[];
-  films: FilmItem[];
-  conversations: Conversation[];
-  
-  activeView: ViewName;
-  activeConvId: string | null;
-  activeCallUser: string | null;
-  isCartOpen: boolean;
-  isVideoCallOpen: boolean;
-  activeShare: { title: string; url: string } | null;
-  viewingProfileUser: UserProfile | null;
-  isSupabaseModalOpen: boolean;
-  
-  currentUser: UserProfile;
-  allUsers: Record<string, UserProfile>;
-  soundEnabled: boolean;
-  cart: CartItem[];
-  collections: SavedCollection[];
-  isCloudSyncing: boolean;
-  lastCloudSync: string | null;
-}
-
-const initialFiles: SharedFileItem[] = [
-  {
-    id: 'f-1',
-    title: 'Snapdragon 8 Gen 3 Thermal & FPS Governor',
-    fileName: 'sd8gen3_thermal_bypass.zip',
-    fileSize: '18.4 MB',
-    category: 'ROM / Kernel',
-    uploaderId: 'carlos',
-    uploaderName: 'Carlos Mendez',
-    downloadUrl: '#',
-    checksum: 'e8f7a932b14c90d6e42a19ff88b643ce219f01ab92',
-    downloads: 1420,
-    uploadedAt: '2 days ago'
-  }
-];
-
-const initialState: WevidsState = {
-  posts: INITIAL_POSTS,
-  clips: INITIAL_CLIPS,
-  longVideos: INITIAL_LONG_VIDEOS,
-  roms: INITIAL_ROMS,
-  products: INITIAL_PRODUCTS,
-  files: initialFiles,
-  audioTracks: INITIAL_AUDIO_TRACKS,
-  films: INITIAL_FILMS,
-  conversations: INITIAL_CONVERSATIONS,
-  activeView: 'feed',
-  activeConvId: 'conv-group-1',
-  activeCallUser: null,
-  isCartOpen: false,
-  isVideoCallOpen: false,
-  activeShare: null,
-  viewingProfileUser: null,
-  isSupabaseModalOpen: false,
-  currentUser: CURRENT_USER,
-  allUsers: MOCK_USERS,
-  soundEnabled: true,
-  cart: [],
-  collections: INITIAL_BOOKMARKS,
-  isCloudSyncing: false,
-  lastCloudSync: null,
-};
-
-const reducer = (state: WevidsState, action: any): WevidsState => {
-  switch (action.type) {
-    case 'SET_ACTIVE_VIEW':
-      return { ...state, activeView: action.payload };
-    case 'SET_ACTIVE_CONV_ID':
-      return { ...state, activeConvId: action.payload };
-    case 'SET_ACTIVE_CALL_USER':
-      return { ...state, activeCallUser: action.payload };
-    case 'SET_IS_CART_OPEN':
-      return { ...state, isCartOpen: action.payload };
-    case 'SET_IS_VIDEO_CALL_OPEN':
-      return { ...state, isVideoCallOpen: action.payload };
-    case 'OPEN_SHARE_MODAL':
-      return { ...state, activeShare: { title: action.payload.title, url: action.payload.url } };
-    case 'CLOSE_SHARE_MODAL':
-      return { ...state, activeShare: null };
-    case 'OPEN_USER_PROFILE_MODAL':
-      return { ...state, viewingProfileUser: action.payload };
-    case 'CLOSE_USER_PROFILE_MODAL':
-      return { ...state, viewingProfileUser: null };
-    case 'SET_IS_SUPABASE_MODAL_OPEN':
-      return { ...state, isSupabaseModalOpen: action.payload };
-    case 'UPDATE_CURRENT_USER':
-      return { ...state, currentUser: { ...state.currentUser, ...action.payload } };
-    case 'TOGGLE_FOLLOW_USER': {
-      const { userId, isFollowing } = action.payload;
-      const targetUser = state.allUsers[userId];
-      if (!targetUser) return state;
-      const currentFollowingIds = state.currentUser.followingIds || [];
-      const newFollowingIds = isFollowing 
-        ? currentFollowingIds.filter(id => id !== userId)
-        : [...currentFollowingIds, userId];
-
-      return {
-        ...state,
-        currentUser: {
-          ...state.currentUser,
-          following: isFollowing ? Math.max(0, state.currentUser.following - 1) : state.currentUser.following + 1,
-          followingIds: newFollowingIds
-        },
-        allUsers: {
-          ...state.allUsers,
-          [userId]: {
-            ...targetUser,
-            followers: isFollowing ? Math.max(0, targetUser.followers - 1) : targetUser.followers + 1,
-          },
-        },
-      };
-    }
-    case 'TOGGLE_CLIP_LIKE':
-      return {
-        ...state,
-        clips: state.clips.map(clip =>
-          clip.id === action.payload.clipId
-            ? { 
-                ...clip, 
-                likes: clip.isLiked ? clip.likes - 1 : clip.likes + 1, 
-                isLiked: !clip.isLiked,
-                isDisliked: false 
-              }
-            : clip
-        ),
-      };
-    case 'TOGGLE_CLIP_DISLIKE':
-      return {
-        ...state,
-        clips: state.clips.map(clip =>
-          clip.id === action.payload.clipId
-            ? { 
-                ...clip, 
-                dislikes: clip.isDisliked ? (clip.dislikes || 1) - 1 : (clip.dislikes || 0) + 1, 
-                isDisliked: !clip.isDisliked,
-                isLiked: false 
-              }
-            : clip
-        ),
-      };
-    case 'TOGGLE_CLIP_BOOKMARK':
-      return {
-        ...state,
-        clips: state.clips.map(clip =>
-          clip.id === action.payload.clipId
-            ? { ...clip, isBookmarked: !clip.isBookmarked }
-            : clip
-        ),
-      };
-    case 'ADD_CLIP_COMMENT':
-      return {
-        ...state,
-        clips: state.clips.map(clip =>
-          clip.id === action.payload.clipId
-            ? { 
-                ...clip, 
-                comments: [
-                  {
-                    id: `comm-${Date.now()}`,
-                    user: action.payload.comment.user,
-                    userName: action.payload.comment.userName,
-                    userAvatar: action.payload.comment.userAvatar,
-                    userColor: action.payload.comment.userColor,
-                    text: action.payload.comment.text,
-                    timestamp: 'Just now',
-                    likes: 0
-                  },
-                  ...clip.comments
-                ] 
-              }
-            : clip
-        ),
-      };
-    case 'ADD_MESSAGE': {
-      const { convId, message } = action.payload;
-      return {
-        ...state,
-        conversations: state.conversations.map(c => 
-          c.id === convId 
-            ? {
-                ...c,
-                lastMsg: `${message.senderName}: ${message.text || 'media'}`,
-                time: 'Just now',
-                messages: [...c.messages, message]
-              }
-            : c
-        )
-      };
-    }
-    case 'ADD_CONVERSATION': {
-      return {
-        ...state,
-        conversations: [action.payload, ...state.conversations],
-        activeConvId: action.payload.id
-      };
-    }
-    case 'SET_CONVERSATION_STATUS': {
-      const { convId, status } = action.payload;
-      return {
-        ...state,
-        conversations: state.conversations.map(c => 
-          c.id === convId ? { ...c, status } : c
-        )
-      };
-    }
-    case 'REMOVE_CONVERSATION': {
-      return {
-        ...state,
-        conversations: state.conversations.filter(c => c.id !== action.payload.convId),
-        activeConvId: state.activeConvId === action.payload.convId ? null : state.activeConvId
-      };
-    }
-    case 'ADD_TO_CART': {
-      const existingItem = state.cart.find(item => item.product.id === action.payload.product.id);
-      if (existingItem) {
-        return {
-          ...state,
-          cart: state.cart.map(item =>
-            item.product.id === action.payload.product.id
-              ? { ...item, quantity: item.quantity + 1 }
-              : item
-          ),
-        };
-      }
-      return { ...state, cart: [...state.cart, { product: action.payload.product, quantity: 1 }] };
-    }
-    case 'REMOVE_FROM_CART':
-      return { ...state, cart: state.cart.filter(item => item.product.id !== action.payload.productId) };
-    case 'UPDATE_CART_QUANTITY':
-      return {
-        ...state,
-        cart: state.cart.map(item =>
-          item.product.id === action.payload.productId
-            ? { ...item, quantity: action.payload.quantity }
-            : item
-        ),
-      };
-    case 'CLEAR_CART':
-      return { ...state, cart: [] };
-    case 'SET_SOUND_ENABLED':
-      return { ...state, soundEnabled: action.payload };
-    case 'ADD_POST':
-      return { ...state, posts: [action.payload, ...state.posts] };
-    case 'ADD_CLIP':
-      return { ...state, clips: [action.payload, ...state.clips] };
-    case 'ADD_LONG_VIDEO':
-      return { ...state, longVideos: [action.payload, ...state.longVideos] };
-    case 'ADD_ROM':
-      return { ...state, roms: [action.payload, ...state.roms] };
-    case 'ADD_PRODUCT':
-      return { ...state, products: [action.payload, ...state.products] };
-    case 'ADD_SHARED_FILE':
-      return { ...state, files: [action.payload, ...state.files] };
-    case 'ADD_AUDIO_TRACK':
-      return { ...state, audioTracks: [action.payload, ...state.audioTracks] };
-    case 'SET_AUDIO_TRACKS':
-      return { ...state, audioTracks: action.payload };
-    case 'ADD_FILM':
-      return { ...state, films: [action.payload, ...state.films] };
-    case 'SET_FILMS':
-      return { ...state, films: action.payload };
-    case 'SET_CLOUD_SYNCING':
-      return { ...state, isCloudSyncing: action.payload };
-    case 'SET_LAST_CLOUD_SYNC':
-      return { ...state, lastCloudSync: action.payload };
-    default:
-      return state;
-  }
-};
-
-const WevidsContext = createContext<{
-  posts: PostItem[];
-  clips: ShortClipItem[];
-  longVideos: LongVideoItem[];
-  roms: RomItem[];
-  products: ProductItem[];
-  files: SharedFileItem[];
-  audioTracks: AudioTrackItem[];
-  films: FilmItem[];
-  conversations: Conversation[];
-  activeView: ViewName;
-  activeConvId: string | null;
-  activeCallUser: string | null;
-  isCartOpen: boolean;
-  isVideoCallOpen: boolean;
-  activeShare: { title: string; url: string } | null;
-  viewingProfileUser: UserProfile | null;
-  isSupabaseModalOpen: boolean;
-  currentUser: UserProfile;
-  allUsers: Record<string, UserProfile>;
-  soundEnabled: boolean;
-  cart: CartItem[];
-  collections: SavedCollection[];
-  isCloudSyncing: boolean;
-  lastCloudSync: string | null;
-  
+export interface WevidsContextType extends WevidsState {
   addPost: (post: Partial<PostItem>) => Promise<void>;
   addClip: (clip: ShortClipItem) => void;
   addLongVideo: (video: LongVideoItem) => void;
@@ -449,20 +58,19 @@ const WevidsContext = createContext<{
   updateCartQuantity: (productId: string, quantity: number) => void;
   clearCart: () => void;
   setSoundEnabled: (enabled: boolean) => void;
-} | undefined>(undefined);
+}
+
+const WevidsContext = createContext<WevidsContextType | undefined>(undefined);
 
 export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [state, dispatch] = useReducer(wevidsReducer, initialWevidsState);
 
   useEffect(() => {
     sounds.enabled = state.soundEnabled;
   }, [state.soundEnabled]);
 
-  // Initial auto sync (Safe for guests without any manual key configuration)
   const syncWithSupabase = async () => {
-    if (!isSupabaseConfigured()) {
-      return;
-    }
+    if (!isSupabaseConfigured()) return;
 
     dispatch({ type: 'SET_CLOUD_SYNCING', payload: true });
     
@@ -471,8 +79,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         supabase.select('audio_tracks'),
         supabase.select('films'),
       ]);
-
-      let syncCount = 0;
 
       if (audioRes.data && Array.isArray(audioRes.data) && audioRes.data.length > 0) {
         const mappedAudio: AudioTrackItem[] = audioRes.data.map(item => ({
@@ -491,7 +97,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         const existingIds = new Set(mappedAudio.map(a => a.id));
         const combined = [...mappedAudio, ...INITIAL_AUDIO_TRACKS.filter(a => !existingIds.has(a.id))];
         dispatch({ type: 'SET_AUDIO_TRACKS', payload: combined });
-        syncCount += mappedAudio.length;
       }
 
       if (filmRes.data && Array.isArray(filmRes.data) && filmRes.data.length > 0) {
@@ -514,12 +119,11 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         const existingFilmIds = new Set(mappedFilms.map(f => f.id));
         const combinedFilms = [...mappedFilms, ...INITIAL_FILMS.filter(f => !existingFilmIds.has(f.id))];
         dispatch({ type: 'SET_FILMS', payload: combinedFilms });
-        syncCount += mappedFilms.length;
       }
 
       dispatch({ type: 'SET_LAST_CLOUD_SYNC', payload: new Date().toLocaleTimeString() });
     } catch {
-      // Safe offline fallback for guests
+      // Safe offline fallback
     } finally {
       dispatch({ type: 'SET_CLOUD_SYNCING', payload: false });
     }
@@ -570,7 +174,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           tags: fullPost.tags
         });
       } catch {
-        // Offline-first
+        // Offline safe
       }
     }
   };
@@ -607,7 +211,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           uploader_id: fullTrack.uploaderId
         });
       } catch {
-        // Offline-first
+        // Offline safe
       }
     }
   };
@@ -650,7 +254,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           uploader_id: fullFilm.uploaderId
         });
       } catch {
-        // Offline-first
+        // Offline safe
       }
     }
   };
@@ -802,7 +406,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     dispatch({ type: 'ADD_CLIP_COMMENT', payload: { clipId, comment } });
   };
 
-  // 1-Message Request Initiator for new contacts
   const startOrOpenChatWithUser = (userId: string) => {
     sounds.click();
     const existingConv = state.conversations.find(c => 
@@ -900,7 +503,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     dispatch({ type: 'SET_SOUND_ENABLED', payload: enabled });
   };
 
-  const value = {
+  const value: WevidsContextType = {
     ...state,
     addPost,
     addClip,
