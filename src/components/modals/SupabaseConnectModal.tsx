@@ -17,7 +17,9 @@ import {
   AlertCircle,
   ExternalLink,
   Sparkles,
-  Link2
+  Link2,
+  AlertTriangle,
+  HelpCircle
 } from 'lucide-react';
 import { 
   getSupabaseConfig,
@@ -44,7 +46,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
   const [anonKey, setAnonKey] = useState(() => getSupabaseConfig().anonKey || '');
   const [connected, setConnected] = useState(isSupabaseConfigured());
   const [testingConnection, setTestingConnection] = useState(false);
-  const [activeTab, setActiveTab] = useState<'auth' | 'fix_redirect' | 'status' | 'sql'>('auth');
+  const [activeTab, setActiveTab] = useState<'auth' | 'google_troubleshoot' | 'fix_redirect' | 'status' | 'sql'>('auth');
   
   const [isRegistering, setIsRegistering] = useState(false);
   const [name, setName] = useState('');
@@ -54,9 +56,10 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
   const [currentSessionUser, setCurrentSessionUser] = useState<string | null>(() => getStoredSession()?.user?.email || null);
   const [copiedSql, setCopiedSql] = useState(false);
   const [copiedOrigin, setCopiedOrigin] = useState(false);
-  const [providerError, setProviderError] = useState<string | null>(null);
+  const [copiedCallback, setCopiedCallback] = useState(false);
 
   const currentSiteUrl = typeof window !== 'undefined' ? window.location.origin : 'https://your-app.com';
+  const supabaseCallbackUrl = url ? `${url.replace(/\/+$/, '')}/auth/v1/callback` : 'https://<your-project>.supabase.co/auth/v1/callback';
 
   useEffect(() => {
     if (isOpen) {
@@ -75,8 +78,16 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
     navigator.clipboard.writeText(currentSiteUrl);
     setCopiedOrigin(true);
     sounds.click();
-    toast.success(`Copied current site URL: ${currentSiteUrl}`);
+    toast.success(`Copied site URL: ${currentSiteUrl}`);
     setTimeout(() => setCopiedOrigin(false), 2000);
+  };
+
+  const copyCallbackUrl = () => {
+    navigator.clipboard.writeText(supabaseCallbackUrl);
+    setCopiedCallback(true);
+    sounds.click();
+    toast.success(`Copied Supabase callback URL for Google Cloud!`);
+    setTimeout(() => setCopiedCallback(false), 2000);
   };
 
   const handleSaveConnection = async (e: React.FormEvent) => {
@@ -119,7 +130,6 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
   };
 
   const handleGoogleLogin = async () => {
-    setProviderError(null);
     if (!isSupabaseConfigured()) {
       toast.error('Please configure your Supabase URL & Key first in the API Keys tab!');
       setActiveTab('status');
@@ -130,10 +140,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
     const res = await supabase.signInWithGoogle();
     if (res.error) {
       toast.error(res.error);
-      if (res.error.includes('provider is not enabled') || res.error.includes('validation_failed')) {
-        setProviderError('Google provider needs configuration in Supabase Dashboard.');
-        setActiveTab('fix_redirect');
-      }
+      setActiveTab('google_troubleshoot');
     }
   };
 
@@ -264,12 +271,20 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
             Sign In / Register
           </button>
           <button
-            onClick={() => setActiveTab('fix_redirect')}
+            onClick={() => setActiveTab('google_troubleshoot')}
             className={`px-3 py-1.5 rounded-lg font-bold whitespace-nowrap transition-all ${
-              activeTab === 'fix_redirect' ? 'bg-[#ff2d95] text-white shadow-md' : 'text-[#8a8aa8] hover:text-white'
+              activeTab === 'google_troubleshoot' ? 'bg-[#ff2d95] text-white shadow-md' : 'text-[#8a8aa8] hover:text-white'
             }`}
           >
-            Fix Localhost Redirect
+            Fix Google Error
+          </button>
+          <button
+            onClick={() => setActiveTab('fix_redirect')}
+            className={`px-3 py-1.5 rounded-lg font-bold whitespace-nowrap transition-all ${
+              activeTab === 'fix_redirect' ? 'bg-[#fbbf24] text-slate-900 shadow-md' : 'text-[#8a8aa8] hover:text-white'
+            }`}
+          >
+            Fix Localhost
           </button>
           <button
             onClick={() => setActiveTab('status')}
@@ -277,12 +292,12 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
               activeTab === 'status' ? 'bg-[#3ecf8e] text-slate-900 shadow-md' : 'text-[#8a8aa8] hover:text-white'
             }`}
           >
-            API Keys & Vercel
+            API Keys
           </button>
           <button
             onClick={() => setActiveTab('sql')}
             className={`px-3 py-1.5 rounded-lg font-bold whitespace-nowrap transition-all ${
-              activeTab === 'sql' ? 'bg-[#fbbf24] text-slate-900 shadow-md' : 'text-[#8a8aa8] hover:text-white'
+              activeTab === 'sql' ? 'bg-white/20 text-white shadow-md' : 'text-[#8a8aa8] hover:text-white'
             }`}
           >
             SQL Setup
@@ -292,20 +307,6 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
         {/* TAB 1: AUTH & GOOGLE LOGIN */}
         {activeTab === 'auth' && (
           <div className="space-y-4 text-xs">
-            {/* Direct Localhost Notice & Fix */}
-            <div className="p-3.5 rounded-2xl bg-[#ff2d95]/15 border border-[#ff2d95]/30 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-white">
-                <Link2 className="w-4 h-4 text-[#00e5ff] flex-shrink-0" />
-                <span>Redirecting to localhost? Make sure Supabase knows your live site URL.</span>
-              </div>
-              <button
-                onClick={() => setActiveTab('fix_redirect')}
-                className="px-2.5 py-1 rounded-lg bg-[#ff2d95] text-white font-bold text-[11px] whitespace-nowrap hover:scale-105 transition-transform"
-              >
-                Fix Now &rarr;
-              </button>
-            </div>
-
             {currentSessionUser ? (
               <div className="p-4 rounded-2xl bg-[#3ecf8e]/10 border border-[#3ecf8e]/30 space-y-3">
                 <div className="flex items-center justify-between">
@@ -347,7 +348,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
                   className="w-full py-2.5 rounded-2xl bg-gradient-to-r from-[#fbbf24]/20 to-[#ff2d95]/20 border border-[#fbbf24]/40 text-[#fbbf24] font-bold text-xs flex items-center justify-center gap-2 hover:bg-[#fbbf24]/30 transition-colors"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
-                  <span>⚡ 1-Click Instant Sign-In (Skip Google Setup)</span>
+                  <span>⚡ 1-Click Instant Sign-In (Skip Setup)</span>
                 </button>
 
                 <div className="flex items-center gap-2 text-center text-[#8a8aa8] text-[11px] my-1">
@@ -421,16 +422,78 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
           </div>
         )}
 
-        {/* TAB 2: FIX LOCALHOST REDIRECT */}
+        {/* TAB 2: FIX GOOGLE CODE EXCHANGE ERROR */}
+        {activeTab === 'google_troubleshoot' && (
+          <div className="space-y-3.5 text-xs">
+            <div className="p-4 rounded-2xl bg-red-500/15 border border-red-500/40 space-y-2">
+              <div className="flex items-center gap-2 text-red-400 font-bold font-orbitron text-sm">
+                <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                <span>Fixing "Unable to exchange external code"</span>
+              </div>
+              <p className="text-[#e8e8f4] text-xs leading-relaxed">
+                This error means Google rejected the secret or the callback URL during verification. Follow these 2 steps:
+              </p>
+            </div>
+
+            {/* Step 1: Callback URL in Google Cloud */}
+            <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-2">
+              <div className="font-bold text-white flex items-center justify-between">
+                <span>1. Google Cloud Authorized Redirect URI:</span>
+                <button
+                  onClick={copyCallbackUrl}
+                  className="px-2.5 py-1 rounded-lg bg-[#00e5ff] text-slate-900 font-bold text-[11px] flex items-center gap-1 hover:scale-105"
+                >
+                  {copiedCallback ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedCallback ? 'Copied!' : 'Copy Callback URL'}</span>
+                </button>
+              </div>
+              <input
+                type="text"
+                readOnly
+                value={supabaseCallbackUrl}
+                className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-[#00e5ff] font-mono text-[11px] select-all"
+              />
+              <p className="text-[11px] text-[#8a8aa8]">
+                In <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" className="text-[#00e5ff] underline">Google Cloud Console Credentials <ExternalLink className="w-3 h-3 inline" /></a> &rarr; open your OAuth Client ID &rarr; paste this under <strong>Authorized redirect URIs</strong>.
+              </p>
+            </div>
+
+            {/* Step 2: Client Secret in Supabase */}
+            <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-1.5">
+              <div className="font-bold text-white">2. Check your Google Client Secret in Supabase:</div>
+              <p className="text-[11px] text-[#e8e8f4] leading-relaxed">
+                Go to <a href="https://supabase.com/dashboard/project/_/auth/providers" target="_blank" rel="noreferrer" className="text-[#ff2d95] underline">Supabase &rarr; Auth &rarr; Providers &rarr; Google <ExternalLink className="w-3 h-3 inline" /></a> and ensure your <strong>Client Secret</strong> is pasted freshly with no trailing spaces.
+              </p>
+            </div>
+
+            <div className="pt-2 flex justify-between items-center">
+              <button
+                onClick={() => setActiveTab('auth')}
+                className="px-4 py-2 rounded-xl bg-white/10 text-white font-bold hover:bg-white/20"
+              >
+                &larr; Back to Login
+              </button>
+
+              <button
+                onClick={handleQuickDemoLogin}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#fbbf24] to-[#ff2d95] text-slate-900 font-bold shadow-md hover:scale-105"
+              >
+                ⚡ Use 1-Click Instant Sign-In
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: FIX LOCALHOST REDIRECT */}
         {activeTab === 'fix_redirect' && (
           <div className="space-y-4 text-xs">
-            <div className="p-4 rounded-2xl bg-gradient-to-br from-[#ff2d95]/20 via-[#00e5ff]/10 to-transparent border border-[#ff2d95]/40 space-y-2">
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-[#fbbf24]/20 via-[#ff2d95]/10 to-transparent border border-[#fbbf24]/40 space-y-2">
               <h4 className="font-orbitron font-bold text-sm text-white flex items-center gap-2">
-                <Globe className="w-4 h-4 text-[#00e5ff]" />
-                How to stop Supabase from redirecting to localhost
+                <Globe className="w-4 h-4 text-[#fbbf24]" />
+                Stop Supabase from redirecting to localhost
               </h4>
               <p className="text-[#e8e8f4] text-xs leading-relaxed">
-                By default, Supabase sends Google OAuth users to <code>http://localhost:3000</code>. To fix this, update your <strong>Site URL</strong> in Supabase to your live website origin:
+                Update your <strong>Site URL</strong> in Supabase to your current preview or live URL:
               </p>
             </div>
 
@@ -457,16 +520,13 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
 
             <ol className="list-decimal list-inside space-y-2.5 text-[#e8e8f4] bg-white/5 p-4 rounded-2xl border border-white/10">
               <li className="leading-relaxed">
-                Open <strong><a href="https://supabase.com/dashboard/project/_/auth/url-configuration" target="_blank" rel="noreferrer" className="text-[#00e5ff] underline inline-flex items-center gap-1">Supabase Dashboard &rarr; Authentication &rarr; URL Configuration <ExternalLink className="w-3 h-3" /></a></strong>
+                Open <strong><a href="https://supabase.com/dashboard/project/_/auth/url-configuration" target="_blank" rel="noreferrer" className="text-[#00e5ff] underline inline-flex items-center gap-1">Supabase Dashboard &rarr; URL Configuration <ExternalLink className="w-3 h-3" /></a></strong>
               </li>
               <li className="leading-relaxed">
                 Change <strong>Site URL</strong> to: <code className="text-[#00e5ff] font-bold">{currentSiteUrl}</code>
               </li>
               <li className="leading-relaxed">
                 Under <strong>Redirect URLs</strong>, add: <code className="text-[#ff2d95] font-bold">{currentSiteUrl}/**</code>
-              </li>
-              <li className="leading-relaxed">
-                Click <strong>Save</strong> at the bottom of the Supabase page.
               </li>
             </ol>
 
@@ -488,7 +548,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
           </div>
         )}
 
-        {/* TAB 3: CREDENTIALS & VERCEL */}
+        {/* TAB 4: CREDENTIALS & API KEYS */}
         {activeTab === 'status' && (
           <form onSubmit={handleSaveConnection} className="space-y-3 text-xs">
             <div className="p-3 rounded-2xl bg-white/5 border border-white/10 space-y-1.5">
@@ -541,7 +601,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
           </form>
         )}
 
-        {/* TAB 4: COMPLETE SQL SCHEMA */}
+        {/* TAB 5: SQL SCHEMA */}
         {activeTab === 'sql' && (
           <div className="space-y-3 text-xs">
             <div className="flex items-center justify-between">
