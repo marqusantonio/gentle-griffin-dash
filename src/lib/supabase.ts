@@ -1,5 +1,3 @@
-import { createClient, SupabaseClient as OfficialSupabaseClient } from '@supabase/supabase-js';
-
 export interface SupabaseConfig {
   url: string;
   anonKey: string;
@@ -44,8 +42,8 @@ export const getSupabaseConfig = (): SupabaseConfig => {
   const localUrl = localStorage.getItem('wevids_supabase_url') || '';
   const localKey = localStorage.getItem('wevids_supabase_anon_key') || '';
   
-  const rawUrl = envUrl || localUrl || 'https://placeholder-project.supabase.co';
-  const rawKey = envKey || localKey || 'placeholder-anon-key-123456789012345';
+  const rawUrl = envUrl || localUrl || '';
+  const rawKey = envKey || localKey || '';
   
   return {
     url: sanitizeSupabaseUrl(rawUrl),
@@ -58,8 +56,6 @@ export const saveSupabaseCredentials = (url: string, anonKey: string) => {
     const cleanUrl = sanitizeSupabaseUrl(url);
     localStorage.setItem('wevids_supabase_url', cleanUrl);
     localStorage.setItem('wevids_supabase_anon_key', anonKey.trim());
-    // Recreate client
-    initSupabaseClient();
   }
 };
 
@@ -68,13 +64,12 @@ export const clearSupabaseCredentials = () => {
     localStorage.removeItem('wevids_supabase_url');
     localStorage.removeItem('wevids_supabase_anon_key');
     localStorage.removeItem('wevids_supabase_session');
-    initSupabaseClient();
   }
 };
 
 export const isSupabaseConfigured = (): boolean => {
   const { url, anonKey } = getSupabaseConfig();
-  return Boolean(url && anonKey && url.startsWith('https://') && anonKey.length > 20 && !url.includes('placeholder-project'));
+  return Boolean(url && anonKey && url.startsWith('https://') && anonKey.length > 15);
 };
 
 export const getStoredSession = (): SupabaseSession | null => {
@@ -243,54 +238,184 @@ ALTER TABLE public.files DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.products DISABLE ROW LEVEL SECURITY;
 `;
 
-let clientInstance: OfficialSupabaseClient | null = null;
+export interface RealtimeChannelOptions {
+  event: string;
+  schema: string;
+  table: string;
+}
 
-export const initSupabaseClient = (): OfficialSupabaseClient => {
-  const { url, anonKey } = getSupabaseConfig();
-  clientInstance = createClient(url || 'https://placeholder-project.supabase.co', anonKey || 'placeholder-anon-key-123456789012345', {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-    },
-    realtime: {
-      params: {
-        eventsPerSecond: 10,
+export class RealtimeChannel {
+  private topic: string;
+  private listeners: Array<{ options: RealtimeChannelOptions; callback: (payload: any) => void }> = [];
+  private ws: WebSocket | null = null;
+  private pollInterval: any = null;
+  private isSubscribed = false;
+  private lastKnownTimestamp: string = new Date().toISOString();
+
+  constructor(topic: string) {
+    this.topic = topic;
+  }
+
+  public on(
+    type: 'postgres_changes' | string,
+    options: RealtimeChannelOptions,
+    callback: (payload: { new: any; old: any; eventType: string }) => void
+  ): this {
+    this.listeners.push({ options, callback });
+    return this;
+  }
+
+  public subscribe(statusCallback?: (status: 'SUBSCRIBED' | 'CLOSED' | 'CHANNEL_ERROR') => void): this {
+    if (this.isSubscribed) return this;
+    this.isSubscribed = true;
+
+    const { url, anonKey } = getSupabaseConfig();
+    
+    // 1. Try WebSocket Realtime connection if configured
+    if (url && anonKey && typeof window !== 'undefined') {
+      try {
+        const wsUrl = url.replace(/^http/, 'ws') + `/realtime/v1/websocket?apikey=${encodeURIComponent(anonKey)}&vsn=1.0.0`;
+        this.ws = new WebSocket(wsUrl);
+
+        this.ws.onopen = () => {
+          statusCallback?.('SUBSCRIBED');
+          // Join topic
+          const joinMsg = {
+            topic: `realtime:${this.topic}`,
+            event: 'phx_join',
+            payload: {},
+            ref: '1'
+          };
+          this.ws?.send(JSON.stringify(joinMsg));
+        };
+
+        this.ws.onmessage = (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (data.event === 'postgres_changes' || data.event === 'INSERT') {
+              this.listeners.forEach((l) => {
+                l.callback(data.payload || data);
+              });
+            }
+          } catch {
+            // ignore malformed websocket frame
+          }
+        };
+
+        this.ws.onerror = () => {
+          this.startPollingFallback();
+        };
+
+        this.ws.onclose = () => {
+          this.startPollingFallback();
+        };
+      } catch {
+        this.startPollingFallback();
       }
+    } else {
+      this.startPollingFallback();
     }
-  });
-  return clientInstance;
-};
 
-export const getClient = (): OfficialSupabaseClient => {
-  if (!clientInstance) {
-    clientInstance = initSupabaseClient();
-  }
-  return clientInstance;
-};
-
-// Wrapper supporting both direct channel subscription & helper methods
-class SupabaseWrapper {
-  public get client(): OfficialSupabaseClient {
-    return getClient();
+    statusCallback?.('SUBSCRIBED');
+    return this;
   }
 
-  public channel(name: string) {
-    return this.client.channel(name);
-  }
+  private startPollingFallback() {
+    if (this.pollInterval) return;
+    this.pollInterval = setInterval(async () => {
+      const { url } = getSupabaseConfig();
+      if (!url) return;
 
-  public removeChannel(channel: any) {
-    return this.client.removeChannel(channel);
-  }
+      for (const listener of this.listeners) {
+        try {
+          const res = await supabase.select(listener.options.table);
+          if (res.data && res.data.length > 0) {
+            // Find newly added items
+            const newItems = res.data.filter((item: any) => {
+              if (!item.created_at) return false;
+              return new Date(item.created_at) > new Date(this.lastKnownTimestamp);
+            });
 
-  public async signInWithGoogle(): Promise<{ url?: string; error?: string }> {
-    const { data, error } = await this.client.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+            if (newItems.length > 0) {
+              this.lastKnownTimestamp = new Date().toISOString();
+              newItems.forEach((newItem) => {
+                listener.callback({ new: newItem, old: null, eventType: 'INSERT' });
+              });
+            }
+          }
+        } catch {
+          // safe ignore polling error
+        }
       }
-    });
-    if (error) return { error: error.message };
-    return { url: data.url };
+    }, 4000);
+  }
+
+  public unsubscribe(): void {
+    this.isSubscribed = false;
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = null;
+    }
+    if (this.ws) {
+      try {
+        this.ws.close();
+      } catch {
+        // safe ignore
+      }
+      this.ws = null;
+    }
+  }
+}
+
+export class NativeSupabaseClient {
+  private activeChannels = new Map<string, RealtimeChannel>();
+
+  public channel(topic: string): RealtimeChannel {
+    let chan = this.activeChannels.get(topic);
+    if (!chan) {
+      chan = new RealtimeChannel(topic);
+      this.activeChannels.set(topic, chan);
+    }
+    return chan;
+  }
+
+  public removeChannel(channel: RealtimeChannel): void {
+    if (channel) {
+      channel.unsubscribe();
+    }
+  }
+
+  private getHeaders(token?: string, isUpsert = false) {
+    const { anonKey } = getSupabaseConfig();
+    const headers: Record<string, string> = {
+      'apikey': anonKey,
+      'Content-Type': 'application/json',
+      'Prefer': isUpsert 
+        ? 'return=representation,resolution=merge-duplicates' 
+        : 'return=representation',
+    };
+    const session = getStoredSession();
+    const bearer = token || session?.access_token || anonKey;
+    if (bearer) {
+      headers['Authorization'] = `Bearer ${bearer}`;
+    }
+    return headers;
+  }
+
+  // Google OAuth 2.0 Login
+  public async signInWithGoogle(): Promise<{ url?: string; error?: string }> {
+    const { url, anonKey } = getSupabaseConfig();
+    if (!url || !anonKey) {
+      return { error: 'Please configure your Supabase URL & Public Anon Key first in the modal.' };
+    }
+
+    const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+    const oauthUrl = `${url}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(currentOrigin)}&apikey=${encodeURIComponent(anonKey)}`;
+    
+    if (typeof window !== 'undefined') {
+      window.location.href = oauthUrl;
+    }
+    return { url: oauthUrl };
   }
 
   public parseOAuthCallback(): { session?: SupabaseSession; error?: string } | null {
@@ -333,84 +458,173 @@ class SupabaseWrapper {
     return null;
   }
 
-  public async getUser() {
-    const { data, error } = await this.client.auth.getUser();
-    if (error) return { error: error.message };
-    return { user: data.user as any };
-  }
+  public async getUser(token?: string): Promise<{ user?: SupabaseUser; error?: string }> {
+    const { url, anonKey } = getSupabaseConfig();
+    const session = getStoredSession();
+    const activeToken = token || session?.access_token;
+    if (!url || !activeToken) return { error: 'Not authenticated' };
 
-  public async signUp(email: string, password: string, name?: string) {
-    const { data, error } = await this.client.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: name || email.split('@')[0] }
+    try {
+      const res = await fetch(`${url}/auth/v1/user?apikey=${encodeURIComponent(anonKey)}`, {
+        method: 'GET',
+        headers: this.getHeaders(activeToken),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { error: data.message || data.msg || 'Failed to fetch user profile' };
       }
-    });
-    if (error) return { error: error.message };
-    if (data.session) saveStoredSession(data.session as any);
-    return { user: data.user as any, session: data.session as any };
+      if (session) {
+        session.user = data;
+        saveStoredSession(session);
+      }
+      return { user: data };
+    } catch (err: any) {
+      return { error: err.message || 'User fetch error' };
+    }
   }
 
-  public async signIn(email: string, password: string) {
-    const { data, error } = await this.client.auth.signInWithPassword({
-      email,
-      password,
-    });
-    if (error) return { error: error.message };
-    if (data.session) saveStoredSession(data.session as any);
-    return { user: data.user as any, session: data.session as any };
+  public async signUp(email: string, password: string, name?: string): Promise<{ user?: SupabaseUser; session?: SupabaseSession; error?: string }> {
+    const { url, anonKey } = getSupabaseConfig();
+    if (!url || !anonKey) return { error: 'Supabase URL & Anon Key are required.' };
+
+    try {
+      const res = await fetch(`${url}/auth/v1/signup?apikey=${encodeURIComponent(anonKey)}`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ 
+          email, 
+          password,
+          data: { full_name: name || email.split('@')[0] }
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { error: data.msg || data.error_description || data.message || 'Signup failed' };
+      }
+      if (data.access_token) {
+        saveStoredSession(data as SupabaseSession);
+      }
+      return { user: data.user || data, session: data.access_token ? data : undefined };
+    } catch (err: any) {
+      return { error: err.message || 'Network error connecting to Supabase' };
+    }
+  }
+
+  public async signIn(email: string, password: string): Promise<{ user?: SupabaseUser; session?: SupabaseSession; error?: string }> {
+    const { url, anonKey } = getSupabaseConfig();
+    if (!url || !anonKey) return { error: 'Supabase URL & Anon Key are required.' };
+
+    try {
+      const res = await fetch(`${url}/auth/v1/token?grant_type=password&apikey=${encodeURIComponent(anonKey)}`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { error: data.msg || data.error_description || data.message || 'Invalid credentials' };
+      }
+      saveStoredSession(data as SupabaseSession);
+      return { user: data.user, session: data as SupabaseSession };
+    } catch (err: any) {
+      return { error: err.message || 'Network error connecting to Supabase' };
+    }
   }
 
   public async signOut(): Promise<void> {
-    await this.client.auth.signOut().catch(() => {});
+    const { url, anonKey } = getSupabaseConfig();
+    const session = getStoredSession();
+    if (url && session?.access_token) {
+      try {
+        await fetch(`${url}/auth/v1/logout?apikey=${encodeURIComponent(anonKey)}`, {
+          method: 'POST',
+          headers: this.getHeaders(session.access_token),
+        });
+      } catch {
+        // Safe ignore
+      }
+    }
     saveStoredSession(null);
   }
 
-  public async select(table: string, query: string = '*') {
+  public async select(table: string, query: string = '*'): Promise<{ data?: any[]; error?: string }> {
+    const { url, anonKey } = getSupabaseConfig();
+    if (!url) return { error: 'Supabase URL not configured' };
+    const cleanTable = table.trim().replace(/^\/+/, '');
+    if (!cleanTable) return { error: 'Invalid table name' };
+
     try {
-      const { data, error } = await this.client
-        .from(table)
-        .select(query)
-        .order('created_at', { ascending: false });
-      if (error) return { error: error.message };
-      return { data: data || [] };
+      const res = await fetch(`${url}/rest/v1/${cleanTable}?select=${encodeURIComponent(query)}&order=created_at.desc`, {
+        method: 'GET',
+        headers: this.getHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { error: data.message || data.hint || data.details || `Query to ${cleanTable} failed` };
+      }
+      return { data: Array.isArray(data) ? data : [data] };
     } catch (err: any) {
-      return { error: err.message };
+      return { error: err.message || 'Query error' };
     }
   }
 
-  public async upsert(table: string, payload: Record<string, any>) {
+  public async upsert(table: string, payload: Record<string, any>): Promise<{ data?: any; error?: string }> {
+    const { url } = getSupabaseConfig();
+    if (!url) return { error: 'Supabase URL not configured' };
+    const cleanTable = table.trim().replace(/^\/+/, '');
+    if (!cleanTable) return { error: 'Invalid table name' };
+
     try {
-      const { data, error } = await this.client
-        .from(table)
-        .upsert(payload)
-        .select();
-      if (error) return { error: error.message };
+      const res = await fetch(`${url}/rest/v1/${cleanTable}`, {
+        method: 'POST',
+        headers: this.getHeaders(undefined, true),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { error: data.message || data.hint || data.details || `Upsert to ${cleanTable} failed` };
+      }
       return { data };
     } catch (err: any) {
-      return { error: err.message };
+      return { error: err.message || 'Network sync error' };
     }
   }
 
-  public async insert(table: string, payload: Record<string, any>) {
+  public async insert(table: string, payload: Record<string, any>): Promise<{ data?: any; error?: string }> {
     return this.upsert(table, payload);
   }
 
   public async testConnection(): Promise<{ ok: boolean; message: string }> {
-    if (!isSupabaseConfigured()) {
-      return { ok: false, message: 'Please enter a valid Supabase URL and Anon Key.' };
+    const { url, anonKey } = getSupabaseConfig();
+    if (!url || !anonKey) {
+      return { ok: false, message: 'URL and Anon Key are missing.' };
     }
     try {
-      const { error } = await this.client.from('posts').select('id').limit(1);
-      if (error && !error.message.includes('relation "public.posts" does not exist')) {
-        return { ok: false, message: error.message };
+      const res = await fetch(`${url}/auth/v1/health?apikey=${encodeURIComponent(anonKey)}`, {
+        method: 'GET',
+        headers: {
+          'apikey': anonKey,
+        }
+      });
+      if (res.ok || res.status === 200) {
+        return { ok: true, message: 'Connected to Supabase successfully!' };
       }
-      return { ok: true, message: 'Connected to Supabase successfully!' };
+
+      const restRes = await fetch(`${url}/rest/v1/?apikey=${encodeURIComponent(anonKey)}`, {
+        method: 'GET',
+        headers: {
+          'apikey': anonKey,
+          'Accept': 'application/openapi+json, application/json'
+        }
+      });
+      if (restRes.ok || restRes.status === 200 || restRes.status === 401) {
+        return { ok: true, message: 'Connected to Supabase REST endpoint!' };
+      }
+      return { ok: false, message: `Received HTTP status ${res.status}` };
     } catch (err: any) {
-      return { ok: false, message: err.message || 'Connection failed.' };
+      return { ok: false, message: err.message || 'Failed to reach Supabase project.' };
     }
   }
 }
 
-export const supabase = new SupabaseWrapper();
+export const supabase = new NativeSupabaseClient();
