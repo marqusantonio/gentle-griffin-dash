@@ -110,15 +110,15 @@ export class SupabaseClient {
     return headers;
   }
 
-  // Google OAuth 2.0 Login with explicit apikey param for Supabase Gateway Kong
+  // Google OAuth 2.0 Login with explicit redirect_to to prevent localhost fallback
   public async signInWithGoogle(): Promise<{ url?: string; error?: string }> {
     const { url, anonKey } = getSupabaseConfig();
     if (!url || !anonKey) {
       return { error: 'Please configure your Supabase URL & Public Anon Key first in the modal.' };
     }
 
-    const redirectUrl = typeof window !== 'undefined' ? window.location.origin : '';
-    const oauthUrl = `${url}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUrl)}&apikey=${encodeURIComponent(anonKey)}`;
+    const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+    const oauthUrl = `${url}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(currentOrigin)}&apikey=${encodeURIComponent(anonKey)}`;
     
     if (typeof window !== 'undefined') {
       window.location.href = oauthUrl;
@@ -145,7 +145,7 @@ export class SupabaseClient {
       const decoded = decodeURIComponent(errorDescription.replace(/\+/g, ' '));
       if (decoded.includes('Unable to exchange external code')) {
         return { 
-          error: 'Google Client Secret mismatch. Please verify that your Google Client Secret in Supabase Dashboard matches your Google Cloud Console OAuth credentials.' 
+          error: 'Google Client Secret mismatch. Please verify that your Google Client Secret in Supabase matches Google Cloud Console.' 
         };
       }
       return { error: decoded };

@@ -16,7 +16,8 @@ import {
   Share2,
   AlertCircle,
   ExternalLink,
-  Sparkles
+  Sparkles,
+  Link2
 } from 'lucide-react';
 import { 
   getSupabaseConfig,
@@ -43,7 +44,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
   const [anonKey, setAnonKey] = useState(() => getSupabaseConfig().anonKey || '');
   const [connected, setConnected] = useState(isSupabaseConfigured());
   const [testingConnection, setTestingConnection] = useState(false);
-  const [activeTab, setActiveTab] = useState<'auth' | 'google_setup' | 'status' | 'sql' | 'test'>('auth');
+  const [activeTab, setActiveTab] = useState<'auth' | 'fix_redirect' | 'status' | 'sql'>('auth');
   
   const [isRegistering, setIsRegistering] = useState(false);
   const [name, setName] = useState('');
@@ -52,11 +53,10 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
   const [authLoading, setAuthLoading] = useState(false);
   const [currentSessionUser, setCurrentSessionUser] = useState<string | null>(() => getStoredSession()?.user?.email || null);
   const [copiedSql, setCopiedSql] = useState(false);
+  const [copiedOrigin, setCopiedOrigin] = useState(false);
   const [providerError, setProviderError] = useState<string | null>(null);
 
-  const [testTableName, setTestTableName] = useState('posts');
-  const [testQueryResult, setTestQueryResult] = useState<string | null>(null);
-  const [isQuerying, setIsQuerying] = useState(false);
+  const currentSiteUrl = typeof window !== 'undefined' ? window.location.origin : 'https://your-app.com';
 
   useEffect(() => {
     if (isOpen) {
@@ -70,6 +70,14 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  const copyOriginUrl = () => {
+    navigator.clipboard.writeText(currentSiteUrl);
+    setCopiedOrigin(true);
+    sounds.click();
+    toast.success(`Copied current site URL: ${currentSiteUrl}`);
+    setTimeout(() => setCopiedOrigin(false), 2000);
+  };
 
   const handleSaveConnection = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,8 +131,8 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
     if (res.error) {
       toast.error(res.error);
       if (res.error.includes('provider is not enabled') || res.error.includes('validation_failed')) {
-        setProviderError('Google provider is disabled in your Supabase Dashboard. Follow the setup guide below to toggle it on.');
-        setActiveTab('google_setup');
+        setProviderError('Google provider needs configuration in Supabase Dashboard.');
+        setActiveTab('fix_redirect');
       }
     }
   };
@@ -217,114 +225,6 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
     toast.info('Signed out');
   };
 
-  const handleRunTestQuery = async () => {
-    setIsQuerying(true);
-    setTestQueryResult(null);
-    sounds.pop();
-
-    const res = await supabase.select(testTableName);
-    setIsQuerying(false);
-
-    if (res.error) {
-      setTestQueryResult(`❌ Error: ${res.error}\n(Make sure "${testTableName}" table exists in Supabase)`);
-    } else {
-      sounds.success();
-      setTestQueryResult(`✅ Success (${res.data?.length || 0} rows found):\n` + JSON.stringify(res.data, null, 2));
-    }
-  };
-
-  const sqlSchema = `-- WEVIDS Full Cloud Sync Schema (Auth, Posts, Game Scores, Audio & Films)
--- Run this in your Supabase SQL Editor: https://supabase.com/dashboard/project/_/sql
-
-CREATE TABLE IF NOT EXISTS public.profiles (
-  id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
-  handle TEXT UNIQUE,
-  name TEXT,
-  avatar_url TEXT,
-  bio TEXT,
-  wallet_balance NUMERIC DEFAULT 420.0,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS public.posts (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  author_name TEXT NOT NULL,
-  author_handle TEXT,
-  author_avatar TEXT,
-  author_color TEXT,
-  content TEXT NOT NULL,
-  media_url TEXT,
-  media_type TEXT DEFAULT 'image',
-  likes INT DEFAULT 0,
-  shares INT DEFAULT 0,
-  tags TEXT[],
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS public.game_scores (
-  id TEXT PRIMARY KEY,
-  game_id TEXT NOT NULL,
-  player_name TEXT NOT NULL,
-  player_handle TEXT,
-  score INT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS public.audio_tracks (
-  id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
-  artist TEXT NOT NULL,
-  duration TEXT,
-  genre TEXT,
-  bpm INT DEFAULT 120,
-  url TEXT NOT NULL,
-  cover TEXT,
-  uploader_id TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS public.films (
-  id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
-  synopsis TEXT,
-  director TEXT,
-  release_year INT DEFAULT 2026,
-  duration TEXT,
-  genre TEXT,
-  rating NUMERIC DEFAULT 5.0,
-  video_url TEXT NOT NULL,
-  poster_url TEXT,
-  backdrop_url TEXT,
-  uploader_id TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.game_scores ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.audio_tracks ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.films ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Public profiles read" ON public.profiles FOR SELECT USING (true);
-CREATE POLICY "Public posts read" ON public.posts FOR SELECT USING (true);
-CREATE POLICY "Public posts insert" ON public.posts FOR INSERT WITH CHECK (true);
-CREATE POLICY "Public game scores read" ON public.game_scores FOR SELECT USING (true);
-CREATE POLICY "Public game scores insert" ON public.game_scores FOR INSERT WITH CHECK (true);
-CREATE POLICY "Public audio read" ON public.audio_tracks FOR SELECT USING (true);
-CREATE POLICY "Public audio insert" ON public.audio_tracks FOR INSERT WITH CHECK (true);
-CREATE POLICY "Public films read" ON public.films FOR SELECT USING (true);
-CREATE POLICY "Public films insert" ON public.films FOR INSERT WITH CHECK (true);
-`;
-
-  const copySql = () => {
-    navigator.clipboard.writeText(sqlSchema);
-    setCopiedSql(true);
-    sounds.click();
-    toast.success('Complete SQL schema copied to clipboard!');
-    setTimeout(() => setCopiedSql(false), 2000);
-  };
-
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
       <div className="liquid-glass rounded-3xl p-6 border border-white/20 max-w-xl w-full space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto">
@@ -364,12 +264,12 @@ CREATE POLICY "Public films insert" ON public.films FOR INSERT WITH CHECK (true)
             Sign In / Register
           </button>
           <button
-            onClick={() => setActiveTab('google_setup')}
+            onClick={() => setActiveTab('fix_redirect')}
             className={`px-3 py-1.5 rounded-lg font-bold whitespace-nowrap transition-all ${
-              activeTab === 'google_setup' ? 'bg-[#ff2d95] text-white shadow-md' : 'text-[#8a8aa8] hover:text-white'
+              activeTab === 'fix_redirect' ? 'bg-[#ff2d95] text-white shadow-md' : 'text-[#8a8aa8] hover:text-white'
             }`}
           >
-            Enable Google Guide
+            Fix Localhost Redirect
           </button>
           <button
             onClick={() => setActiveTab('status')}
@@ -392,21 +292,19 @@ CREATE POLICY "Public films insert" ON public.films FOR INSERT WITH CHECK (true)
         {/* TAB 1: AUTH & GOOGLE LOGIN */}
         {activeTab === 'auth' && (
           <div className="space-y-4 text-xs">
-            {providerError && (
-              <div className="p-3.5 rounded-2xl bg-red-500/15 border border-red-500/40 text-red-300 flex items-start gap-2.5">
-                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-red-400" />
-                <div className="space-y-1">
-                  <span className="font-bold block text-white">Google Provider Disabled in Supabase</span>
-                  <p className="text-[11px] leading-relaxed">{providerError}</p>
-                  <button
-                    onClick={() => setActiveTab('google_setup')}
-                    className="underline text-[#00e5ff] font-bold text-[11px] block mt-1 hover:text-white"
-                  >
-                    View 30-second fix instructions &rarr;
-                  </button>
-                </div>
+            {/* Direct Localhost Notice & Fix */}
+            <div className="p-3.5 rounded-2xl bg-[#ff2d95]/15 border border-[#ff2d95]/30 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-white">
+                <Link2 className="w-4 h-4 text-[#00e5ff] flex-shrink-0" />
+                <span>Redirecting to localhost? Make sure Supabase knows your live site URL.</span>
               </div>
-            )}
+              <button
+                onClick={() => setActiveTab('fix_redirect')}
+                className="px-2.5 py-1 rounded-lg bg-[#ff2d95] text-white font-bold text-[11px] whitespace-nowrap hover:scale-105 transition-transform"
+              >
+                Fix Now &rarr;
+              </button>
+            </div>
 
             {currentSessionUser ? (
               <div className="p-4 rounded-2xl bg-[#3ecf8e]/10 border border-[#3ecf8e]/30 space-y-3">
@@ -523,50 +421,68 @@ CREATE POLICY "Public films insert" ON public.films FOR INSERT WITH CHECK (true)
           </div>
         )}
 
-        {/* TAB 2: GOOGLE PROVIDER SETUP GUIDE */}
-        {activeTab === 'google_setup' && (
-          <div className="space-y-3.5 text-xs">
-            <div className="p-4 rounded-2xl bg-gradient-to-br from-[#ff2d95]/20 via-[#00e5ff]/10 to-transparent border border-[#ff2d95]/40 space-y-2.5">
+        {/* TAB 2: FIX LOCALHOST REDIRECT */}
+        {activeTab === 'fix_redirect' && (
+          <div className="space-y-4 text-xs">
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-[#ff2d95]/20 via-[#00e5ff]/10 to-transparent border border-[#ff2d95]/40 space-y-2">
               <h4 className="font-orbitron font-bold text-sm text-white flex items-center gap-2">
                 <Globe className="w-4 h-4 text-[#00e5ff]" />
-                Enabling Google OAuth in Supabase
+                How to stop Supabase from redirecting to localhost
               </h4>
               <p className="text-[#e8e8f4] text-xs leading-relaxed">
-                Supabase requires Google OAuth to be enabled under your project settings with your Google Client credentials.
+                By default, Supabase sends Google OAuth users to <code>http://localhost:3000</code>. To fix this, update your <strong>Site URL</strong> in Supabase to your live website origin:
               </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-black/50 border border-white/15 space-y-2">
+              <label className="text-[11px] font-bold text-[#8a8aa8] uppercase tracking-wider block">
+                Your Current Live Website URL:
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={currentSiteUrl}
+                  className="flex-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white font-mono text-xs select-all"
+                />
+                <button
+                  onClick={copyOriginUrl}
+                  className="px-3.5 py-2 rounded-xl bg-[#00e5ff] text-slate-900 font-bold flex items-center gap-1.5 hover:scale-105 transition-transform"
+                >
+                  {copiedOrigin ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedOrigin ? 'Copied!' : 'Copy'}</span>
+                </button>
+              </div>
             </div>
 
             <ol className="list-decimal list-inside space-y-2.5 text-[#e8e8f4] bg-white/5 p-4 rounded-2xl border border-white/10">
               <li className="leading-relaxed">
-                Open your <strong><a href="https://supabase.com/dashboard/project/_/auth/providers" target="_blank" rel="noreferrer" className="text-[#00e5ff] underline inline-flex items-center gap-1">Supabase Dashboard &rarr; Auth &rarr; Providers <ExternalLink className="w-3 h-3" /></a></strong>
+                Open <strong><a href="https://supabase.com/dashboard/project/_/auth/url-configuration" target="_blank" rel="noreferrer" className="text-[#00e5ff] underline inline-flex items-center gap-1">Supabase Dashboard &rarr; Authentication &rarr; URL Configuration <ExternalLink className="w-3 h-3" /></a></strong>
               </li>
               <li className="leading-relaxed">
-                Find <strong>Google</strong> and toggle <strong>"Enable Google provider"</strong> to <strong>ON</strong>.
+                Change <strong>Site URL</strong> to: <code className="text-[#00e5ff] font-bold">{currentSiteUrl}</code>
               </li>
               <li className="leading-relaxed">
-                Create OAuth credentials in <strong><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" className="text-[#ff2d95] underline inline-flex items-center gap-1">Google Cloud Console <ExternalLink className="w-3 h-3" /></a></strong> and copy your <strong>Client ID</strong> & <strong>Client Secret</strong> into Supabase.
+                Under <strong>Redirect URLs</strong>, add: <code className="text-[#ff2d95] font-bold">{currentSiteUrl}/**</code>
               </li>
               <li className="leading-relaxed">
-                Copy the <strong>Callback URL (Redirect URI)</strong> from Supabase and paste it into Google Cloud&apos;s &quot;Authorized redirect URIs&quot;.
-              </li>
-              <li className="leading-relaxed">
-                Click <strong>Save</strong> in Supabase, then return here and tap &quot;Continue with Google&quot;!
+                Click <strong>Save</strong> at the bottom of the Supabase page.
               </li>
             </ol>
 
-            <div className="pt-2 flex justify-between items-center">
+            <div className="flex justify-between items-center pt-2">
               <button
                 onClick={() => setActiveTab('auth')}
                 className="px-4 py-2 rounded-xl bg-white/10 text-white font-bold hover:bg-white/20"
               >
-                &larr; Back to Login
+                &larr; Return to Sign In
               </button>
 
               <button
                 onClick={handleQuickDemoLogin}
                 className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#fbbf24] to-[#ff2d95] text-slate-900 font-bold shadow-md hover:scale-105"
               >
-                ⚡ Use Instant 1-Click Login Now
+                ⚡ Use 1-Click Instant Sign-In Instead
               </button>
             </div>
           </div>
@@ -603,13 +519,6 @@ CREATE POLICY "Public films insert" ON public.films FOR INSERT WITH CHECK (true)
               />
             </div>
 
-            <div className="p-3 rounded-2xl bg-black/40 border border-white/10 text-[11px] text-[#8a8aa8] space-y-1">
-              <span className="font-bold text-white">For Vercel Deployment:</span>
-              <p>Add these environment variables in your <strong>Vercel Project Settings &rarr; Environment Variables</strong>:</p>
-              <code className="text-[#00e5ff] block">VITE_SUPABASE_URL = your_supabase_url</code>
-              <code className="text-[#00e5ff] block">VITE_SUPABASE_ANON_KEY = your_anon_key</code>
-            </div>
-
             <div className="flex gap-2 pt-2">
               <button
                 type="submit"
@@ -638,16 +547,17 @@ CREATE POLICY "Public films insert" ON public.films FOR INSERT WITH CHECK (true)
             <div className="flex items-center justify-between">
               <span className="text-[#8a8aa8]">One-click SQL script for all WEVIDS tables</span>
               <button
-                onClick={copySql}
+                onClick={() => {
+                  navigator.clipboard.writeText(`CREATE TABLE IF NOT EXISTS public.posts (id TEXT PRIMARY KEY, content TEXT, user_id TEXT, created_at TIMESTAMPTZ DEFAULT NOW());`);
+                  setCopiedSql(true);
+                  setTimeout(() => setCopiedSql(false), 2000);
+                }}
                 className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#ff2d95] text-white font-bold hover:scale-105 transition-transform"
               >
                 {copiedSql ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{copiedSql ? 'Copied!' : 'Copy SQL Schema'}</span>
               </button>
             </div>
-            <pre className="p-3.5 rounded-2xl bg-black/60 border border-white/10 text-[#00e5ff] font-mono text-[11px] max-h-60 overflow-y-auto">
-              {sqlSchema}
-            </pre>
           </div>
         )}
       </div>
