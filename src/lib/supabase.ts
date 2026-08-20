@@ -114,7 +114,7 @@ export class SupabaseClient {
   public async signInWithGoogle(): Promise<{ url?: string; error?: string }> {
     const { url, anonKey } = getSupabaseConfig();
     if (!url || !anonKey) {
-      return { error: 'Please configure your Supabase URL & Public Anon Key first.' };
+      return { error: 'Please configure your Supabase URL & Public Anon Key first in the modal.' };
     }
 
     const redirectUrl = typeof window !== 'undefined' ? window.location.origin : '';
@@ -132,20 +132,29 @@ export class SupabaseClient {
     const hash = window.location.hash;
     const search = window.location.search;
     
+    if (!hash && !search) return null;
+
     const hashParams = new URLSearchParams(hash ? hash.replace(/^#/, '') : '');
     const searchParams = new URLSearchParams(search ? search.replace(/^\?/, '') : '');
 
     // Check for provider error in query or hash
-    const errorDescription = hashParams.get('error_description') || searchParams.get('error_description') || searchParams.get('error');
+    const errorDescription = hashParams.get('error_description') || searchParams.get('error_description') || searchParams.get('error') || hashParams.get('error');
     if (errorDescription) {
+      // Clean URL from error params
       window.history.replaceState(null, '', window.location.pathname);
-      return { error: decodeURIComponent(errorDescription.replace(/\+/g, ' ')) };
+      const decoded = decodeURIComponent(errorDescription.replace(/\+/g, ' '));
+      if (decoded.includes('Unable to exchange external code')) {
+        return { 
+          error: 'Google Client Secret mismatch. Please verify that your Google Client Secret in Supabase Dashboard matches your Google Cloud Console OAuth credentials.' 
+        };
+      }
+      return { error: decoded };
     }
 
-    const accessToken = hashParams.get('access_token');
-    const refreshToken = hashParams.get('refresh_token') || '';
-    const expiresIn = Number(hashParams.get('expires_in')) || 3600;
-    const tokenType = hashParams.get('token_type') || 'bearer';
+    const accessToken = hashParams.get('access_token') || searchParams.get('access_token');
+    const refreshToken = hashParams.get('refresh_token') || searchParams.get('refresh_token') || '';
+    const expiresIn = Number(hashParams.get('expires_in') || searchParams.get('expires_in')) || 3600;
+    const tokenType = hashParams.get('token_type') || searchParams.get('token_type') || 'bearer';
 
     if (accessToken) {
       const session: SupabaseSession = {
