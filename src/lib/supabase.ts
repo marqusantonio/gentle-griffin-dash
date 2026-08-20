@@ -92,6 +92,143 @@ export const saveStoredSession = (session: SupabaseSession | null) => {
   }
 };
 
+// SQL Schema for 1-click execution in Supabase SQL Editor
+export const SUPABASE_SQL_SCHEMA = `-- Run this in your Supabase SQL Editor (supabase.com -> Project -> SQL Editor)
+
+-- 1. Posts Table
+CREATE TABLE IF NOT EXISTS public.posts (
+  id TEXT PRIMARY KEY,
+  "userId" TEXT,
+  "authorName" TEXT,
+  "authorHandle" TEXT,
+  "authorAvatar" TEXT,
+  "authorColor" TEXT,
+  location TEXT,
+  time TEXT,
+  content TEXT,
+  "mediaUrl" TEXT,
+  "mediaType" TEXT,
+  likes INT DEFAULT 0,
+  dislikes INT DEFAULT 0,
+  shares INT DEFAULT 0,
+  tags JSONB DEFAULT '[]'::jsonb,
+  comments JSONB DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 2. Clips Table (Shorts)
+CREATE TABLE IF NOT EXISTS public.clips (
+  id TEXT PRIMARY KEY,
+  "userId" TEXT,
+  title TEXT,
+  description TEXT,
+  "videoUrl" TEXT,
+  "audioTrack" TEXT,
+  likes INT DEFAULT 0,
+  dislikes INT DEFAULT 0,
+  shares INT DEFAULT 0,
+  comments JSONB DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 3. Audio Tracks Table
+CREATE TABLE IF NOT EXISTS public.audio_tracks (
+  id TEXT PRIMARY KEY,
+  title TEXT,
+  artist TEXT,
+  duration TEXT,
+  genre TEXT,
+  bpm INT DEFAULT 120,
+  url TEXT,
+  cover TEXT,
+  "uploaderId" TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 4. Films Table
+CREATE TABLE IF NOT EXISTS public.films (
+  id TEXT PRIMARY KEY,
+  title TEXT,
+  synopsis TEXT,
+  director TEXT,
+  "releaseYear" INT DEFAULT 2026,
+  duration TEXT,
+  genre TEXT,
+  rating NUMERIC DEFAULT 5.0,
+  "videoUrl" TEXT,
+  "posterUrl" TEXT,
+  "backdropUrl" TEXT,
+  "uploaderId" TEXT,
+  views TEXT DEFAULT '0',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 5. ROMs Table
+CREATE TABLE IF NOT EXISTS public.roms (
+  id TEXT PRIMARY KEY,
+  title TEXT,
+  device TEXT,
+  brand TEXT,
+  "romType" TEXT,
+  status TEXT DEFAULT 'Official',
+  maintainer TEXT,
+  "maintainerHandle" TEXT,
+  version TEXT,
+  "androidVersion" TEXT DEFAULT 'Android 15',
+  "fileSize" TEXT,
+  checksum TEXT,
+  "downloadCount" INT DEFAULT 0,
+  "downloadUrl" TEXT,
+  "githubUrl" TEXT,
+  "releaseDate" TEXT,
+  changelog JSONB DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 6. Shared Files Table
+CREATE TABLE IF NOT EXISTS public.files (
+  id TEXT PRIMARY KEY,
+  title TEXT,
+  "fileName" TEXT,
+  "fileSize" TEXT,
+  category TEXT,
+  "uploaderId" TEXT,
+  "uploaderName" TEXT,
+  "downloadUrl" TEXT,
+  checksum TEXT,
+  downloads INT DEFAULT 0,
+  "uploadedAt" TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 7. Products Table (Mall)
+CREATE TABLE IF NOT EXISTS public.products (
+  id TEXT PRIMARY KEY,
+  title TEXT,
+  category TEXT,
+  price NUMERIC DEFAULT 0,
+  currency TEXT DEFAULT 'USD',
+  "creatorId" TEXT,
+  "creatorName" TEXT,
+  rating NUMERIC DEFAULT 5.0,
+  "salesCount" INT DEFAULT 0,
+  "previewUrl" TEXT,
+  description TEXT,
+  "affiliateCommission" INT DEFAULT 10,
+  "isDigital" BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Disable Row Level Security for instant unrestricted guest & member sharing
+ALTER TABLE public.posts DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.clips DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audio_tracks DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.films DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.roms DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.files DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.products DISABLE ROW LEVEL SECURITY;
+`;
+
 export class SupabaseClient {
   private getHeaders(token?: string, isUpsert = false) {
     const { anonKey } = getSupabaseConfig();
@@ -110,7 +247,7 @@ export class SupabaseClient {
     return headers;
   }
 
-  // Google OAuth 2.0 Login with explicit redirect_to to prevent localhost fallback
+  // Google OAuth 2.0 Login
   public async signInWithGoogle(): Promise<{ url?: string; error?: string }> {
     const { url, anonKey } = getSupabaseConfig();
     if (!url || !anonKey) {
@@ -126,7 +263,6 @@ export class SupabaseClient {
     return { url: oauthUrl };
   }
 
-  // Parse OAuth access_token or error params from hash fragments / query strings upon return
   public parseOAuthCallback(): { session?: SupabaseSession; error?: string } | null {
     if (typeof window === 'undefined') return null;
     const hash = window.location.hash;
@@ -137,17 +273,10 @@ export class SupabaseClient {
     const hashParams = new URLSearchParams(hash ? hash.replace(/^#/, '') : '');
     const searchParams = new URLSearchParams(search ? search.replace(/^\?/, '') : '');
 
-    // Check for provider error in query or hash
     const errorDescription = hashParams.get('error_description') || searchParams.get('error_description') || searchParams.get('error') || hashParams.get('error');
     if (errorDescription) {
-      // Clean URL from error params
       window.history.replaceState(null, '', window.location.pathname);
       const decoded = decodeURIComponent(errorDescription.replace(/\+/g, ' '));
-      if (decoded.includes('Unable to exchange external code')) {
-        return { 
-          error: 'Google Client Secret mismatch. Please verify that your Google Client Secret in Supabase matches Google Cloud Console.' 
-        };
-      }
       return { error: decoded };
     }
 
@@ -175,7 +304,6 @@ export class SupabaseClient {
     return null;
   }
 
-  // Fetch current user details with access_token
   public async getUser(token?: string): Promise<{ user?: SupabaseUser; error?: string }> {
     const { url, anonKey } = getSupabaseConfig();
     const session = getStoredSession();
