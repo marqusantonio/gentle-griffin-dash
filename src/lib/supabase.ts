@@ -9,7 +9,7 @@ export const sanitizeBaseUrl = (url: string): string => {
 };
 
 const supabaseUrl = sanitizeBaseUrl(rawSupabaseUrl);
-const supabaseAnonKey = rawSupabaseAnonKey.trim();
+const supabaseAnonKey = typeof rawSupabaseAnonKey === 'string' ? rawSupabaseAnonKey.trim() : '';
 
 export interface SupabaseConfig {
   url: string;
@@ -84,19 +84,13 @@ export const getSupabaseConfig = (): SupabaseConfig => {
 
   return {
     url: sanitizeBaseUrl(rawUrl),
-    anonKey: rawKey.trim(),
+    anonKey: typeof rawKey === 'string' ? rawKey.trim() : '',
   };
 };
 
 export const isSupabaseConfigured = (): boolean => {
   const { url, anonKey } = getSupabaseConfig();
-  return Boolean(
-    url && 
-    anonKey && 
-    url.startsWith('https://') && 
-    anonKey !== 'YOUR_ANON_KEY_HERE' && 
-    anonKey.length > 15
-  );
+  return Boolean(url && anonKey);
 };
 
 // Query Builder for .from('table').select().order().eq().or()
@@ -174,8 +168,8 @@ class PostgrestQueryBuilder<T = any> implements PromiseLike<{ data: T[] | null; 
     const effectiveUrl = sanitizeBaseUrl(this.url || config.url);
     const effectiveKey = this.anonKey || config.anonKey;
 
-    if (!effectiveUrl || !effectiveKey || effectiveKey === 'YOUR_ANON_KEY_HERE') {
-      return { data: null, error: 'Valid Supabase Anon Key is required' };
+    if (!effectiveUrl) {
+      return { data: null, error: 'Supabase URL is required' };
     }
 
     try {
@@ -261,7 +255,7 @@ export class RealtimeChannel {
     this.isSubscribed = true;
 
     const { url, anonKey } = getSupabaseConfig();
-    if (url && anonKey && anonKey !== 'YOUR_ANON_KEY_HERE' && typeof window !== 'undefined') {
+    if (url && typeof window !== 'undefined') {
       try {
         const wsUrl = url.replace(/^http/, 'ws') + `/realtime/v1/websocket?apikey=${encodeURIComponent(anonKey)}&vsn=1.0.0`;
         this.ws = new WebSocket(wsUrl);
@@ -320,7 +314,7 @@ export class SupabaseClientInstance {
       const config = getSupabaseConfig();
       const u = sanitizeBaseUrl(this.url || config.url);
       const k = this.anonKey || config.anonKey;
-      if (!u || !k || k === 'YOUR_ANON_KEY_HERE') return { data: null, error: { message: 'Supabase credentials missing' } };
+      if (!u) return { data: null, error: { message: 'Supabase URL missing' } };
 
       try {
         const res = await fetch(`${u}/auth/v1/signup?apikey=${encodeURIComponent(k)}`, {
@@ -340,7 +334,7 @@ export class SupabaseClientInstance {
       const config = getSupabaseConfig();
       const u = sanitizeBaseUrl(this.url || config.url);
       const k = this.anonKey || config.anonKey;
-      if (!u || !k || k === 'YOUR_ANON_KEY_HERE') return { data: null, error: { message: 'Supabase credentials missing' } };
+      if (!u) return { data: null, error: { message: 'Supabase URL missing' } };
 
       try {
         const res = await fetch(`${u}/auth/v1/token?grant_type=password&apikey=${encodeURIComponent(k)}`, {
@@ -361,7 +355,7 @@ export class SupabaseClientInstance {
       const u = sanitizeBaseUrl(this.url || config.url);
       const k = this.anonKey || config.anonKey;
       const session = getStoredSession();
-      if (u && k && session?.access_token) {
+      if (u && session?.access_token) {
         try {
           await fetch(`${u}/auth/v1/logout?apikey=${encodeURIComponent(k)}`, {
             method: 'POST',
@@ -405,7 +399,7 @@ export class SupabaseClientInstance {
     const config = getSupabaseConfig();
     const u = sanitizeBaseUrl(this.url || config.url);
     const k = this.anonKey || config.anonKey;
-    if (!u || !k || k === 'YOUR_ANON_KEY_HERE') return { error: 'Please configure your Supabase URL & Anon Key.' };
+    if (!u) return { error: 'Please configure your Supabase URL.' };
     const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
     const oauthUrl = `${u}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(currentOrigin)}&apikey=${encodeURIComponent(k)}`;
     if (typeof window !== 'undefined') {
@@ -434,7 +428,7 @@ export class SupabaseClientInstance {
     const config = getSupabaseConfig();
     const u = sanitizeBaseUrl(this.url || config.url);
     const k = this.anonKey || config.anonKey;
-    if (!u || !k || k === 'YOUR_ANON_KEY_HERE') return { ok: false, message: 'URL and Anon Key are missing or unset.' };
+    if (!u) return { ok: false, message: 'URL is missing or unset.' };
 
     try {
       const res = await fetch(`${u}/rest/v1/posts?select=id&limit=1`, {
