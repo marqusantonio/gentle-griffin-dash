@@ -3,15 +3,16 @@ import { useWevids } from '../../context/WevidsContext';
 import { 
   Image as ImageIcon, 
   Video as VideoIcon, 
-  Sparkles, 
   X, 
   Send, 
   Film,
   Music2,
-  Tv
+  Tv,
+  Loader2
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
-import { checkContentModeration } from '../../lib/supabase';
+import { supabase, checkContentModeration } from '../../lib/supabase';
+import { PostItem, ShortClipItem } from '../../types/wevids';
 import { toast } from 'sonner';
 
 interface CreatePostModalProps {
@@ -25,7 +26,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   onClose,
   defaultTarget = 'feed'
 }) => {
-  const { addPost, addClip, currentUser, setActiveView } = useWevids();
+  const { currentUser, setActiveView } = useWevids();
   
   const [targetType, setTargetType] = useState<'feed' | 'clips'>(defaultTarget);
   const [content, setContent] = useState('');
@@ -100,61 +101,88 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // AI / Safety Content Moderation Check
     const moderation = checkContentModeration(`${title} ${content}`);
     if (moderation.flagged) {
       toast.error(moderation.reason);
       return;
     }
 
-    if (targetType === 'clips') {
-      if (!mediaUrl && !content.trim() && !title.trim()) {
-        toast.error('Please upload a video or provide a title for your Clip');
+    setIsUploading(true);
+
+    try {
+      if (targetType === 'clips') {
+        if (!mediaUrl && !content.trim() && !title.trim()) {
+          toast.error('Please upload a video or provide a title for your Clip');
+          setIsUploading(false);
+          return;
+        }
+
+        const newClip: ShortClipItem = {
+          id: `clip-${Date.now()}`,
+          userId: currentUser?.id || 'guest',
+          title: title.trim() || 'New Creator Short Clip',
+          description: content.trim() || 'Vertical short clip uploaded on WEVIDS',
+          videoUrl: mediaUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+          audioTrack: audioTrack.trim() || `${currentUser?.name || 'Creator'} · Original Audio`,
+          likes: 0,
+          dislikes: 0,
+          shares: 0,
+          comments: []
+        };
+
+        const { error } = await supabase.from('clips').insert([newClip]);
+        if (error) {
+          toast.error(`Error saving clip to Supabase: ${error}`);
+        } else {
+          sounds.success();
+          toast.success('Short Clip uploaded directly to Supabase!');
+          resetForm();
+          setActiveView('clips');
+          onClose();
+        }
         return;
       }
 
-      await addClip({
-        id: `clip-${Date.now()}`,
+      if (!content.trim() && !mediaUrl) {
+        toast.error('Please type a message or upload media');
+        setIsUploading(false);
+        return;
+      }
+
+      const newPost: PostItem = {
+        id: `post-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         userId: currentUser?.id || 'guest',
-        title: title.trim() || 'New Creator Short Clip',
-        description: content.trim() || 'Vertical short clip uploaded on WEVIDS',
-        videoUrl: mediaUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-        audioTrack: audioTrack.trim() || `${currentUser?.name || 'Creator'} · Original Audio`,
+        authorName: currentUser?.name || 'Creator',
+        authorHandle: currentUser?.handle || '@creator',
+        authorAvatar: currentUser?.avatar || 'C',
+        authorColor: currentUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
+        location: currentUser?.location || 'Earth Node',
+        time: 'Just now',
+        content: content.trim(),
+        mediaUrl: mediaUrl || undefined,
+        mediaType: mediaUrl ? mediaType : undefined,
         likes: 0,
         dislikes: 0,
         shares: 0,
-        comments: []
-      });
+        comments: [],
+        tags: [selectedTag],
+        created_at: new Date().toISOString()
+      };
 
-      resetForm();
-      setActiveView('clips');
-      onClose();
-      return;
-    }
-
-    if (!content.trim() && !mediaUrl) {
-      toast.error('Please type a message or upload media');
-      return;
-    }
-
-    const success = await addPost({
-      userId: currentUser?.id || 'guest',
-      authorName: currentUser?.name || 'Creator',
-      authorHandle: currentUser?.handle || '@creator',
-      authorAvatar: currentUser?.avatar || 'C',
-      authorColor: currentUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
-      location: currentUser?.location || 'Earth Node',
-      time: 'Just now',
-      content: content.trim(),
-      mediaUrl: mediaUrl || undefined,
-      mediaType: mediaUrl ? mediaType : undefined,
-      tags: [selectedTag]
-    });
-
-    if (success) {
-      resetForm();
-      setActiveView('feed');
-      onClose();
+      const { error } = await supabase.from('posts').insert([newPost]);
+      if (error) {
+        toast.error(`Error saving post to Supabase: ${error}`);
+      } else {
+        sounds.success();
+        toast.success('Post saved directly to Supabase!');
+        resetForm();
+        setActiveView('feed');
+        onClose();
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to publish');
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -177,7 +205,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
             {currentUser?.avatar || 'G'}
           </div>
           <div>
-            <h3 className="font-orbitron font-bold text-base text-white">Publish Creator Content</h3>
+            <h3 className="font-orbitron font-bold text-base text-white">Publish Directly to Supabase</h3>
             <div className="text-xs text-[#00e5ff]">Posting as {currentUser?.name || 'Creator'} ({currentUser?.handle || '@creator'})</div>
           </div>
         </div>
@@ -365,8 +393,8 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               disabled={isUploading}
               className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold text-xs shadow-lg hover:scale-105 transition-transform flex items-center gap-1.5 disabled:opacity-50"
             >
-              <Send className="w-3.5 h-3.5" />
-              <span>{isUploading ? 'UPLOADING...' : targetType === 'clips' ? 'PUBLISH CLIP' : 'PUBLISH POST'}</span>
+              {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+              <span>{isUploading ? 'SAVING TO SUPABASE...' : targetType === 'clips' ? 'PUBLISH CLIP' : 'PUBLISH POST'}</span>
             </button>
           </div>
         </form>
