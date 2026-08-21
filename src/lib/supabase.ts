@@ -428,7 +428,7 @@ export class SupabaseClientInstance {
     if (!u || !k) return { ok: false, message: 'URL and Anon Key are missing.' };
 
     try {
-      const res = await fetch(`${u}/rest/v1/profiles?select=id&limit=1`, {
+      const res = await fetch(`${u}/rest/v1/posts?select=id&limit=1`, {
         method: 'GET',
         headers: { 'apikey': k },
       });
@@ -629,55 +629,53 @@ CREATE TABLE IF NOT EXISTS public.direct_messages (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Enable RLS
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+-- Enable RLS & Apply Full Public Access Policy for Guests and Authenticated Users
 ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public full access" ON public.posts;
+CREATE POLICY "Public full access" ON public.posts FOR ALL TO public USING (true) WITH CHECK (true);
+
 ALTER TABLE public.clips ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public full access clips" ON public.clips;
+CREATE POLICY "Public full access clips" ON public.clips FOR ALL TO public USING (true) WITH CHECK (true);
+
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public full access profiles" ON public.profiles;
+CREATE POLICY "Public full access profiles" ON public.profiles FOR ALL TO public USING (true) WITH CHECK (true);
+
 ALTER TABLE public.audio_tracks ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public full access audio" ON public.audio_tracks;
+CREATE POLICY "Public full access audio" ON public.audio_tracks FOR ALL TO public USING (true) WITH CHECK (true);
+
 ALTER TABLE public.films ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public full access films" ON public.films;
+CREATE POLICY "Public full access films" ON public.films FOR ALL TO public USING (true) WITH CHECK (true);
+
 ALTER TABLE public.roms ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public full access roms" ON public.roms;
+CREATE POLICY "Public full access roms" ON public.roms FOR ALL TO public USING (true) WITH CHECK (true);
+
 ALTER TABLE public.files ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public full access files" ON public.files;
+CREATE POLICY "Public full access files" ON public.files FOR ALL TO public USING (true) WITH CHECK (true);
+
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public full access products" ON public.products;
+CREATE POLICY "Public full access products" ON public.products FOR ALL TO public USING (true) WITH CHECK (true);
+
 ALTER TABLE public.direct_messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public full access dms" ON public.direct_messages;
+CREATE POLICY "Public full access dms" ON public.direct_messages FOR ALL TO public USING (true) WITH CHECK (true);
 
--- Allow public read & write operations
-DO $$ 
-BEGIN
-  CREATE POLICY "Public Read Profiles" ON public.profiles FOR SELECT USING (true);
-  CREATE POLICY "Public Write Profiles" ON public.profiles FOR INSERT WITH CHECK (true);
-  CREATE POLICY "Public Update Profiles" ON public.profiles FOR UPDATE USING (true);
-
-  CREATE POLICY "Public Read Posts" ON public.posts FOR SELECT USING (true);
-  CREATE POLICY "Public Write Posts" ON public.posts FOR INSERT WITH CHECK (true);
-  CREATE POLICY "Public Update Posts" ON public.posts FOR UPDATE USING (true);
-  CREATE POLICY "Public Delete Posts" ON public.posts FOR DELETE USING (true);
-
-  CREATE POLICY "Public Read Clips" ON public.clips FOR SELECT USING (true);
-  CREATE POLICY "Public Write Clips" ON public.clips FOR INSERT WITH CHECK (true);
-  CREATE POLICY "Public Update Clips" ON public.clips FOR UPDATE USING (true);
-  CREATE POLICY "Public Delete Clips" ON public.clips FOR DELETE USING (true);
-
-  CREATE POLICY "Public Read Audio" ON public.audio_tracks FOR SELECT USING (true);
-  CREATE POLICY "Public Write Audio" ON public.audio_tracks FOR INSERT WITH CHECK (true);
-
-  CREATE POLICY "Public Read Films" ON public.films FOR SELECT USING (true);
-  CREATE POLICY "Public Write Films" ON public.films FOR INSERT WITH CHECK (true);
-
-  CREATE POLICY "Public Read ROMs" ON public.roms FOR SELECT USING (true);
-  CREATE POLICY "Public Write ROMs" ON public.roms FOR INSERT WITH CHECK (true);
-
-  CREATE POLICY "Public Read Files" ON public.files FOR SELECT USING (true);
-  CREATE POLICY "Public Write Files" ON public.files FOR INSERT WITH CHECK (true);
-
-  CREATE POLICY "Public Read Products" ON public.products FOR SELECT USING (true);
-  CREATE POLICY "Public Write Products" ON public.products FOR INSERT WITH CHECK (true);
-
-  CREATE POLICY "Public Read DMs" ON public.direct_messages FOR SELECT USING (true);
-  CREATE POLICY "Public Write DMs" ON public.direct_messages FOR INSERT WITH CHECK (true);
-  CREATE POLICY "Public Update DMs" ON public.direct_messages FOR UPDATE USING (true);
-EXCEPTION WHEN OTHERS THEN
-  -- Policies already present
-END $$;
+-- Ensure anon & authenticated roles have full permissions across tables
+GRANT ALL ON public.posts TO anon, authenticated;
+GRANT ALL ON public.clips TO anon, authenticated;
+GRANT ALL ON public.profiles TO anon, authenticated;
+GRANT ALL ON public.audio_tracks TO anon, authenticated;
+GRANT ALL ON public.films TO anon, authenticated;
+GRANT ALL ON public.roms TO anon, authenticated;
+GRANT ALL ON public.files TO anon, authenticated;
+GRANT ALL ON public.products TO anon, authenticated;
+GRANT ALL ON public.direct_messages TO anon, authenticated;
 
 -- Enable Realtime publication
 ALTER PUBLICATION supabase_realtime ADD TABLE public.posts;
