@@ -44,7 +44,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => 
   };
 
   return (
-    <header className="sticky top-0 z-30 md:ml-64 h-16 liquid-glass border-b border-white/15 px-4 sm:px-6 flex items-center justify-between gap-3 shadow-[0_15px_40px_rgba(0,0,0,0.5)]">
+    <header className="sticky top-0 z-30 w-full h-16 liquid-glass border-b border-white/15 px-4 sm:px-6 flex items-center justify-between gap-3 shadow-[0_15px_40px_rgba(0,0,0,0.5)]">
       {/* Mobile Hamburger Menu */}
       <button
         type="button"

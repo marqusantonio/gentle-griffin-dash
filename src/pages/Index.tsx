@@ -60,11 +60,11 @@ const MainContent: React.FC = () => {
       {/* Fixed Left Sidebar */}
       <Sidebar />
 
-      {/* Right Side App Layout strictly attached to the top */}
-      <div className="relative z-10 flex flex-col min-h-screen">
+      {/* Right Side Content Container attached firmly to top 0 */}
+      <div className="relative z-10 flex flex-col min-h-screen md:pl-64 w-full">
         <TopHeader onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)} />
 
-        <main className="flex-1 md:ml-64 p-4 sm:p-6 md:p-8 max-w-7xl w-full">
+        <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl w-full mx-auto">
           {activeView === 'clips' && <ShortsFeedView />}
           {activeView === 'feed' && <DualFeedView />}
           {activeView === 'films' && <FilmsHubView />}
