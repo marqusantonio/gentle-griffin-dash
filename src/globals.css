@@ -4,184 +4,298 @@
 
 @layer base {
   :root {
-    --bg: #070714;
-    --card: rgba(18, 18, 43, 0.65);
-    --text: #e8e8f4;
-    --muted: #8a8aa8;
+    --bg: #050512;
+    --card: rgba(14, 14, 38, 0.6);
+    --text: #f1f1fc;
+    --muted: #9494b8;
     --accent: #ff2d95;
     --accent2: #00e5ff;
     --accent3: #9333ea;
-    --border: rgba(255, 255, 255, 0.12);
-    --glow-pink: rgba(255, 45, 149, 0.35);
-    --glow-cyan: rgba(0, 229, 255, 0.35);
+    --border: rgba(255, 255, 255, 0.16);
+    --liquid-glow: rgba(0, 229, 255, 0.4);
+    --liquid-pink: rgba(255, 45, 149, 0.4);
   }
 }
 
-/* Custom Scrollbar */
+/* Custom Fluid Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
 }
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(5, 5, 18, 0.6);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.16);
+  background: linear-gradient(180deg, rgba(255, 45, 149, 0.5), rgba(0, 229, 255, 0.5));
   border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 229, 255, 0.5);
+  background: linear-gradient(180deg, #ff2d95, #00e5ff);
 }
 
 /* =========================================================
-   ULTRA LIQUID GLASS STYLING SYSTEM
+   AUTHENTIC PHYSICAL LIQUID GLASS SYSTEM
    ========================================================= */
 
-/* Primary Liquid Glass Container */
+/* 1. Ultra Physical Liquid Glass Container (Frosted Fluid Lens) */
 .liquid-glass {
+  position: relative;
   background: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.07) 0%,
-    rgba(18, 18, 45, 0.68) 35%,
-    rgba(10, 10, 28, 0.82) 100%
+    rgba(255, 255, 255, 0.14) 0%,
+    rgba(255, 255, 255, 0.03) 25%,
+    rgba(16, 16, 42, 0.62) 55%,
+    rgba(8, 8, 24, 0.86) 100%
   );
-  backdrop-filter: blur(28px) saturate(190%);
-  -webkit-backdrop-filter: blur(28px) saturate(190%);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(36px) saturate(220%) brightness(112%) contrast(108%);
+  -webkit-backdrop-filter: blur(36px) saturate(220%) brightness(112%) contrast(108%);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-top: 1.5px solid rgba(255, 255, 255, 0.55);
+  border-left: 1px solid rgba(255, 255, 255, 0.35);
   box-shadow: 
-    0 24px 60px rgba(0, 0, 0, 0.6),
-    inset 0 1px 1px rgba(255, 255, 255, 0.25),
-    inset 0 -1px 1px rgba(0, 0, 0, 0.4),
-    0 0 30px rgba(0, 229, 255, 0.04);
+    0 30px 80px -15px rgba(0, 0, 0, 0.75),
+    0 15px 35px rgba(0, 0, 0, 0.5),
+    inset 0 2px 3px rgba(255, 255, 255, 0.45),
+    inset 0 -2px 4px rgba(0, 229, 255, 0.18),
+    inset 1px 0 2px rgba(255, 255, 255, 0.2),
+    0 0 40px rgba(0, 229, 255, 0.06);
 }
 
-/* Interactive Liquid Glass Card */
-.liquid-glass-card {
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.06) 0%,
-    rgba(22, 22, 54, 0.58) 40%,
-    rgba(14, 14, 36, 0.75) 100%
+/* Prismatic Liquid Glass Highlight Overlay */
+.liquid-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    800px circle at var(--mouse-x, 30%) var(--mouse-y, 20%),
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(0, 229, 255, 0.04) 40%,
+    transparent 80%
   );
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 1;
+}
+
+/* 2. Interactive Liquid Glass Card with Prism Refraction Edge */
+.liquid-glass-card {
+  position: relative;
+  background: linear-gradient(
+    140deg,
+    rgba(255, 255, 255, 0.12) 0%,
+    rgba(255, 255, 255, 0.02) 20%,
+    rgba(20, 20, 52, 0.58) 50%,
+    rgba(10, 10, 30, 0.82) 100%
+  );
+  backdrop-filter: blur(28px) saturate(200%) brightness(108%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(108%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-top: 1.2px solid rgba(255, 255, 255, 0.45);
   box-shadow: 
-    0 18px 45px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.18);
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    0 20px 50px rgba(0, 0, 0, 0.55),
+    inset 0 1.5px 2px rgba(255, 255, 255, 0.35),
+    inset 0 -1.5px 2px rgba(0, 0, 0, 0.4);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
 }
 
 .liquid-glass-card:hover {
-  transform: translateY(-3px) scale(1.008);
+  transform: translateY(-4px) scale(1.01);
   background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.1) 0%,
-    rgba(32, 28, 68, 0.72) 45%,
-    rgba(18, 16, 46, 0.85) 100%
+    140deg,
+    rgba(255, 255, 255, 0.2) 0%,
+    rgba(255, 255, 255, 0.06) 25%,
+    rgba(34, 28, 76, 0.72) 55%,
+    rgba(14, 12, 40, 0.9) 100%
   );
-  border-color: rgba(0, 229, 255, 0.45);
+  border-color: rgba(0, 229, 255, 0.6);
+  border-top-color: rgba(255, 255, 255, 0.85);
   box-shadow: 
-    0 24px 60px rgba(0, 0, 0, 0.65),
-    0 0 35px rgba(0, 229, 255, 0.2),
-    inset 0 1px 2px rgba(255, 255, 255, 0.3);
+    0 30px 70px rgba(0, 0, 0, 0.7),
+    0 0 45px rgba(0, 229, 255, 0.25),
+    0 0 30px rgba(255, 45, 149, 0.2),
+    inset 0 2px 4px rgba(255, 255, 255, 0.6),
+    inset 0 -2px 4px rgba(0, 229, 255, 0.3);
 }
 
-/* Liquid Glass Pill Indicator */
+/* 3. Fluid Caustic Wave Sweep */
+.liquid-glass-card::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    60deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.07) 45%,
+    rgba(0, 229, 255, 0.12) 50%,
+    rgba(255, 45, 149, 0.08) 55%,
+    transparent 65%
+  );
+  transform: rotate(25deg);
+  pointer-events: none;
+  animation: liquidCausticGlaze 9s ease-in-out infinite;
+}
+
+@keyframes liquidCausticGlaze {
+  0% { transform: translateY(-30%) rotate(25deg); }
+  50% { transform: translateY(30%) rotate(25deg); }
+  100% { transform: translateY(-30%) rotate(25deg); }
+}
+
+/* 4. Liquid Water-Droplet Pill */
 .liquid-glass-pill {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.03));
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.25) 0%,
+    rgba(255, 255, 255, 0.05) 40%,
+    rgba(0, 0, 0, 0.3) 100%
+  );
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-top: 1.5px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 
+    0 6px 16px rgba(0, 0, 0, 0.35),
+    inset 0 1.5px 2px rgba(255, 255, 255, 0.5),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.4);
 }
 
-/* Glass Specular Button */
+/* 5. Liquid Glass Buttons with Mercury Gloss */
 .liquid-glass-button {
+  position: relative;
   background: linear-gradient(
     135deg,
-    rgba(255, 45, 149, 0.2) 0%,
-    rgba(0, 229, 255, 0.2) 100%
+    rgba(255, 255, 255, 0.3) 0%,
+    rgba(255, 45, 149, 0.35) 40%,
+    rgba(0, 229, 255, 0.35) 100%
   );
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(22px) saturate(220%);
+  -webkit-backdrop-filter: blur(22px) saturate(220%);
+  border: 1.2px solid rgba(255, 255, 255, 0.35);
+  border-top: 1.8px solid rgba(255, 255, 255, 0.8);
   box-shadow: 
-    0 8px 24px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.3);
-  transition: all 0.25s ease;
+    0 10px 30px rgba(0, 0, 0, 0.45),
+    inset 0 2px 3px rgba(255, 255, 255, 0.6),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.35),
+    0 0 25px rgba(255, 45, 149, 0.25);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .liquid-glass-button:hover {
+  transform: translateY(-2px) scale(1.03);
   background: linear-gradient(
     135deg,
-    rgba(255, 45, 149, 0.35) 0%,
-    rgba(0, 229, 255, 0.35) 100%
+    rgba(255, 255, 255, 0.45) 0%,
+    rgba(255, 45, 149, 0.55) 40%,
+    rgba(0, 229, 255, 0.55) 100%
   );
-  border-color: rgba(0, 229, 255, 0.6);
+  border-color: rgba(255, 255, 255, 0.65);
+  border-top-color: #ffffff;
   box-shadow: 
-    0 12px 30px rgba(0, 229, 255, 0.3),
-    inset 0 1px 1px rgba(255, 255, 255, 0.5);
-  transform: translateY(-1px) scale(1.02);
+    0 16px 40px rgba(0, 0, 0, 0.6),
+    0 0 40px rgba(0, 229, 255, 0.45),
+    0 0 35px rgba(255, 45, 149, 0.45),
+    inset 0 2.5px 5px rgba(255, 255, 255, 0.9),
+    inset 0 -2px 4px rgba(0, 229, 255, 0.4);
 }
 
 .liquid-glass-button:active {
-  transform: scale(0.97);
+  transform: scale(0.96) translateY(1px);
 }
 
-/* Liquid Neon Gradients */
+/* 6. Liquid Neon Glow Text */
 .neon-gradient-text {
-  background: linear-gradient(110deg, #ff2d95 0%, #00e5ff 60%, #a855f7 100%);
+  background: linear-gradient(115deg, #ffffff 0%, #ff2d95 30%, #00e5ff 70%, #c084fc 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  text-shadow: 0 0 20px rgba(0, 229, 255, 0.25);
 }
 
 .neon-gold-text {
-  background: linear-gradient(110deg, #fbbf24 0%, #ff2d95 100%);
+  background: linear-gradient(115deg, #ffffff 0%, #fbbf24 45%, #ff2d95 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  text-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
 }
 
-/* Ambient Glow Blobs */
-@keyframes liquidOrbit1 {
-  0% { transform: translate(0px, 0px) scale(1) rotate(0deg); }
-  33% { transform: translate(40px, -60px) scale(1.15) rotate(120deg); }
-  66% { transform: translate(-30px, 40px) scale(0.9) rotate(240deg); }
-  100% { transform: translate(0px, 0px) scale(1) rotate(360deg); }
+/* 7. Organic Floating Liquid Mercury Metaball Animations */
+@keyframes morphingBlob1 {
+  0% {
+    border-radius: 42% 58% 70% 30% / 45% 45% 55% 55%;
+    transform: translate(0px, 0px) rotate(0deg) scale(1);
+  }
+  33% {
+    border-radius: 70% 30% 50% 50% / 30% 60% 40% 70%;
+    transform: translate(60px, -40px) rotate(120deg) scale(1.15);
+  }
+  66% {
+    border-radius: 30% 70% 40% 60% / 60% 30% 70% 40%;
+    transform: translate(-50px, 50px) rotate(240deg) scale(0.9);
+  }
+  100% {
+    border-radius: 42% 58% 70% 30% / 45% 45% 55% 55%;
+    transform: translate(0px, 0px) rotate(360deg) scale(1);
+  }
 }
 
-@keyframes liquidOrbit2 {
-  0% { transform: translate(0px, 0px) scale(1.05) rotate(0deg); }
-  33% { transform: translate(-50px, 50px) scale(0.92) rotate(-120deg); }
-  66% { transform: translate(35px, -35px) scale(1.18) rotate(-240deg); }
-  100% { transform: translate(0px, 0px) scale(1.05) rotate(-360deg); }
+@keyframes morphingBlob2 {
+  0% {
+    border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+    transform: translate(0px, 0px) rotate(0deg) scale(1.05);
+  }
+  33% {
+    border-radius: 35% 65% 60% 40% / 50% 40% 60% 50%;
+    transform: translate(-70px, 60px) rotate(-120deg) scale(0.92);
+  }
+  66% {
+    border-radius: 50% 50% 35% 65% / 40% 60% 40% 60%;
+    transform: translate(45px, -50px) rotate(-240deg) scale(1.18);
+  }
+  100% {
+    border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+    transform: translate(0px, 0px) rotate(-360deg) scale(1.05);
+  }
+}
+
+@keyframes morphingBlob3 {
+  0% {
+    border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%;
+    transform: translate(0px, 0px) scale(1);
+  }
+  50% {
+    border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+    transform: translate(30px, 40px) scale(1.1);
+  }
+  100% {
+    border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%;
+    transform: translate(0px, 0px) scale(1);
+  }
 }
 
 .animate-liquid-blob-1 {
-  animation: liquidOrbit1 22s ease-in-out infinite;
+  animation: morphingBlob1 18s ease-in-out infinite;
 }
 
 .animate-liquid-blob-2 {
-  animation: liquidOrbit2 26s ease-in-out infinite;
+  animation: morphingBlob2 22s ease-in-out infinite;
 }
 
-/* Laser sweep & shimmer on glass borders */
-@keyframes glassShimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+.animate-liquid-blob-3 {
+  animation: morphingBlob3 14s ease-in-out infinite;
 }
 
-.glass-shimmer {
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.18) 50%,
-    rgba(255, 255, 255, 0) 100%
-  );
-  background-size: 200% 100%;
-  animation: glassShimmer 6s infinite;
+/* Glass Specular Sweep on Hover */
+.glass-glow-rim {
+  box-shadow: 
+    0 0 0 1px rgba(255, 255, 255, 0.25),
+    0 0 20px rgba(0, 229, 255, 0.3),
+    inset 0 1.5px 2px rgba(255, 255, 255, 0.6);
 }
 
 .font-orbitron {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { WevidsProvider, useWevids } from '../context/WevidsContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { TopHeader } from '../components/layout/TopHeader';
@@ -24,11 +24,49 @@ const MainContent: React.FC = () => {
   const { activeView } = useWevids();
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
 
+  // Mouse coordinate tracker for dynamic liquid glass specular reflections
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      const x = (e.clientX / window.innerWidth) * 100;
+      const y = (e.clientY / window.innerHeight) * 100;
+      document.documentElement.style.setProperty('--mouse-x', `${x}%`);
+      document.documentElement.style.setProperty('--mouse-y', `${y}%`);
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
+
   return (
-    <div className="min-h-screen bg-[#0a0a1a] text-[#e8e8f4] relative overflow-x-hidden">
-      {/* Ambient background glows */}
-      <div className="fixed top-[-10vw] left-[-10vw] w-[45vw] h-[45vw] rounded-full bg-gradient-to-br from-[#ff2d95]/15 to-transparent blur-[120px] pointer-events-none z-0" />
-      <div className="fixed bottom-[-10vw] right-[-10vw] w-[45vw] h-[45vw] rounded-full bg-gradient-to-tl from-[#00e5ff]/15 to-transparent blur-[120px] pointer-events-none z-0" />
+    <div className="min-h-screen bg-[#050512] text-[#f1f1fc] relative overflow-x-hidden selection:bg-[#ff2d95]/40 selection:text-[#00e5ff]">
+      {/* =========================================================
+          REAL LIQUID MERCURY METABALLS & OPTICAL REFRACTION BACKDROP
+          ========================================================= */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
+        {/* Liquid Blob 1: Vibrant Hot Neon Pink / Fuchsia */}
+        <div 
+          className="absolute top-[-5vw] left-[-5vw] w-[48vw] h-[48vw] rounded-full bg-gradient-to-br from-[#ff2d95]/30 via-[#c026d3]/20 to-transparent blur-[90px] animate-liquid-blob-1 opacity-80" 
+        />
+        
+        {/* Liquid Blob 2: Electric Cyan / Aquamarine */}
+        <div 
+          className="absolute bottom-[-5vw] right-[-5vw] w-[50vw] h-[50vw] rounded-full bg-gradient-to-tl from-[#00e5ff]/35 via-[#3b82f6]/25 to-transparent blur-[100px] animate-liquid-blob-2 opacity-80" 
+        />
+
+        {/* Liquid Blob 3: Ultraviolet / Liquid Purple Center Orb */}
+        <div 
+          className="absolute top-[35%] left-[25%] w-[38vw] h-[38vw] rounded-full bg-gradient-to-tr from-[#9333ea]/25 via-[#4f46e5]/15 to-transparent blur-[110px] animate-liquid-blob-3 opacity-60" 
+        />
+
+        {/* Liquid Blob 4: Solar Amber Droplet */}
+        <div 
+          className="absolute bottom-[20%] left-[10%] w-[28vw] h-[28vw] rounded-full bg-gradient-to-r from-[#fbbf24]/15 to-[#ff2d95]/15 blur-[80px] animate-liquid-blob-1 opacity-50" 
+        />
+
+        {/* Subtle Caustic Wave Grid */}
+        <div 
+          className="absolute inset-0 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:32px_32px] opacity-[0.035]"
+        />
+      </div>
 
       <Sidebar />
 
