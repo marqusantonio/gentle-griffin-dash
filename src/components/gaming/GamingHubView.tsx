@@ -264,7 +264,7 @@ export const GamingHubView: React.FC = () => {
     };
   }, [selectedGame, snakeRunning]);
 
-  // 4. CYBER FLAPPY BIRD
+  // 4. CYBER FLAPPY BIRD (Fixed infinite 60fps error freeze loop)
   useEffect(() => {
     if (selectedGame !== 'flappy' || !flappyRunning) return;
     const canvas = flappyCanvasRef.current;
@@ -278,19 +278,24 @@ export const GamingHubView: React.FC = () => {
     let pipeGap = 100;
     let pipeTopHeight = 80;
     let score = 0;
+    let isGameOver = false;
 
     const handleJump = (e?: KeyboardEvent | MouseEvent) => {
-      if (e && 'key' in e && e.key === ' ') {
+      if (e && 'key' in e && (e.key === ' ' || e.key === 'ArrowUp')) {
         e.preventDefault();
       }
-      birdVelocity = -5;
-      sounds.pop();
+      if (!isGameOver) {
+        birdVelocity = -5;
+        sounds.pop();
+      }
     };
 
     window.addEventListener('keydown', handleJump);
     canvas.addEventListener('click', handleJump);
 
     const interval = setInterval(() => {
+      if (isGameOver) return;
+
       birdVelocity += 0.28;
       birdY += birdVelocity;
       pipeX -= 2.5;
@@ -304,9 +309,12 @@ export const GamingHubView: React.FC = () => {
         syncScoreToCloud('flappy', score);
       }
 
+      // Check collision
       if (birdY > 280 || birdY < 0 || (pipeX < 40 && pipeX > 0 && (birdY < pipeTopHeight || birdY > pipeTopHeight + pipeGap))) {
-        sounds.pop();
+        isGameOver = true;
+        clearInterval(interval);
         setFlappyRunning(false);
+        sounds.pop();
         toast.error(`Game Over! Final Score: ${score}`);
         return;
       }
@@ -604,7 +612,7 @@ export const GamingHubView: React.FC = () => {
               <div className="text-xs font-orbitron font-bold text-[#ff2d95]">Score: {flappyScore}</div>
             </div>
             <canvas ref={flappyCanvasRef} width={320} height={300} className="rounded-2xl border border-[#fbbf24]/40 shadow-2xl mx-auto bg-[#0a0a1a] cursor-pointer" />
-            <div className="text-xs text-[#8a8aa8]">Tap canvas or press any key to boost bird altitude</div>
+            <div className="text-xs text-[#8a8aa8]">Tap canvas or press spacebar to fly</div>
             <button
               onClick={() => {
                 sounds.success();

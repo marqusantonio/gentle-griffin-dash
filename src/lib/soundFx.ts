@@ -11,7 +11,7 @@ class SoundManager {
       }
     }
     if (this.ctx && this.ctx.state === "suspended") {
-      this.ctx.resume();
+      this.ctx.resume().catch(() => {});
     }
     return this.ctx;
   }
@@ -33,6 +33,12 @@ class SoundManager {
       gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.04);
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.05);
+      setTimeout(() => {
+        try {
+          osc.disconnect();
+          gain.disconnect();
+        } catch {}
+      }, 70);
     } catch {
       // Audio policy safe
     }
@@ -55,6 +61,12 @@ class SoundManager {
       gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.07);
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.08);
+      setTimeout(() => {
+        try {
+          osc.disconnect();
+          gain.disconnect();
+        } catch {}
+      }, 100);
     } catch {
       // Audio policy safe
     }
@@ -79,6 +91,12 @@ class SoundManager {
         gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.1);
         osc.start(startTime);
         osc.stop(startTime + 0.11);
+        setTimeout(() => {
+          try {
+            osc.disconnect();
+            gain.disconnect();
+          } catch {}
+        }, 200);
       });
     } catch {
       // Audio policy safe
@@ -103,6 +121,12 @@ class SoundManager {
         gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
         osc.start(ctx.currentTime);
         osc.stop(ctx.currentTime + 0.36);
+        setTimeout(() => {
+          try {
+            osc.disconnect();
+            gain.disconnect();
+          } catch {}
+        }, 400);
       });
     } catch {
       // Audio policy safe
@@ -125,6 +149,12 @@ class SoundManager {
       gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.05);
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.06);
+      setTimeout(() => {
+        try {
+          osc.disconnect();
+          gain.disconnect();
+        } catch {}
+      }, 80);
     } catch {
       // Audio policy safe
     }

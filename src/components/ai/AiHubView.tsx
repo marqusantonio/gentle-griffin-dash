@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useWevids } from '../../context/WevidsContext';
 import { 
   Sparkles, 
@@ -34,6 +34,15 @@ export const AiHubView: React.FC = () => {
   const [renderProgress, setRenderProgress] = useState(0);
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
 
+  const renderTimerRef = useRef<any>(null);
+
+  // Clean up interval on unmount
+  useEffect(() => {
+    return () => {
+      if (renderTimerRef.current) clearInterval(renderTimerRef.current);
+    };
+  }, []);
+
   // Chat State
   const [chatMessages, setChatMessages] = useState<Array<{ sender: 'ai' | 'user'; text: string; time: string }>>([
     {
@@ -59,25 +68,28 @@ export const AiHubView: React.FC = () => {
   ];
 
   const handleGenerateVideo = () => {
-    if (!prompt.trim()) return;
+    if (!prompt.trim() || isGeneratingVideo) return;
     sounds.pop();
     setIsGeneratingVideo(true);
     setRenderProgress(0);
     setGeneratedVideoUrl(null);
 
-    const interval = setInterval(() => {
-      setRenderProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsGeneratingVideo(false);
-          setGeneratedVideoUrl('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4');
-          sounds.success();
-          toast.success('AI Video rendered successfully!');
-          return 100;
-        }
-        return prev + 10;
-      });
-    }, 400);
+    let progress = 0;
+    if (renderTimerRef.current) clearInterval(renderTimerRef.current);
+
+    renderTimerRef.current = setInterval(() => {
+      progress += 10;
+      if (progress >= 100) {
+        clearInterval(renderTimerRef.current);
+        setRenderProgress(100);
+        setIsGeneratingVideo(false);
+        setGeneratedVideoUrl('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4');
+        sounds.success();
+        toast.success('AI Video rendered successfully!');
+      } else {
+        setRenderProgress(progress);
+      }
+    }, 350);
   };
 
   const handleSendChat = (e: React.FormEvent) => {
