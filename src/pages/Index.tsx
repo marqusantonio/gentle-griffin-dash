@@ -37,7 +37,7 @@ const MainContent: React.FC = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#050512] text-[#f1f1fc] relative overflow-x-hidden selection:bg-[#ff2d95]/40 selection:text-[#00e5ff]">
+    <div className="min-h-screen w-full bg-[#050512] text-[#f1f1fc] relative overflow-x-hidden selection:bg-[#ff2d95]/40 selection:text-[#00e5ff]">
       {/* Background Liquid Metaballs & Optics */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
         <div 
@@ -57,12 +57,14 @@ const MainContent: React.FC = () => {
         />
       </div>
 
+      {/* Fixed Left Sidebar */}
       <Sidebar />
 
-      <div className="relative z-10">
+      {/* Right Side App Layout strictly attached to the top */}
+      <div className="relative z-10 flex flex-col min-h-screen">
         <TopHeader onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)} />
 
-        <main className="md:ml-64 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto">
+        <main className="flex-1 md:ml-64 p-4 sm:p-6 md:p-8 max-w-7xl w-full">
           {activeView === 'clips' && <ShortsFeedView />}
           {activeView === 'feed' && <DualFeedView />}
           {activeView === 'films' && <FilmsHubView />}

@@ -15,6 +15,15 @@
     --liquid-glow: rgba(0, 229, 255, 0.4);
     --liquid-pink: rgba(255, 45, 149, 0.4);
   }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    min-height: 100%;
+    background-color: #050512;
+  }
 }
 
 /* Custom Fluid Scrollbar */
