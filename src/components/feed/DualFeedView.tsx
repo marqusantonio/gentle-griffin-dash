@@ -19,7 +19,7 @@ import {
 import { RichCommentInput } from '../comments/RichCommentInput';
 import { CreatePostModal } from './CreatePostModal';
 import { sounds } from '../../lib/soundFx';
-import { supabase, isSupabaseConfigured, checkContentModeration } from '../../lib/supabase';
+import { supabase, checkContentModeration } from '../../lib/supabase';
 import { PostItem } from '../../types/wevids';
 import { toast } from 'sonner';
 
@@ -40,7 +40,7 @@ export const DualFeedView: React.FC = () => {
   const [quickInputText, setQuickInputText] = useState('');
   const [openCommentsPostId, setOpenCommentsPostId] = useState<string | null>(null);
 
-  // 1. Fetch posts directly from Supabase
+  // 1. Fetch posts directly from Supabase on load (No login check required)
   const fetchPosts = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -50,36 +50,36 @@ export const DualFeedView: React.FC = () => {
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Error fetching posts from Supabase:', error);
+        console.error('Error fetching posts:', error);
       } else if (data) {
         setPosts(data as PostItem[]);
       }
     } catch (err) {
-      console.error('Network error fetching posts:', err);
+      console.error('Fetch error:', err);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  // Initial fetch on mount
+  // Fetch on mount
   useEffect(() => {
     fetchPosts();
   }, [fetchPosts]);
 
-  // 2. Real-time Supabase postgres_changes channel listener
+  // 2. Real-time Supabase Realtime channel listener on public:posts
   useEffect(() => {
     const channel = supabase
-      .channel('realtime-posts')
+      .channel('public:posts')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'posts' },
         (payload: any) => {
           const eventType = payload.eventType || payload.event;
-          
+
           if (eventType === 'INSERT' && payload.new) {
             sounds.pop();
             setPosts((prev) => {
-              // Avoid duplicate if already inserted optimistically
+              // Deduplicate if already present
               if (prev.some((p) => p.id === payload.new.id)) return prev;
               return [payload.new as PostItem, ...prev];
             });
@@ -114,7 +114,7 @@ export const DualFeedView: React.FC = () => {
     setIsCreatePostOpen(true);
   };
 
-  // 3. Direct insert to Supabase for quick post
+  // 3. Quick post submission without auth requirement
   const handleQuickSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickInputText.trim() || isSubmitting) return;
@@ -126,12 +126,16 @@ export const DualFeedView: React.FC = () => {
       return;
     }
 
+    const guestId = currentUser?.id || `guest-${Date.now()}`;
+    const authorName = currentUser?.name || 'Guest Creator';
+    const authorHandle = currentUser?.handle || `@guest_${guestId.slice(-4)}`;
+
     const newPost: PostItem = {
       id: `post-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      userId: currentUser?.id || 'guest',
-      authorName: currentUser?.name || 'Creator',
-      authorHandle: currentUser?.handle || '@creator',
-      authorAvatar: currentUser?.avatar || 'C',
+      userId: guestId,
+      authorName,
+      authorHandle,
+      authorAvatar: currentUser?.avatar || 'G',
       authorColor: currentUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
       location: currentUser?.location || 'Earth Node',
       time: 'Just now',
@@ -148,7 +152,7 @@ export const DualFeedView: React.FC = () => {
     try {
       const { error } = await supabase.from('posts').insert([newPost]);
       if (error) {
-        toast.error(`Failed to publish: ${error}`);
+        toast.error(`Error saving post: ${error}`);
       } else {
         sounds.success();
         setQuickInputText('');
@@ -163,9 +167,9 @@ export const DualFeedView: React.FC = () => {
     }
   };
 
-  // Direct delete in Supabase
+  // Delete post
   const handleDelete = async (postId: string) => {
-    if (!window.confirm('Are you sure you want to delete this post from Supabase?')) return;
+    if (!window.confirm('Delete this post?')) return;
     
     sounds.pop();
     setPosts((prev) => prev.filter((p) => p.id !== postId));
@@ -175,14 +179,14 @@ export const DualFeedView: React.FC = () => {
         toast.error(`Delete failed: ${error}`);
         fetchPosts();
       } else {
-        toast.success('Post deleted from Supabase.');
+        toast.success('Post deleted.');
       }
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete');
     }
   };
 
-  // Direct toggle like in Supabase
+  // Toggle like
   const handleToggleLike = async (post: PostItem) => {
     sounds.like();
     const newLiked = !post.isLiked;
@@ -204,7 +208,7 @@ export const DualFeedView: React.FC = () => {
     }
   };
 
-  // Direct comment in Supabase
+  // Add comment
   const handleAddComment = async (postId: string, commentData: any) => {
     sounds.pop();
     const post = posts.find((p) => p.id === postId);
@@ -212,10 +216,10 @@ export const DualFeedView: React.FC = () => {
 
     const newComment = {
       id: `c-${Date.now()}`,
-      user: currentUser.id,
-      userName: currentUser.name,
-      userAvatar: currentUser.avatar,
-      userColor: currentUser.color,
+      user: currentUser?.id || 'guest',
+      userName: currentUser?.name || 'Guest Creator',
+      userAvatar: currentUser?.avatar || 'G',
+      userColor: currentUser?.color || '#00e5ff',
       text: commentData.text,
       media: commentData.media,
       mediaType: commentData.mediaType,
@@ -233,9 +237,9 @@ export const DualFeedView: React.FC = () => {
         .from('posts')
         .update({ comments: updatedComments })
         .eq('id', postId);
-      toast.success('Comment saved!');
+      toast.success('Comment posted!');
     } catch (err) {
-      console.error('Failed to save comment to Supabase:', err);
+      console.error('Failed to save comment:', err);
     }
   };
 
@@ -246,13 +250,13 @@ export const DualFeedView: React.FC = () => {
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#00e5ff]/20 border border-[#00e5ff]/30 text-[#00e5ff] font-bold text-xs mb-2">
             <Radio className="w-3.5 h-3.5 animate-pulse text-[#00e5ff]" />
-            <span>REAL-TIME SUPABASE POSTS STREAM</span>
+            <span>REAL-TIME SUPABASE POSTS (public:posts)</span>
           </div>
           <h1 className="text-3xl font-bold font-orbitron neon-gradient-text tracking-wide">
             Community Feed
           </h1>
           <p className="text-xs text-[#8a8aa8]">
-            Connected directly to Supabase Postgres with instant live change listeners.
+            Instant public posting with live database synchronization.
           </p>
         </div>
 
@@ -261,7 +265,7 @@ export const DualFeedView: React.FC = () => {
             onClick={() => fetchPosts()}
             disabled={isLoading}
             className="p-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-[#00e5ff] transition-colors"
-            title="Refresh Feed from Supabase"
+            title="Refresh Feed"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
@@ -284,7 +288,7 @@ export const DualFeedView: React.FC = () => {
         </div>
       </div>
 
-      {/* In-Feed Quick Composer Input Bar */}
+      {/* In-Feed Quick Composer - No login required */}
       <form 
         onSubmit={handleQuickSubmit}
         className="liquid-glass-card rounded-2xl p-3 sm:p-4 border border-white/10 flex items-center justify-between gap-3 shadow-md focus-within:border-[#00e5ff]/60 transition-all"
@@ -293,14 +297,14 @@ export const DualFeedView: React.FC = () => {
           className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-900 text-xs shadow-md flex-shrink-0"
           style={{ background: currentUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
         >
-          {currentUser?.avatar || 'U'}
+          {currentUser?.avatar || 'G'}
         </div>
 
         <input
           type="text"
           value={quickInputText}
           onChange={(e) => setQuickInputText(e.target.value)}
-          placeholder={`Share a thought with Supabase, ${currentUser?.name || 'creator'}...`}
+          placeholder={`Share your thoughts, ${currentUser?.name || 'creator'}...`}
           className="flex-1 bg-transparent text-xs text-white placeholder-[#8a8aa8] focus:outline-none py-1"
         />
 
@@ -309,7 +313,7 @@ export const DualFeedView: React.FC = () => {
             type="button"
             onClick={() => handleOpenComposer('feed')}
             className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-[#fbbf24] transition-colors"
-            title="Attach Media / Details"
+            title="Attach Media"
           >
             <ImageIcon className="w-4 h-4" />
           </button>
@@ -327,7 +331,7 @@ export const DualFeedView: React.FC = () => {
             type="submit"
             disabled={!quickInputText.trim() || isSubmitting}
             className="p-2 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-bold hover:scale-105 transition-transform disabled:opacity-40 flex items-center justify-center"
-            title="Publish"
+            title="Publish Immediately"
           >
             {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin text-slate-900" /> : <Send className="w-4 h-4" />}
           </button>
@@ -367,9 +371,9 @@ export const DualFeedView: React.FC = () => {
               <Sparkles className="w-8 h-8 animate-pulse" />
             </div>
             <div className="space-y-1">
-              <h3 className="font-orbitron font-bold text-lg text-white">No posts in Supabase yet</h3>
+              <h3 className="font-orbitron font-bold text-lg text-white">No posts published yet</h3>
               <p className="text-xs text-[#8a8aa8] max-w-sm mx-auto">
-                Publish the first post to insert directly to your Supabase `posts` table.
+                Be the first to share an update with the global community!
               </p>
             </div>
             <button
@@ -377,7 +381,7 @@ export const DualFeedView: React.FC = () => {
               className="px-6 py-3 rounded-2xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold text-xs shadow-lg hover:scale-105 transition-transform inline-flex items-center gap-2"
             >
               <Plus className="w-4 h-4" />
-              <span>PUBLISH LIVE POST</span>
+              <span>PUBLISH FIRST POST</span>
             </button>
           </div>
         ) : (
@@ -400,7 +404,7 @@ export const DualFeedView: React.FC = () => {
                 key={post.id}
                 className="liquid-glass rounded-3xl p-5 sm:p-6 border border-white/15 shadow-2xl space-y-4 hover:border-white/25 transition-all"
               >
-                {/* Author Info & Creator Delete Option */}
+                {/* Author Info & Delete Button */}
                 <div className="flex items-center justify-between">
                   <div
                     onClick={() => openUserProfileModal(author as any)}
@@ -427,7 +431,7 @@ export const DualFeedView: React.FC = () => {
                       <button
                         onClick={() => handleDelete(post.id)}
                         className="p-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 transition-colors border border-red-500/20"
-                        title="Delete Your Post in Supabase"
+                        title="Delete Post"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -438,7 +442,7 @@ export const DualFeedView: React.FC = () => {
                 {/* Content */}
                 <p className="text-sm text-[#e8e8f4] leading-relaxed whitespace-pre-line">{post.content}</p>
 
-                {/* Uploaded Media */}
+                {/* Media Attachment */}
                 {post.mediaUrl && (
                   <div className="rounded-2xl overflow-hidden border border-white/10 bg-black max-h-[420px] flex items-center justify-center">
                     {post.mediaType === 'video' ? (
@@ -502,7 +506,7 @@ export const DualFeedView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Comments Stream */}
+                {/* Comments Section */}
                 {post.comments && post.comments.length > 0 && (
                   <div className="space-y-2 pt-2 border-t border-white/5 max-h-48 overflow-y-auto pr-1">
                     {post.comments.map((c) => (
