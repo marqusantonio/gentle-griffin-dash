@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, ReactNode, useCallback } from 'react';
 import { 
   PostItem, 
   ShortClipItem, 
@@ -9,7 +9,7 @@ import {
   UserProfile, 
   SharedFileItem, 
   AudioTrackItem, 
-  FilmItem,
+  FilmItem, 
   ViewName,
   DirectMessageItem,
   ChatMessage
@@ -29,7 +29,7 @@ export interface WevidsContextType extends WevidsState {
   addSharedFile: (file: Partial<SharedFileItem>) => Promise<void>;
   addAudioTrack: (track: Partial<AudioTrackItem>) => Promise<void>;
   addFilm: (film: Partial<FilmItem>) => Promise<void>;
-  syncWithSupabase: () => Promise<void>;
+  syncWithSupabase: (silent?: boolean) => Promise<void>;
   setActiveView: (view: ViewName) => void;
   setActiveConvId: (id: string | null) => void;
   setIsCartOpen: (open: boolean) => void;
@@ -171,10 +171,10 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return result;
   };
 
-  // Live Supabase Fetch: posts, clips, profiles, media, and direct_messages
-  const syncWithSupabase = async () => {
+  // Automated Supabase live synchronization
+  const syncWithSupabase = useCallback(async (silent = false) => {
     if (!isSupabaseConfigured()) return;
-    dispatch({ type: 'SET_CLOUD_SYNCING', payload: true });
+    if (!silent) dispatch({ type: 'SET_CLOUD_SYNCING', payload: true });
 
     try {
       const [
@@ -206,7 +206,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         });
         dispatch({ type: 'SET_ALL_USERS', payload: profileMap });
 
-        // If current user has a cloud record, update current user seamlessly
         if (profileMap[state.currentUser.id]) {
           dispatch({
             type: 'UPDATE_CURRENT_USER',
@@ -215,27 +214,13 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         }
       }
 
-      if (postsRes.data) {
-        dispatch({ type: 'SET_POSTS', payload: postsRes.data });
-      }
-      if (clipsRes.data) {
-        dispatch({ type: 'SET_CLIPS', payload: clipsRes.data });
-      }
-      if (audioRes.data) {
-        dispatch({ type: 'SET_AUDIO_TRACKS', payload: audioRes.data });
-      }
-      if (filmsRes.data) {
-        dispatch({ type: 'SET_FILMS', payload: filmsRes.data });
-      }
-      if (romsRes.data) {
-        dispatch({ type: 'SET_ROMS', payload: romsRes.data });
-      }
-      if (filesRes.data) {
-        dispatch({ type: 'SET_SHARED_FILES', payload: filesRes.data });
-      }
-      if (prodsRes.data) {
-        dispatch({ type: 'SET_PRODUCTS', payload: prodsRes.data });
-      }
+      if (postsRes.data) dispatch({ type: 'SET_POSTS', payload: postsRes.data });
+      if (clipsRes.data) dispatch({ type: 'SET_CLIPS', payload: clipsRes.data });
+      if (audioRes.data) dispatch({ type: 'SET_AUDIO_TRACKS', payload: audioRes.data });
+      if (filmsRes.data) dispatch({ type: 'SET_FILMS', payload: filmsRes.data });
+      if (romsRes.data) dispatch({ type: 'SET_ROMS', payload: romsRes.data });
+      if (filesRes.data) dispatch({ type: 'SET_SHARED_FILES', payload: filesRes.data });
+      if (prodsRes.data) dispatch({ type: 'SET_PRODUCTS', payload: prodsRes.data });
 
       if (dmsRes.data && Array.isArray(dmsRes.data)) {
         dispatch({ type: 'SET_DIRECT_MESSAGES', payload: dmsRes.data });
@@ -247,26 +232,61 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
       dispatch({ type: 'SET_LAST_CLOUD_SYNC', payload: new Date().toLocaleTimeString() });
     } catch {
-      // Safe offline
+      // Safe offline fallback
     } finally {
-      dispatch({ type: 'SET_CLOUD_SYNCING', payload: false });
+      if (!silent) dispatch({ type: 'SET_CLOUD_SYNCING', payload: false });
     }
-  };
+  }, [state.currentUser.id]);
 
+  // Initial fetch and automatic real-time WebSocket channel subscriptions
   useEffect(() => {
-    syncWithSupabase();
-    
-    const handleFocus = () => {
+    syncWithSupabase(true);
+
+    if (!isSupabaseConfigured()) return;
+
+    // Realtime listeners across multiple tables
+    const postsChannel = supabase
+      .channel('realtime-posts')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => {
+        syncWithSupabase(true);
+      })
+      .subscribe();
+
+    const clipsChannel = supabase
+      .channel('realtime-clips')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clips' }, () => {
+        syncWithSupabase(true);
+      })
+      .subscribe();
+
+    const dmsChannel = supabase
+      .channel('realtime-dms')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'direct_messages' }, () => {
+        syncWithSupabase(true);
+      })
+      .subscribe();
+
+    const handleFocus = () => syncWithSupabase(true);
+    const handleOnline = () => {
+      toast.success('Connection restored! Syncing with Supabase...');
       syncWithSupabase();
     };
-    window.addEventListener('focus', handleFocus);
 
-    const interval = setInterval(syncWithSupabase, 8000);
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('online', handleOnline);
+
+    // Periodic automatic background sync heartbeat (every 5 seconds)
+    const interval = setInterval(() => syncWithSupabase(true), 5000);
+
     return () => {
-      clearInterval(interval);
+      supabase.removeChannel(postsChannel);
+      supabase.removeChannel(clipsChannel);
+      supabase.removeChannel(dmsChannel);
       window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('online', handleOnline);
+      clearInterval(interval);
     };
-  }, [state.currentUser.id]);
+  }, [syncWithSupabase]);
 
   const addPost = async (post: Partial<PostItem>): Promise<boolean> => {
     const moderation = checkContentModeration(post.content || '');
@@ -297,7 +317,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     sounds.success();
     dispatch({ type: 'ADD_POST', payload: fullPost });
-    toast.success('Post published!');
+    toast.success('Post published to Supabase!');
 
     if (isSupabaseConfigured()) {
       try {
@@ -374,7 +394,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const addClip = async (clip: ShortClipItem) => {
     sounds.success();
     dispatch({ type: 'ADD_CLIP', payload: clip });
-    toast.success('Clip published!');
+    toast.success('Clip published to Supabase!');
 
     if (isSupabaseConfigured()) {
       try {
@@ -426,7 +446,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const toggleClipBookmark = (clipId: string) => {
     sounds.click();
     dispatch({ type: 'TOGGLE_CLIP_BOOKMARK', payload: { clipId } });
-    toast.success('Saved to Library!');
+    toast.success('Saved to Vault!');
   };
 
   const addClipComment = async (clipId: string, comment: any) => {

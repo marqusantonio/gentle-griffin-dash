@@ -8,7 +8,8 @@ import {
   LogIn,
   Menu,
   Zap,
-  Sparkles
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
 import { isSupabaseConfigured, getStoredSession } from '../../lib/supabase';
 import { sounds } from '../../lib/soundFx';
@@ -31,7 +32,10 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
     cart, 
     setIsCartOpen, 
     currentUser,
-    setIsMobileSidebarOpen
+    setIsMobileSidebarOpen,
+    syncWithSupabase,
+    isCloudSyncing,
+    lastCloudSync
   } = useWevids();
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -82,7 +86,35 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
 
       {/* Action Badges & Buttons */}
       <div className="flex items-center gap-2 sm:gap-3 ml-auto">
-        {/* Fast Performance Mode Toggle Button */}
+        {/* Supabase Auto-Sync Heartbeat Indicator */}
+        <button
+          type="button"
+          onClick={() => {
+            sounds.click();
+            syncWithSupabase();
+          }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs font-orbitron font-bold transition-all shadow-sm ${
+            isCloudConnected 
+              ? 'bg-[#10b981]/15 border-[#10b981]/40 text-[#10b981] hover:bg-[#10b981]/25' 
+              : 'liquid-glass-pill text-[#9494b8] hover:text-white'
+          }`}
+          title={isCloudConnected ? `Supabase Live Synced (Last: ${lastCloudSync || 'Active'}). Click to sync now.` : 'Click to configure Supabase Connection'}
+        >
+          {isCloudConnected ? (
+            <>
+              <span className="w-2 h-2 rounded-full bg-[#10b981] animate-ping" />
+              <RefreshCw className={`w-3.5 h-3.5 ${isCloudSyncing ? 'animate-spin' : ''}`} />
+              <span className="hidden md:inline text-[11px]">Auto-Sync Live</span>
+            </>
+          ) : (
+            <>
+              <Database className="w-3.5 h-3.5 text-[#9494b8]" />
+              <span className="hidden md:inline text-[11px]">Connect Supabase</span>
+            </>
+          )}
+        </button>
+
+        {/* Graphics Performance Mode Switch */}
         <button
           type="button"
           onClick={() => {
@@ -94,19 +126,17 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
               ? 'bg-[#00e5ff]/20 text-[#00e5ff] border-[#00e5ff]/50'
               : 'bg-[#ff2d95]/20 text-[#ff2d95] border-[#ff2d95]/50'
           }`}
-          title={perfMode === 'entry' ? 'Running Entry Mode (Fast). Click to switch to High-End.' : 'Running High-End Mode. Click to switch to Entry.'}
+          title={perfMode === 'entry' ? 'Running Fast Mode. Click to enable Liquid Glass.' : 'Running Liquid Glass. Click to switch to Fast Mode.'}
         >
           {perfMode === 'entry' ? (
             <>
               <Zap className="w-3.5 h-3.5 text-[#00e5ff]" />
-              <span className="hidden xs:inline">Entry Mode (Fast)</span>
-              <span className="xs:hidden">⚡ Fast</span>
+              <span className="hidden xs:inline">Fast FPS</span>
             </>
           ) : (
             <>
               <Sparkles className="w-3.5 h-3.5 text-[#ff2d95]" />
-              <span className="hidden xs:inline">High-End (Glass)</span>
-              <span className="xs:hidden">💎 Glass</span>
+              <span className="hidden xs:inline">Liquid Glass</span>
             </>
           )}
         </button>
@@ -131,20 +161,6 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             <span className="hidden sm:inline font-mono">{session?.user?.email?.split('@')[0]}</span>
           </div>
         )}
-
-        {/* Supabase Cloud Connection Manager Button */}
-        <button
-          onClick={handleOpenAuthModal}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs font-semibold transition-all shadow-sm ${
-            isCloudConnected 
-              ? 'bg-[#10b981]/15 border-[#10b981]/40 text-[#10b981] hover:bg-[#10b981]/25' 
-              : 'liquid-glass-pill text-[#9494b8] hover:text-white'
-          }`}
-          title="Manage Supabase Online Database & Auth"
-        >
-          <Database className={`w-3.5 h-3.5 ${isCloudConnected ? 'text-[#10b981]' : 'text-[#9494b8]'}`} />
-          <span className="hidden lg:inline font-orbitron">{isCloudConnected ? 'Cloud Online' : 'Link Cloud'}</span>
-        </button>
 
         {/* Go Live Studio CTA */}
         <button
