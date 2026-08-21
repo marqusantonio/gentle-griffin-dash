@@ -6,16 +6,26 @@ import {
   ShoppingBag, 
   Database,
   LogIn,
-  Menu
+  Menu,
+  Zap,
+  Sparkles
 } from 'lucide-react';
 import { isSupabaseConfigured, getStoredSession } from '../../lib/supabase';
 import { sounds } from '../../lib/soundFx';
 
 interface TopHeaderProps {
   onOpenSupabaseModal?: () => void;
+  onOpenPerfModal?: () => void;
+  perfMode: 'entry' | 'highend';
+  onTogglePerfMode: () => void;
 }
 
-export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => {
+export const TopHeader: React.FC<TopHeaderProps> = ({ 
+  onOpenSupabaseModal, 
+  onOpenPerfModal, 
+  perfMode, 
+  onTogglePerfMode 
+}) => {
   const { 
     setActiveView, 
     cart, 
@@ -72,6 +82,35 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => 
 
       {/* Action Badges & Buttons */}
       <div className="flex items-center gap-2 sm:gap-3 ml-auto">
+        {/* Fast Performance Mode Toggle Button */}
+        <button
+          type="button"
+          onClick={() => {
+            sounds.click();
+            onTogglePerfMode();
+          }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs font-orbitron font-bold transition-all shadow-sm ${
+            perfMode === 'entry'
+              ? 'bg-[#00e5ff]/20 text-[#00e5ff] border-[#00e5ff]/50'
+              : 'bg-[#ff2d95]/20 text-[#ff2d95] border-[#ff2d95]/50'
+          }`}
+          title={perfMode === 'entry' ? 'Running Entry Mode (Fast). Click to switch to High-End.' : 'Running High-End Mode. Click to switch to Entry.'}
+        >
+          {perfMode === 'entry' ? (
+            <>
+              <Zap className="w-3.5 h-3.5 text-[#00e5ff]" />
+              <span className="hidden xs:inline">Entry Mode (Fast)</span>
+              <span className="xs:hidden">⚡ Fast</span>
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-3.5 h-3.5 text-[#ff2d95]" />
+              <span className="hidden xs:inline">High-End (Glass)</span>
+              <span className="xs:hidden">💎 Glass</span>
+            </>
+          )}
+        </button>
+
         {/* Sign-in / User Status */}
         {!isLoggedInWithCloud ? (
           <button

@@ -5,15 +5,15 @@
 @layer base {
   :root {
     --bg: #050512;
-    --card: rgba(14, 14, 38, 0.6);
+    --card: rgba(14, 14, 38, 0.7);
     --text: #f1f1fc;
     --muted: #9494b8;
     --accent: #ff2d95;
     --accent2: #00e5ff;
     --accent3: #9333ea;
-    --border: rgba(255, 255, 255, 0.16);
-    --liquid-glow: rgba(0, 229, 255, 0.4);
-    --liquid-pink: rgba(255, 45, 149, 0.4);
+    --border: rgba(255, 255, 255, 0.12);
+    --liquid-glow: rgba(0, 229, 255, 0.3);
+    --liquid-pink: rgba(255, 45, 149, 0.3);
   }
 
   html,
@@ -26,267 +26,157 @@
   }
 }
 
-/* Custom Fluid Scrollbar */
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(5, 5, 18, 0.6);
+  background: #050512;
 }
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, rgba(255, 45, 149, 0.5), rgba(0, 229, 255, 0.5));
+  background: rgba(255, 45, 149, 0.4);
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #ff2d95, #00e5ff);
+  background: #ff2d95;
 }
 
 /* =========================================================
-   AUTHENTIC PHYSICAL LIQUID GLASS SYSTEM
+   PERFORMANCE MODE 1: ENTRY & MIDRANGE (FAST 60-120 FPS)
+   - Zero lag on Chrome, mobile, low-spec GPUs
+   - Crisp clean contrast without costly backdrop blur
    ========================================================= */
+body.perf-entry .liquid-glass {
+  background: #0d0d21;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
 
-/* 1. Ultra Physical Liquid Glass Container (Frosted Fluid Lens) */
-.liquid-glass {
+body.perf-entry .liquid-glass-card {
+  background: #11112b;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+body.perf-entry .liquid-glass-card:hover {
+  transform: translateY(-2px);
+  border-color: #00e5ff;
+}
+
+body.perf-entry .liquid-glass-card::after {
+  display: none !important;
+}
+
+body.perf-entry .liquid-glass-pill {
+  background: #181836;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.perf-entry .bg-blobs-layer {
+  display: none !important;
+}
+
+/* =========================================================
+   PERFORMANCE MODE 2: HIGH-END (FULL LIQUID GLASS PRO)
+   ========================================================= */
+body.perf-highend .liquid-glass {
   background: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.14) 0%,
-    rgba(255, 255, 255, 0.03) 25%,
-    rgba(16, 16, 42, 0.62) 55%,
-    rgba(8, 8, 24, 0.86) 100%
-  );
-  backdrop-filter: blur(36px) saturate(220%) brightness(112%) contrast(108%);
-  -webkit-backdrop-filter: blur(36px) saturate(220%) brightness(112%) contrast(108%);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-top: 1.5px solid rgba(255, 255, 255, 0.55);
-  border-left: 1px solid rgba(255, 255, 255, 0.35);
-  box-shadow: 
-    0 30px 80px -15px rgba(0, 0, 0, 0.75),
-    0 15px 35px rgba(0, 0, 0, 0.5),
-    inset 0 2px 3px rgba(255, 255, 255, 0.45),
-    inset 0 -2px 4px rgba(0, 229, 255, 0.18),
-    inset 1px 0 2px rgba(255, 255, 255, 0.2),
-    0 0 40px rgba(0, 229, 255, 0.06);
-}
-
-/* 2. Interactive Liquid Glass Card with Prism Refraction Edge */
-.liquid-glass-card {
-  background: linear-gradient(
-    140deg,
     rgba(255, 255, 255, 0.12) 0%,
-    rgba(255, 255, 255, 0.02) 20%,
-    rgba(20, 20, 52, 0.58) 50%,
-    rgba(10, 10, 30, 0.82) 100%
-  );
-  backdrop-filter: blur(28px) saturate(200%) brightness(108%);
-  -webkit-backdrop-filter: blur(28px) saturate(200%) brightness(108%);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-top: 1.2px solid rgba(255, 255, 255, 0.45);
-  box-shadow: 
-    0 20px 50px rgba(0, 0, 0, 0.55),
-    inset 0 1.5px 2px rgba(255, 255, 255, 0.35),
-    inset 0 -1.5px 2px rgba(0, 0, 0, 0.4);
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  overflow: hidden;
-}
-
-.liquid-glass-card:hover {
-  transform: translateY(-4px) scale(1.01);
-  background: linear-gradient(
-    140deg,
-    rgba(255, 255, 255, 0.2) 0%,
-    rgba(255, 255, 255, 0.06) 25%,
-    rgba(34, 28, 76, 0.72) 55%,
-    rgba(14, 12, 40, 0.9) 100%
-  );
-  border-color: rgba(0, 229, 255, 0.6);
-  border-top-color: rgba(255, 255, 255, 0.85);
-  box-shadow: 
-    0 30px 70px rgba(0, 0, 0, 0.7),
-    0 0 45px rgba(0, 229, 255, 0.25),
-    0 0 30px rgba(255, 45, 149, 0.2),
-    inset 0 2px 4px rgba(255, 255, 255, 0.6),
-    inset 0 -2px 4px rgba(0, 229, 255, 0.3);
-}
-
-/* 3. Fluid Caustic Wave Sweep */
-.liquid-glass-card::after {
-  content: "";
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: linear-gradient(
-    60deg,
-    transparent 35%,
-    rgba(255, 255, 255, 0.07) 45%,
-    rgba(0, 229, 255, 0.12) 50%,
-    rgba(255, 45, 149, 0.08) 55%,
-    transparent 65%
-  );
-  transform: rotate(25deg);
-  pointer-events: none;
-  animation: liquidCausticGlaze 9s ease-in-out infinite;
-}
-
-@keyframes liquidCausticGlaze {
-  0% { transform: translateY(-30%) rotate(25deg); }
-  50% { transform: translateY(30%) rotate(25deg); }
-  100% { transform: translateY(-30%) rotate(25deg); }
-}
-
-/* 4. Liquid Water-Droplet Pill */
-.liquid-glass-pill {
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.25) 0%,
-    rgba(255, 255, 255, 0.05) 40%,
-    rgba(0, 0, 0, 0.3) 100%
+    rgba(255, 255, 255, 0.02) 25%,
+    rgba(16, 16, 42, 0.65) 55%,
+    rgba(8, 8, 24, 0.88) 100%
   );
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-top: 1.5px solid rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-top: 1.5px solid rgba(255, 255, 255, 0.5);
   box-shadow: 
-    0 6px 16px rgba(0, 0, 0, 0.35),
-    inset 0 1.5px 2px rgba(255, 255, 255, 0.5),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.4);
+    0 20px 50px rgba(0, 0, 0, 0.7),
+    inset 0 1.5px 2px rgba(255, 255, 255, 0.35);
 }
 
-/* 5. Liquid Glass Buttons with Mercury Gloss */
-.liquid-glass-button {
-  position: relative;
+body.perf-highend .liquid-glass-card {
   background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.3) 0%,
-    rgba(255, 45, 149, 0.35) 40%,
-    rgba(0, 229, 255, 0.35) 100%
+    140deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(20, 20, 52, 0.6) 50%,
+    rgba(10, 10, 30, 0.85) 100%
   );
-  backdrop-filter: blur(22px) saturate(220%);
-  -webkit-backdrop-filter: blur(22px) saturate(220%);
-  border: 1.2px solid rgba(255, 255, 255, 0.35);
-  border-top: 1.8px solid rgba(255, 255, 255, 0.8);
-  box-shadow: 
-    0 10px 30px rgba(0, 0, 0, 0.45),
-    inset 0 2px 3px rgba(255, 255, 255, 0.6),
-    inset 0 -2px 3px rgba(0, 0, 0, 0.35),
-    0 0 25px rgba(255, 45, 149, 0.25);
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-top: 1.2px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+  transition: transform 0.25s ease, border-color 0.25s ease;
+  will-change: transform;
 }
 
-.liquid-glass-button:hover {
-  transform: translateY(-2px) scale(1.03);
+body.perf-highend .liquid-glass-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(0, 229, 255, 0.6);
+}
+
+body.perf-highend .liquid-glass-pill {
   background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.45) 0%,
-    rgba(255, 45, 149, 0.55) 40%,
-    rgba(0, 229, 255, 0.55) 100%
+    180deg,
+    rgba(255, 255, 255, 0.2) 0%,
+    rgba(0, 0, 0, 0.35) 100%
   );
-  border-color: rgba(255, 255, 255, 0.65);
-  border-top-color: #ffffff;
-  box-shadow: 
-    0 16px 40px rgba(0, 0, 0, 0.6),
-    0 0 40px rgba(0, 229, 255, 0.45),
-    0 0 35px rgba(255, 45, 149, 0.45),
-    inset 0 2.5px 5px rgba(255, 255, 255, 0.9),
-    inset 0 -2px 4px rgba(0, 229, 255, 0.4);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
 }
 
-.liquid-glass-button:active {
-  transform: scale(0.96) translateY(1px);
+/* Common Fallback Styles */
+.liquid-glass {
+  background: #0d0d21;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* 6. Liquid Neon Glow Text */
+.liquid-glass-card {
+  background: #11112b;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.liquid-glass-pill {
+  background: #181836;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* Neon Text Gradient */
 .neon-gradient-text {
-  background: linear-gradient(115deg, #ffffff 0%, #ff2d95 30%, #00e5ff 70%, #c084fc 100%);
+  background: linear-gradient(115deg, #ffffff 0%, #ff2d95 40%, #00e5ff 85%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  text-shadow: 0 0 20px rgba(0, 229, 255, 0.25);
 }
 
-.neon-gold-text {
-  background: linear-gradient(115deg, #ffffff 0%, #fbbf24 45%, #ff2d95 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  text-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
-}
-
-/* 7. Organic Floating Liquid Mercury Metaball Animations */
+/* Keyframe animations for High-End mode */
 @keyframes morphingBlob1 {
-  0% {
-    border-radius: 42% 58% 70% 30% / 45% 45% 55% 55%;
-    transform: translate(0px, 0px) rotate(0deg) scale(1);
-  }
-  33% {
-    border-radius: 70% 30% 50% 50% / 30% 60% 40% 70%;
-    transform: translate(60px, -40px) rotate(120deg) scale(1.15);
-  }
-  66% {
-    border-radius: 30% 70% 40% 60% / 60% 30% 70% 40%;
-    transform: translate(-50px, 50px) rotate(240deg) scale(0.9);
-  }
-  100% {
-    border-radius: 42% 58% 70% 30% / 45% 45% 55% 55%;
-    transform: translate(0px, 0px) rotate(360deg) scale(1);
-  }
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(30px, -20px) scale(1.08); }
 }
 
 @keyframes morphingBlob2 {
-  0% {
-    border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
-    transform: translate(0px, 0px) rotate(0deg) scale(1.05);
-  }
-  33% {
-    border-radius: 35% 65% 60% 40% / 50% 40% 60% 50%;
-    transform: translate(-70px, 60px) rotate(-120deg) scale(0.92);
-  }
-  66% {
-    border-radius: 50% 50% 35% 65% / 40% 60% 40% 60%;
-    transform: translate(45px, -50px) rotate(-240deg) scale(1.18);
-  }
-  100% {
-    border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
-    transform: translate(0px, 0px) rotate(-360deg) scale(1.05);
-  }
-}
-
-@keyframes morphingBlob3 {
-  0% {
-    border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%;
-    transform: translate(0px, 0px) scale(1);
-  }
-  50% {
-    border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
-    transform: translate(30px, 40px) scale(1.1);
-  }
-  100% {
-    border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%;
-    transform: translate(0px, 0px) scale(1);
-  }
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-25px, 25px) scale(0.95); }
 }
 
 .animate-liquid-blob-1 {
-  animation: morphingBlob1 18s ease-in-out infinite;
+  animation: morphingBlob1 16s ease-in-out infinite;
 }
 
 .animate-liquid-blob-2 {
-  animation: morphingBlob2 22s ease-in-out infinite;
-}
-
-.animate-liquid-blob-3 {
-  animation: morphingBlob3 14s ease-in-out infinite;
-}
-
-/* Glass Specular Sweep on Hover */
-.glass-glow-rim {
-  box-shadow: 
-    0 0 0 1px rgba(255, 255, 255, 0.25),
-    0 0 20px rgba(0, 229, 255, 0.3),
-    inset 0 1.5px 2px rgba(255, 255, 255, 0.6);
+  animation: morphingBlob2 20s ease-in-out infinite;
 }
 
 .font-orbitron {
