@@ -12,7 +12,8 @@ import {
   CheckCircle2, 
   Music2,
   Plus,
-  Film
+  Film,
+  Bookmark
 } from 'lucide-react';
 import { RichCommentInput } from '../comments/RichCommentInput';
 import { CreatePostModal } from '../feed/CreatePostModal';
@@ -26,6 +27,7 @@ export const ShortsFeedView: React.FC = () => {
     addClip,
     toggleClipLike, 
     toggleClipDislike, 
+    toggleClipBookmark,
     addClipComment, 
     openShareModal, 
     allUsers, 
@@ -178,12 +180,12 @@ export const ShortsFeedView: React.FC = () => {
             <div 
               onClick={() => openUserProfileModal(clipAuthor)}
               className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-900 text-xs shadow-md cursor-pointer hover:scale-105 transition-transform"
-              style={{ background: clipAuthor.color }}
+              style={{ background: clipAuthor?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
             >
-              {clipAuthor.avatarImage ? (
+              {clipAuthor?.avatarImage ? (
                 <img src={clipAuthor.avatarImage} alt="Avatar" className="w-full h-full object-cover rounded-full" />
               ) : (
-                clipAuthor.avatar
+                clipAuthor?.avatar || 'U'
               )}
             </div>
 
@@ -192,13 +194,13 @@ export const ShortsFeedView: React.FC = () => {
                 onClick={() => openUserProfileModal(clipAuthor)}
                 className="text-xs font-bold text-white flex items-center gap-1.5 cursor-pointer hover:text-[#00e5ff]"
               >
-                <span>{clipAuthor.name}</span>
-                {clipAuthor.verified && <CheckCircle2 className="w-3.5 h-3.5 text-[#00e5ff]" />}
+                <span>{clipAuthor?.name || 'Creator'}</span>
+                {clipAuthor?.verified && <CheckCircle2 className="w-3.5 h-3.5 text-[#00e5ff]" />}
               </div>
-              <div className="text-[10px] text-[#8a8aa8]">{clipAuthor.handle}</div>
+              <div className="text-[10px] text-[#8a8aa8]">{clipAuthor?.handle || '@creator'}</div>
             </div>
 
-            {clipAuthor.id !== currentUser.id && (
+            {clipAuthor?.id !== currentUser?.id && (
               <button
                 onClick={() => toggleFollowUser(clipAuthor.id)}
                 className={`px-3 py-1 rounded-xl text-[11px] font-bold font-orbitron transition-all shadow-md flex items-center gap-1 ${
@@ -233,7 +235,7 @@ export const ShortsFeedView: React.FC = () => {
             }`}>
               <Heart className={`w-5 h-5 ${activeClip.isLiked ? 'fill-current' : ''}`} />
             </div>
-            <span className="text-[10px] font-bold text-white mt-1 drop-shadow">{activeClip.likes.toLocaleString()}</span>
+            <span className="text-[10px] font-bold text-white mt-1 drop-shadow">{(Number(activeClip.likes) || 0).toLocaleString()}</span>
           </button>
 
           <button onClick={() => toggleClipDislike(activeClip.id)} className="flex flex-col items-center group">
@@ -250,6 +252,13 @@ export const ShortsFeedView: React.FC = () => {
               <MessageCircle className="w-5 h-5" />
             </div>
             <span className="text-[10px] font-bold text-white mt-1 drop-shadow">{activeClip.comments?.length || 0}</span>
+          </button>
+
+          <button onClick={() => toggleClipBookmark(activeClip.id)} className="flex flex-col items-center group">
+            <div className={`p-3 rounded-full backdrop-blur-md transition-all border border-white/10 shadow-lg ${activeClip.isBookmarked ? 'bg-[#fbbf24] text-slate-900' : 'bg-black/60 text-white hover:bg-white/10'}`}>
+              <Bookmark className={`w-5 h-5 ${activeClip.isBookmarked ? 'fill-current' : ''}`} />
+            </div>
+            <span className="text-[10px] font-bold text-white mt-1 drop-shadow">Save</span>
           </button>
 
           <button onClick={() => openShareModal(activeClip.title, `https://wevids.app/clip/${activeClip.id}`)} className="flex flex-col items-center group">

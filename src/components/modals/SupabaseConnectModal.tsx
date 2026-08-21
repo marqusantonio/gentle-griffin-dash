@@ -4,14 +4,14 @@ import {
   LogOut,
   X,
   Sparkles,
-  User,
   Database,
   Key,
   Copy,
   Check,
   Zap,
   Code,
-  RefreshCw
+  RefreshCw,
+  TableProperties
 } from 'lucide-react';
 import { 
   getStoredSession,
