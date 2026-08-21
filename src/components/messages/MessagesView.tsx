@@ -15,7 +15,8 @@ import {
   UserCheck,
   UserX,
   ShieldBan,
-  Clock
+  Clock,
+  Radio
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
@@ -44,7 +45,8 @@ export const MessagesView: React.FC = () => {
     isMutualFriend,
     acceptMessageRequest,
     declineMessageRequest,
-    blockMessageUser
+    blockMessageUser,
+    syncWithSupabase
   } = useWevids();
 
   const [activeTab, setActiveTab] = useState<'chats' | 'requests'>('chats');
@@ -62,14 +64,17 @@ export const MessagesView: React.FC = () => {
     if (!isSupabaseConfigured()) return;
 
     const channel = supabase
-      .channel('direct_messages-channel')
+      .channel('direct_messages-realtime')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'direct_messages' },
         (payload: any) => {
-          if (payload?.new && payload.new.receiver_id === currentUser.id) {
+          if (payload?.new && (payload.new.receiver_id === currentUser.id || payload.new.sender_id === currentUser.id)) {
             sounds.pop();
-            toast.info('New message received!');
+            syncWithSupabase();
+            if (payload.new.receiver_id === currentUser.id) {
+              toast.info(`New message from ${payload.new.sender_id}!`);
+            }
           }
         }
       )
@@ -83,7 +88,7 @@ export const MessagesView: React.FC = () => {
   const activeConv = conversations.find(c => c.id === activeConvId) || conversations[0] || null;
   const otherMemberId = activeConv?.members?.find(id => id !== currentUser.id) || '';
   
-  // Safe Fallback Partner Profile: works whether they are guest or real registered user
+  // Partner Profile
   const otherUser = otherMemberId ? (allUsers[otherMemberId] || {
     id: otherMemberId,
     name: otherMemberId.startsWith('guest-') ? `Guest_${otherMemberId.replace('guest-', '')}` : (activeConv?.groupName || 'Creator'),
@@ -187,6 +192,11 @@ export const MessagesView: React.FC = () => {
                 <MessageSquareText className="w-4 h-4 text-[#ff2d95]" />
                 Direct Messages
               </h2>
+              {isSupabaseConfigured() && (
+                <span className="flex items-center gap-1 text-[10px] text-[#10b981] font-mono">
+                  <Radio className="w-2.5 h-2.5 animate-pulse" /> Live
+                </span>
+              )}
             </div>
 
             {/* Tab switch: Active Chats vs Requests */}

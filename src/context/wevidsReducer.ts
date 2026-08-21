@@ -111,6 +111,8 @@ export type WevidsAction =
   | { type: 'ADD_CLIP_COMMENT'; payload: { clipId: string; comment: any } }
   | { type: 'ADD_MESSAGE'; payload: { convId: string; message: any } }
   | { type: 'ADD_CONVERSATION'; payload: Conversation }
+  | { type: 'SET_CONVERSATIONS'; payload: Conversation[] }
+  | { type: 'SET_DIRECT_MESSAGES'; payload: DirectMessageItem[] }
   | { type: 'SET_CONVERSATION_STATUS'; payload: { convId: string; status: 'active' | 'pending_request' | 'declined' | 'blocked' } }
   | { type: 'REMOVE_CONVERSATION'; payload: { convId: string } }
   | { type: 'ADD_TO_CART'; payload: { product: ProductItem } }
@@ -298,6 +300,19 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
         ...state,
         conversations: [action.payload, ...state.conversations.filter(c => c.id !== action.payload.id)],
         activeConvId: action.payload.id
+      };
+    }
+    case 'SET_CONVERSATIONS': {
+      return {
+        ...state,
+        conversations: action.payload,
+        activeConvId: state.activeConvId || (action.payload[0]?.id || null)
+      };
+    }
+    case 'SET_DIRECT_MESSAGES': {
+      return {
+        ...state,
+        directMessages: action.payload
       };
     }
     case 'SET_CONVERSATION_STATUS': {

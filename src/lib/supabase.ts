@@ -90,7 +90,7 @@ export const isSupabaseConfigured = (): boolean => {
   return Boolean(url && anonKey && url.startsWith('https://') && anonKey.length > 15);
 };
 
-// Query Builder for .from('table').select().order().eq()
+// Query Builder for .from('table').select().order().eq().or()
 class PostgrestQueryBuilder<T = any> implements PromiseLike<{ data: T[] | null; error: any }> {
   private table: string;
   private url: string;
@@ -141,6 +141,11 @@ class PostgrestQueryBuilder<T = any> implements PromiseLike<{ data: T[] | null; 
 
   eq(column: string, value: any) {
     this.filters.push(`${encodeURIComponent(column)}=eq.${encodeURIComponent(value)}`);
+    return this;
+  }
+
+  or(conditions: string) {
+    this.filters.push(`or=(${conditions})`);
     return this;
   }
 
@@ -423,7 +428,7 @@ export class SupabaseClientInstance {
     if (!u || !k) return { ok: false, message: 'URL and Anon Key are missing.' };
 
     try {
-      const res = await fetch(`${u}/rest/v1/posts?select=id&limit=1`, {
+      const res = await fetch(`${u}/rest/v1/profiles?select=id&limit=1`, {
         method: 'GET',
         headers: { 'apikey': k },
       });
@@ -613,9 +618,11 @@ CREATE TABLE IF NOT EXISTS public.products (
 -- 9. Direct Messages Table
 CREATE TABLE IF NOT EXISTS public.direct_messages (
   id TEXT PRIMARY KEY,
-  sender_id TEXT,
-  receiver_id TEXT,
+  sender_id TEXT NOT NULL,
+  receiver_id TEXT NOT NULL,
   content TEXT,
+  "mediaUrl" TEXT,
+  type TEXT DEFAULT 'text',
   is_friend_request BOOLEAN DEFAULT false,
   is_approved BOOLEAN DEFAULT NULL,
   is_blocked BOOLEAN DEFAULT false,

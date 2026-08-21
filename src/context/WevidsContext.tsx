@@ -10,7 +10,9 @@ import {
   SharedFileItem, 
   AudioTrackItem, 
   FilmItem,
-  ViewName 
+  ViewName,
+  DirectMessageItem,
+  ChatMessage
 } from '../types/wevids';
 import { wevidsReducer, initialWevidsState, WevidsState } from './wevidsReducer';
 import { supabase, isSupabaseConfigured, checkContentModeration, getStoredSession } from '../lib/supabase';
@@ -94,13 +96,98 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   }, []);
 
-  // Live Supabase Fetch: posts, clips, profiles, and media
+  // Helper to construct and group direct messages into active conversations
+  const buildConversationsFromDms = (
+    dms: DirectMessageItem[],
+    profilesMap: Record<string, UserProfile>,
+    currentUserId: string
+  ): Conversation[] => {
+    const map = new Map<string, { partnerId: string; messages: ChatMessage[]; lastMsg: string; time: string; status: 'active' | 'pending_request' | 'declined' | 'blocked'; requestedBy?: string }>();
+
+    dms.forEach((dm) => {
+      const partnerId = dm.sender_id === currentUserId ? dm.receiver_id : dm.sender_id;
+      if (!partnerId) return;
+
+      const partner = profilesMap[partnerId] || {
+        id: partnerId,
+        name: partnerId.startsWith('guest-') ? `Guest_${partnerId.replace('guest-', '')}` : 'Creator',
+        handle: `@${partnerId}`,
+        avatar: partnerId.startsWith('guest-') ? 'G' : 'C',
+        color: 'linear-gradient(135deg, #ff2d95, #00e5ff)',
+      };
+
+      const sender = profilesMap[dm.sender_id] || (dm.sender_id === currentUserId ? state.currentUser : partner);
+
+      const chatMsg: ChatMessage = {
+        id: dm.id,
+        fromId: dm.sender_id,
+        senderName: sender.name || 'User',
+        senderAvatar: sender.avatar || 'U',
+        senderColor: sender.color || '#00e5ff',
+        text: dm.content,
+        mediaUrl: dm.mediaUrl,
+        type: (dm.type as any) || (dm.mediaUrl ? 'image' : 'text'),
+        timestamp: new Date(dm.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        is_friend_request: dm.is_friend_request,
+        is_approved: dm.is_approved
+      };
+
+      if (!map.has(partnerId)) {
+        map.set(partnerId, {
+          partnerId,
+          messages: [chatMsg],
+          lastMsg: dm.content || 'Media',
+          time: new Date(dm.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          status: dm.is_blocked ? 'blocked' : dm.is_friend_request && dm.is_approved === null ? 'pending_request' : dm.is_approved === false ? 'declined' : 'active',
+          requestedBy: dm.sender_id
+        });
+      } else {
+        const item = map.get(partnerId)!;
+        item.messages.push(chatMsg);
+        item.lastMsg = dm.content || 'Media';
+        item.time = new Date(dm.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        if (dm.is_blocked) item.status = 'blocked';
+      }
+    });
+
+    const result: Conversation[] = [];
+    map.forEach((val, partnerId) => {
+      const partner = profilesMap[partnerId];
+      result.push({
+        id: `conv-${currentUserId}-${partnerId}`,
+        isGroup: false,
+        avatar: partner?.avatar || partnerId.charAt(0).toUpperCase() || 'C',
+        color: partner?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
+        members: [currentUserId, partnerId],
+        lastMsg: val.lastMsg,
+        time: val.time,
+        unread: 0,
+        messages: val.messages,
+        status: val.status,
+        requestedBy: val.requestedBy
+      });
+    });
+
+    return result;
+  };
+
+  // Live Supabase Fetch: posts, clips, profiles, media, and direct_messages
   const syncWithSupabase = async () => {
     if (!isSupabaseConfigured()) return;
     dispatch({ type: 'SET_CLOUD_SYNCING', payload: true });
 
     try {
-      const [postsRes, clipsRes, profilesRes, audioRes, filmsRes, romsRes, filesRes, prodsRes] = await Promise.all([
+      const [
+        postsRes, 
+        clipsRes, 
+        profilesRes, 
+        audioRes, 
+        filmsRes, 
+        romsRes, 
+        filesRes, 
+        prodsRes,
+        dmsRes
+      ] = await Promise.all([
         supabase.from('posts').select('*').order('created_at', { ascending: false }),
         supabase.from('clips').select('*').order('created_at', { ascending: false }),
         supabase.from('profiles').select('*'),
@@ -109,20 +196,30 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         supabase.from('roms').select('*').order('created_at', { ascending: false }),
         supabase.from('files').select('*').order('created_at', { ascending: false }),
         supabase.from('products').select('*').order('created_at', { ascending: false }),
+        supabase.from('direct_messages').select('*').order('created_at', { ascending: true })
       ]);
+
+      const profileMap: Record<string, UserProfile> = {};
+      if (profilesRes.data && profilesRes.data.length > 0) {
+        profilesRes.data.forEach((p: UserProfile) => {
+          if (p && p.id) profileMap[p.id] = p;
+        });
+        dispatch({ type: 'SET_ALL_USERS', payload: profileMap });
+
+        // If current user has a cloud record, update current user seamlessly
+        if (profileMap[state.currentUser.id]) {
+          dispatch({
+            type: 'UPDATE_CURRENT_USER',
+            payload: profileMap[state.currentUser.id]
+          });
+        }
+      }
 
       if (postsRes.data) {
         dispatch({ type: 'SET_POSTS', payload: postsRes.data });
       }
       if (clipsRes.data) {
         dispatch({ type: 'SET_CLIPS', payload: clipsRes.data });
-      }
-      if (profilesRes.data && profilesRes.data.length > 0) {
-        const profileMap: Record<string, UserProfile> = {};
-        profilesRes.data.forEach((p: UserProfile) => {
-          if (p && p.id) profileMap[p.id] = p;
-        });
-        dispatch({ type: 'SET_ALL_USERS', payload: profileMap });
       }
       if (audioRes.data) {
         dispatch({ type: 'SET_AUDIO_TRACKS', payload: audioRes.data });
@@ -138,6 +235,14 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       }
       if (prodsRes.data) {
         dispatch({ type: 'SET_PRODUCTS', payload: prodsRes.data });
+      }
+
+      if (dmsRes.data && Array.isArray(dmsRes.data)) {
+        dispatch({ type: 'SET_DIRECT_MESSAGES', payload: dmsRes.data });
+        const userConversations = buildConversationsFromDms(dmsRes.data, profileMap, state.currentUser.id);
+        if (userConversations.length > 0) {
+          dispatch({ type: 'SET_CONVERSATIONS', payload: userConversations });
+        }
       }
 
       dispatch({ type: 'SET_LAST_CLOUD_SYNC', payload: new Date().toLocaleTimeString() });
@@ -161,7 +266,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       clearInterval(interval);
       window.removeEventListener('focus', handleFocus);
     };
-  }, []);
+  }, [state.currentUser.id]);
 
   const addPost = async (post: Partial<PostItem>): Promise<boolean> => {
     const moderation = checkContentModeration(post.content || '');
@@ -680,6 +785,8 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           sender_id: state.currentUser.id,
           receiver_id: receiverId,
           content: message.text || (message.type ? `[${message.type}]` : 'Media'),
+          mediaUrl: message.mediaUrl,
+          type: message.type || 'text',
           is_friend_request: !isFriend,
           is_approved: isFriend ? true : null,
           is_blocked: false,
