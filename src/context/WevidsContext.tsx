@@ -32,6 +32,7 @@ export interface WevidsContextType extends WevidsState {
   setActiveConvId: (id: string | null) => void;
   setIsCartOpen: (open: boolean) => void;
   setIsVideoCallOpen: (open: boolean) => void;
+  setIsMobileSidebarOpen: (open: boolean) => void;
   openShareModal: (title: string, url: string) => void;
   closeShareModal: () => void;
   openUserProfileModal: (user: UserProfile) => void;
@@ -155,7 +156,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
     window.addEventListener('focus', handleFocus);
 
-    const interval = setInterval(syncWithSupabase, 5000);
+    const interval = setInterval(syncWithSupabase, 8000);
     return () => {
       clearInterval(interval);
       window.removeEventListener('focus', handleFocus);
@@ -191,7 +192,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     sounds.success();
     dispatch({ type: 'ADD_POST', payload: fullPost });
-    toast.success('Post published to Supabase!');
+    toast.success('Post published!');
 
     if (isSupabaseConfigured()) {
       try {
@@ -224,7 +225,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     if (!post) return;
 
     const newLiked = !post.isLiked;
-    const newLikesCount = newLiked ? (post.likes || 0) + 1 : Math.max(0, (post.likes || 1) - 1);
+    const newLikesCount = newLiked ? (Number(post.likes) || 0) + 1 : Math.max(0, (Number(post.likes) || 1) - 1);
 
     dispatch({ type: 'TOGGLE_POST_LIKE', payload: { postId } });
 
@@ -268,7 +269,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const addClip = async (clip: ShortClipItem) => {
     sounds.success();
     dispatch({ type: 'ADD_CLIP', payload: clip });
-    toast.success('Clip published to Supabase!');
+    toast.success('Clip published!');
 
     if (isSupabaseConfigured()) {
       try {
@@ -285,7 +286,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     if (!clip) return;
 
     const newLiked = !clip.isLiked;
-    const newLikesCount = newLiked ? (clip.likes || 0) + 1 : Math.max(0, (clip.likes || 1) - 1);
+    const newLikesCount = newLiked ? (Number(clip.likes) || 0) + 1 : Math.max(0, (Number(clip.likes) || 1) - 1);
 
     dispatch({ type: 'TOGGLE_CLIP_LIKE', payload: { clipId } });
 
@@ -304,7 +305,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     if (!clip) return;
 
     const newDisliked = !clip.isDisliked;
-    const newDislikesCount = newDisliked ? (clip.dislikes || 0) + 1 : Math.max(0, (clip.dislikes || 1) - 1);
+    const newDislikesCount = newDisliked ? (Number(clip.dislikes) || 0) + 1 : Math.max(0, (Number(clip.dislikes) || 1) - 1);
 
     dispatch({ type: 'TOGGLE_CLIP_DISLIKE', payload: { clipId } });
 
@@ -320,7 +321,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const toggleClipBookmark = (clipId: string) => {
     sounds.click();
     dispatch({ type: 'TOGGLE_CLIP_BOOKMARK', payload: { clipId } });
-    toast.success('Saved to your Library!');
+    toast.success('Saved to Library!');
   };
 
   const addClipComment = async (clipId: string, comment: any) => {
@@ -428,7 +429,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
     sounds.success();
     dispatch({ type: 'ADD_ROM', payload: fullRom });
-    toast.success('ROM package saved to Supabase!');
+    toast.success('ROM package saved to Vault!');
 
     if (isSupabaseConfigured()) {
       try {
@@ -442,7 +443,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const addProduct = async (product: ProductItem) => {
     sounds.success();
     dispatch({ type: 'ADD_PRODUCT', payload: product });
-    toast.success('Product saved to Mall!');
+    toast.success('Product added to Mall!');
 
     if (isSupabaseConfigured()) {
       try {
@@ -469,7 +470,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     };
     sounds.success();
     dispatch({ type: 'ADD_SHARED_FILE', payload: fullFile });
-    toast.success('File package saved to Vault!');
+    toast.success('File package saved!');
 
     if (isSupabaseConfigured()) {
       try {
@@ -500,6 +501,10 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const setIsVideoCallOpen = (open: boolean) => {
     dispatch({ type: 'SET_IS_VIDEO_CALL_OPEN', payload: open });
+  };
+
+  const setIsMobileSidebarOpen = (open: boolean) => {
+    dispatch({ type: 'SET_IS_MOBILE_SIDEBAR_OPEN', payload: open });
   };
 
   const openShareModal = (title: string, url: string) => {
@@ -588,7 +593,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
 
     if (!currentlyFollowing) {
-      toast.success('Following creator! 🚀');
+      toast.success('Following creator!');
     } else {
       toast.info('Unfollowed.');
     }
@@ -756,6 +761,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setActiveConvId,
     setIsCartOpen,
     setIsVideoCallOpen,
+    setIsMobileSidebarOpen,
     openShareModal,
     closeShareModal,
     openUserProfileModal,

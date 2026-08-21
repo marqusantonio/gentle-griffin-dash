@@ -13,11 +13,7 @@ import {
   Target,
   Grid,
   Crosshair,
-  Flame,
-  MousePointerClick,
-  Play,
-  Shuffle,
-  CloudUpload
+  Shuffle
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { sounds } from '../../lib/soundFx';
@@ -130,7 +126,12 @@ export const GamingHubView: React.FC = () => {
     let ballSpeedY = 3;
 
     const keys: Record<string, boolean> = {};
-    const handleDown = (e: KeyboardEvent) => { keys[e.key] = true; };
+    const handleDown = (e: KeyboardEvent) => { 
+      if (['ArrowUp', 'ArrowDown', 'w', 'W', 's', 'S'].includes(e.key)) {
+        e.preventDefault();
+      }
+      keys[e.key] = true; 
+    };
     const handleUp = (e: KeyboardEvent) => { keys[e.key] = false; };
 
     window.addEventListener('keydown', handleDown);
@@ -215,6 +216,9 @@ export const GamingHubView: React.FC = () => {
     let score = 0;
 
     const handleKey = (e: KeyboardEvent) => {
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        e.preventDefault();
+      }
       if (e.key === 'ArrowUp' && dy === 0) { dx = 0; dy = -1; }
       if (e.key === 'ArrowDown' && dy === 0) { dx = 0; dy = 1; }
       if (e.key === 'ArrowLeft' && dx === 0) { dx = -1; dy = 0; }
@@ -275,7 +279,10 @@ export const GamingHubView: React.FC = () => {
     let pipeTopHeight = 80;
     let score = 0;
 
-    const handleJump = () => {
+    const handleJump = (e?: KeyboardEvent | MouseEvent) => {
+      if (e && 'key' in e && e.key === ' ') {
+        e.preventDefault();
+      }
       birdVelocity = -5;
       sounds.pop();
     };
@@ -320,6 +327,7 @@ export const GamingHubView: React.FC = () => {
     return () => {
       clearInterval(interval);
       window.removeEventListener('keydown', handleJump);
+      canvas.removeEventListener('click', handleJump);
     };
   }, [selectedGame, flappyRunning]);
 
@@ -405,7 +413,7 @@ export const GamingHubView: React.FC = () => {
   }, [selectedGame]);
 
   const handleMemoryFlip = (idx: number) => {
-    if (memoryFlipped.length >= 2 || memoryCards[idx].flipped || memoryCards[idx].matched) return;
+    if (memoryFlipped.length >= 2 || memoryCards[idx]?.flipped || memoryCards[idx]?.matched) return;
     sounds.pop();
 
     const updated = [...memoryCards];
@@ -416,7 +424,7 @@ export const GamingHubView: React.FC = () => {
 
     if (newFlipped.length === 2) {
       const [i1, i2] = newFlipped;
-      if (updated[i1].icon === updated[i2].icon) {
+      if (updated[i1]?.icon === updated[i2]?.icon) {
         sounds.like();
         updated[i1].matched = true;
         updated[i2].matched = true;
@@ -429,8 +437,8 @@ export const GamingHubView: React.FC = () => {
         }
       } else {
         setTimeout(() => {
-          updated[i1].flipped = false;
-          updated[i2].flipped = false;
+          if (updated[i1]) updated[i1].flipped = false;
+          if (updated[i2]) updated[i2].flipped = false;
           setMemoryCards([...updated]);
           setMemoryFlipped([]);
         }, 800);

@@ -5,7 +5,8 @@ import {
   Radio, 
   ShoppingBag, 
   Database,
-  LogIn
+  LogIn,
+  Menu
 } from 'lucide-react';
 import { isSupabaseConfigured, getStoredSession } from '../../lib/supabase';
 import { sounds } from '../../lib/soundFx';
@@ -19,7 +20,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => 
     setActiveView, 
     cart, 
     setIsCartOpen, 
-    currentUser
+    currentUser,
+    setIsMobileSidebarOpen
   } = useWevids();
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -42,9 +44,22 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => 
   };
 
   return (
-    <header className="sticky top-0 z-30 ml-64 h-16 liquid-glass border-b border-white/15 px-6 flex items-center justify-between gap-4 shadow-[0_15px_40px_rgba(0,0,0,0.5)]">
+    <header className="sticky top-0 z-30 md:ml-64 h-16 liquid-glass border-b border-white/15 px-4 sm:px-6 flex items-center justify-between gap-3 shadow-[0_15px_40px_rgba(0,0,0,0.5)]">
+      {/* Mobile Hamburger Menu */}
+      <button
+        type="button"
+        onClick={() => {
+          sounds.click();
+          setIsMobileSidebarOpen(true);
+        }}
+        className="p-2 rounded-xl liquid-glass-pill md:hidden text-white hover:text-[#00e5ff] transition-colors"
+        title="Open Navigation"
+      >
+        <Menu className="w-5 h-5" />
+      </button>
+
       {/* Search Input Bar with Liquid Glass Sheen */}
-      <form onSubmit={handleSearchSubmit} className="relative flex-1 max-w-md">
+      <form onSubmit={handleSearchSubmit} className="relative flex-1 max-w-md hidden sm:block">
         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9494b8]" />
         <input
           type="text"
@@ -56,21 +71,21 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => 
       </form>
 
       {/* Action Badges & Buttons */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3 ml-auto">
         {/* Sign-in / User Status */}
         {!isLoggedInWithCloud ? (
           <button
             onClick={handleOpenAuthModal}
-            className="flex items-center gap-2 px-3.5 py-1.5 rounded-2xl bg-white hover:bg-gray-100 text-gray-900 font-bold text-xs shadow-[0_4px_15px_rgba(255,255,255,0.3)] transition-transform hover:scale-105"
+            className="flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 rounded-2xl bg-white hover:bg-gray-100 text-gray-900 font-bold text-xs shadow-[0_4px_15px_rgba(255,255,255,0.3)] transition-transform hover:scale-105"
             title="Sign In with Google or Email"
           >
             <LogIn className="w-3.5 h-3.5 text-[#ff2d95]" />
-            <span>Sign In</span>
+            <span className="hidden xs:inline">Sign In</span>
           </button>
         ) : (
           <div 
             onClick={onOpenSupabaseModal}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl liquid-glass-pill text-[#10b981] text-xs font-semibold cursor-pointer hover:border-[#10b981]/50 transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl liquid-glass-pill text-[#10b981] text-xs font-semibold cursor-pointer hover:border-[#10b981]/50 transition-all"
             title="Account Connected"
           >
             <span className="w-2 h-2 rounded-full bg-[#10b981] animate-ping" />
@@ -81,7 +96,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => 
         {/* Supabase Cloud Connection Manager Button */}
         <button
           onClick={handleOpenAuthModal}
-          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl border text-xs font-semibold transition-all shadow-sm ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs font-semibold transition-all shadow-sm ${
             isCloudConnected 
               ? 'bg-[#10b981]/15 border-[#10b981]/40 text-[#10b981] hover:bg-[#10b981]/25' 
               : 'liquid-glass-pill text-[#9494b8] hover:text-white'
@@ -89,7 +104,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => 
           title="Manage Supabase Online Database & Auth"
         >
           <Database className={`w-3.5 h-3.5 ${isCloudConnected ? 'text-[#10b981]' : 'text-[#9494b8]'}`} />
-          <span className="hidden md:inline font-orbitron">{isCloudConnected ? 'Cloud Online' : 'Link Cloud'}</span>
+          <span className="hidden lg:inline font-orbitron">{isCloudConnected ? 'Cloud Online' : 'Link Cloud'}</span>
         </button>
 
         {/* Go Live Studio CTA */}
@@ -98,10 +113,10 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => 
             sounds.pop();
             setActiveView('live');
           }}
-          className="flex items-center gap-2 px-4 py-1.5 rounded-2xl bg-gradient-to-r from-red-600 via-[#ff2d95] to-[#ff2d95] text-white text-xs font-bold font-orbitron tracking-wider shadow-[0_0_20px_rgba(255,45,149,0.5)] border border-white/30 hover:scale-105 transition-all"
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl bg-gradient-to-r from-red-600 via-[#ff2d95] to-[#ff2d95] text-white text-xs font-bold font-orbitron tracking-wider shadow-[0_0_20px_rgba(255,45,149,0.5)] border border-white/30 hover:scale-105 transition-all"
         >
           <Radio className="w-3.5 h-3.5 animate-pulse" />
-          <span>GO LIVE</span>
+          <span className="hidden sm:inline">GO LIVE</span>
         </button>
 
         {/* Shopping Cart Drawer Trigger */}
@@ -110,7 +125,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => 
             sounds.pop();
             setIsCartOpen(true);
           }}
-          className="relative p-2.5 rounded-2xl liquid-glass-pill text-[#9494b8] hover:text-white transition-colors"
+          className="relative p-2 rounded-2xl liquid-glass-pill text-[#9494b8] hover:text-white transition-colors"
           title="Open Cart"
         >
           <ShoppingBag className="w-4 h-4 text-[#fbbf24]" />
@@ -127,10 +142,10 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenSupabaseModal }) => 
             sounds.click();
             setActiveView('profile');
           }}
-          className="flex items-center gap-2 px-3.5 py-1.5 rounded-2xl liquid-glass-pill border-[#ff2d95]/40 cursor-pointer hover:border-[#00e5ff] transition-all"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl liquid-glass-pill border-[#ff2d95]/40 cursor-pointer hover:border-[#00e5ff] transition-all"
         >
           <span className="text-xs font-bold text-[#ff2d95] font-orbitron">
-            ⚡ {currentUser?.walletBalance?.toFixed(0) || '0'} <span className="text-[10px] text-[#00e5ff]">WVDS</span>
+            ⚡ {currentUser?.walletBalance ? Number(currentUser.walletBalance).toFixed(0) : '0'} <span className="text-[10px] text-[#00e5ff] hidden xs:inline">WVDS</span>
           </span>
         </div>
       </div>

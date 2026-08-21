@@ -48,6 +48,7 @@ export interface WevidsState {
   activeShare: { title: string; url: string } | null;
   viewingProfileUser: UserProfile | null;
   isSupabaseModalOpen: boolean;
+  isMobileSidebarOpen: boolean;
   
   currentUser: UserProfile;
   allUsers: Record<string, UserProfile>;
@@ -77,6 +78,7 @@ export const initialWevidsState: WevidsState = {
   activeShare: null,
   viewingProfileUser: null,
   isSupabaseModalOpen: false,
+  isMobileSidebarOpen: false,
   currentUser: CURRENT_USER,
   allUsers: MOCK_USERS,
   soundEnabled: true,
@@ -97,6 +99,7 @@ export type WevidsAction =
   | { type: 'OPEN_USER_PROFILE_MODAL'; payload: UserProfile }
   | { type: 'CLOSE_USER_PROFILE_MODAL' }
   | { type: 'SET_IS_SUPABASE_MODAL_OPEN'; payload: boolean }
+  | { type: 'SET_IS_MOBILE_SIDEBAR_OPEN'; payload: boolean }
   | { type: 'UPDATE_CURRENT_USER'; payload: Partial<UserProfile> }
   | { type: 'SET_ALL_USERS'; payload: Record<string, UserProfile> }
   | { type: 'TOGGLE_FOLLOW_USER'; payload: { userId: string; isFollowing: boolean } }
@@ -137,7 +140,7 @@ export type WevidsAction =
 export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsState => {
   switch (action.type) {
     case 'SET_ACTIVE_VIEW':
-      return { ...state, activeView: action.payload };
+      return { ...state, activeView: action.payload, isMobileSidebarOpen: false };
     case 'SET_ACTIVE_CONV_ID':
       return { ...state, activeConvId: action.payload };
     case 'SET_ACTIVE_CALL_USER':
@@ -156,6 +159,8 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
       return { ...state, viewingProfileUser: null };
     case 'SET_IS_SUPABASE_MODAL_OPEN':
       return { ...state, isSupabaseModalOpen: action.payload };
+    case 'SET_IS_MOBILE_SIDEBAR_OPEN':
+      return { ...state, isMobileSidebarOpen: action.payload };
     case 'UPDATE_CURRENT_USER':
       return { 
         ...state, 
@@ -183,14 +188,14 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
         ...state,
         currentUser: {
           ...state.currentUser,
-          following: isFollowing ? Math.max(0, (state.currentUser.following || 1) - 1) : (state.currentUser.following || 0) + 1,
+          following: isFollowing ? Math.max(0, (Number(state.currentUser.following) || 1) - 1) : (Number(state.currentUser.following) || 0) + 1,
           followingIds: newFollowingIds
         },
         allUsers: {
           ...state.allUsers,
           [userId]: {
             ...targetUser,
-            followers: isFollowing ? Math.max(0, (targetUser.followers || 1) - 1) : (targetUser.followers || 0) + 1,
+            followers: isFollowing ? Math.max(0, (Number(targetUser.followers) || 1) - 1) : (Number(targetUser.followers) || 0) + 1,
             followerIds: isFollowing 
               ? (targetUser.followerIds || []).filter(id => id !== state.currentUser.id)
               : [...(targetUser.followerIds || []), state.currentUser.id]
@@ -206,7 +211,7 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
             ? {
                 ...p,
                 isLiked: !p.isLiked,
-                likes: p.isLiked ? Math.max(0, p.likes - 1) : p.likes + 1
+                likes: p.isLiked ? Math.max(0, (Number(p.likes) || 1) - 1) : (Number(p.likes) || 0) + 1
               }
             : p
         )
@@ -230,7 +235,7 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
           clip.id === action.payload.clipId
             ? { 
                 ...clip, 
-                likes: clip.isLiked ? Math.max(0, clip.likes - 1) : clip.likes + 1, 
+                likes: clip.isLiked ? Math.max(0, (Number(clip.likes) || 1) - 1) : (Number(clip.likes) || 0) + 1, 
                 isLiked: !clip.isLiked,
                 isDisliked: false 
               }
@@ -244,7 +249,7 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
           clip.id === action.payload.clipId
             ? { 
                 ...clip, 
-                dislikes: clip.isDisliked ? Math.max(0, (clip.dislikes || 1) - 1) : (clip.dislikes || 0) + 1, 
+                dislikes: clip.isDisliked ? Math.max(0, (Number(clip.dislikes) || 1) - 1) : (Number(clip.dislikes) || 0) + 1, 
                 isDisliked: !clip.isDisliked,
                 isLiked: false 
               }
@@ -280,9 +285,9 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
           c.id === convId 
             ? {
                 ...c,
-                lastMsg: `${message.senderName}: ${message.text || 'media'}`,
+                lastMsg: `${message.senderName || 'User'}: ${message.text || 'media'}`,
                 time: 'Just now',
-                messages: [...c.messages, message]
+                messages: [...(c.messages || []), message]
               }
             : c
         )
@@ -291,7 +296,7 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
     case 'ADD_CONVERSATION': {
       return {
         ...state,
-        conversations: [action.payload, ...state.conversations],
+        conversations: [action.payload, ...state.conversations.filter(c => c.id !== action.payload.id)],
         activeConvId: action.payload.id
       };
     }
@@ -332,7 +337,7 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
         ...state,
         cart: state.cart.map(item =>
           item.product.id === action.payload.productId
-            ? { ...item, quantity: action.payload.quantity }
+            ? { ...item, quantity: Math.max(1, action.payload.quantity) }
             : item
         ),
       };
@@ -345,33 +350,33 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
     case 'DELETE_POST':
       return { ...state, posts: state.posts.filter(p => p.id !== action.payload.postId) };
     case 'SET_POSTS':
-      return { ...state, posts: action.payload };
+      return { ...state, posts: action.payload || [] };
     case 'ADD_CLIP':
       return { ...state, clips: [action.payload, ...state.clips.filter(c => c.id !== action.payload.id)] };
     case 'SET_CLIPS':
-      return { ...state, clips: action.payload };
+      return { ...state, clips: action.payload || [] };
     case 'ADD_LONG_VIDEO':
       return { ...state, longVideos: [action.payload, ...state.longVideos] };
     case 'ADD_ROM':
       return { ...state, roms: [action.payload, ...state.roms.filter(r => r.id !== action.payload.id)] };
     case 'SET_ROMS':
-      return { ...state, roms: action.payload };
+      return { ...state, roms: action.payload || [] };
     case 'ADD_PRODUCT':
       return { ...state, products: [action.payload, ...state.products.filter(p => p.id !== action.payload.id)] };
     case 'SET_PRODUCTS':
-      return { ...state, products: action.payload };
+      return { ...state, products: action.payload || [] };
     case 'ADD_SHARED_FILE':
       return { ...state, files: [action.payload, ...state.files.filter(f => f.id !== action.payload.id)] };
     case 'SET_SHARED_FILES':
-      return { ...state, files: action.payload };
+      return { ...state, files: action.payload || [] };
     case 'ADD_AUDIO_TRACK':
       return { ...state, audioTracks: [action.payload, ...state.audioTracks.filter(a => a.id !== action.payload.id)] };
     case 'SET_AUDIO_TRACKS':
-      return { ...state, audioTracks: action.payload };
+      return { ...state, audioTracks: action.payload || [] };
     case 'ADD_FILM':
       return { ...state, films: [action.payload, ...state.films.filter(f => f.id !== action.payload.id)] };
     case 'SET_FILMS':
-      return { ...state, films: action.payload };
+      return { ...state, films: action.payload || [] };
     case 'SET_CLOUD_SYNCING':
       return { ...state, isCloudSyncing: action.payload };
     case 'SET_LAST_CLOUD_SYNC':

@@ -35,10 +35,11 @@ export const AudioHubView: React.FC = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const currentTrack = audioTracks[currentTrackIndex] || audioTracks[0];
+  const safeTracks = Array.isArray(audioTracks) ? audioTracks : [];
+  const currentTrack = safeTracks[currentTrackIndex] || safeTracks[0] || null;
 
   const handleTogglePlay = () => {
-    if (!audioRef.current) return;
+    if (!audioRef.current || !currentTrack) return;
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
@@ -50,8 +51,10 @@ export const AudioHubView: React.FC = () => {
   };
 
   const handleSelectTrack = (idx: number) => {
+    if (safeTracks.length === 0) return;
     sounds.click();
-    setCurrentTrackIndex(idx);
+    const safeIdx = ((idx % safeTracks.length) + safeTracks.length) % safeTracks.length;
+    setCurrentTrackIndex(safeIdx);
     setIsPlaying(true);
     setTimeout(() => {
       audioRef.current?.play().catch(() => {});
@@ -129,7 +132,7 @@ export const AudioHubView: React.FC = () => {
       </div>
 
       {/* Main Music Deck */}
-      {audioTracks.length === 0 ? (
+      {safeTracks.length === 0 ? (
         <div className="liquid-glass rounded-3xl p-12 border border-white/10 text-center space-y-4 shadow-xl">
           <Music2 className="w-14 h-14 text-[#ff2d95] mx-auto opacity-50 animate-pulse" />
           <h3 className="font-orbitron font-bold text-lg text-white">Your Audio Deck is Ready</h3>
@@ -152,7 +155,7 @@ export const AudioHubView: React.FC = () => {
               <div className="relative aspect-square rounded-2xl overflow-hidden bg-black shadow-xl group">
                 <img
                   src={currentTrack?.cover || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80'}
-                  alt={currentTrack?.title}
+                  alt={currentTrack?.title || 'Track cover'}
                   className={`w-full h-full object-cover transition-transform duration-700 ${isPlaying ? 'scale-105' : ''}`}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-4">
@@ -176,13 +179,13 @@ export const AudioHubView: React.FC = () => {
               <audio
                 ref={audioRef}
                 src={currentTrack?.url}
-                onEnded={() => handleSelectTrack((currentTrackIndex + 1) % audioTracks.length)}
+                onEnded={() => handleSelectTrack((currentTrackIndex + 1) % safeTracks.length)}
               />
 
               {/* Transport controls */}
               <div className="flex items-center justify-center gap-6">
                 <button
-                  onClick={() => handleSelectTrack((currentTrackIndex - 1 + audioTracks.length) % audioTracks.length)}
+                  onClick={() => handleSelectTrack(currentTrackIndex - 1)}
                   className="p-3 rounded-full bg-white/5 hover:bg-white/15 text-white transition-transform hover:scale-110"
                 >
                   ⏮
@@ -196,7 +199,7 @@ export const AudioHubView: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={() => handleSelectTrack((currentTrackIndex + 1) % audioTracks.length)}
+                  onClick={() => handleSelectTrack(currentTrackIndex + 1)}
                   className="p-3 rounded-full bg-white/5 hover:bg-white/15 text-white transition-transform hover:scale-110"
                 >
                   ⏭
@@ -211,12 +214,12 @@ export const AudioHubView: React.FC = () => {
               <div className="flex items-center justify-between">
                 <h3 className="font-orbitron font-bold text-sm text-white flex items-center gap-2">
                   <Music2 className="w-4 h-4 text-[#00e5ff]" />
-                  Deck Playlist ({audioTracks.length} tracks)
+                  Deck Playlist ({safeTracks.length} tracks)
                 </h3>
               </div>
 
               <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
-                {audioTracks.map((t, idx) => {
+                {safeTracks.map((t, idx) => {
                   const isSelected = idx === currentTrackIndex;
                   return (
                     <div
