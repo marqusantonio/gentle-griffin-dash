@@ -1,12 +1,15 @@
 // Self-contained Supabase Client with standard PostgREST and Realtime support
-const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+const rawSupabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || 'https://dmoxkwtifnwymcalzbie.supabase.co';
+const rawSupabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.info(
-    'Supabase environment variables (VITE_SUPABASE_URL and/or VITE_SUPABASE_ANON_KEY) are not provided in .env. You can connect in the UI or define them in .env.'
-  );
-}
+// Clean base URL ensuring no trailing slashes or /rest/v1 paths in base URL
+export const sanitizeBaseUrl = (url: string): string => {
+  if (!url) return '';
+  return url.trim().replace(/\/+$/, '').replace(/\/rest\/v1\/?$/, '');
+};
+
+const supabaseUrl = sanitizeBaseUrl(rawSupabaseUrl);
+const supabaseAnonKey = rawSupabaseAnonKey.trim();
 
 export interface SupabaseConfig {
   url: string;
@@ -56,7 +59,7 @@ export const saveStoredSession = (session: SupabaseSession | null) => {
 
 export const saveSupabaseCredentials = (url: string, anonKey: string) => {
   if (typeof window !== 'undefined') {
-    localStorage.setItem('wevids_supabase_url', url.trim());
+    localStorage.setItem('wevids_supabase_url', sanitizeBaseUrl(url));
     localStorage.setItem('wevids_supabase_anon_key', anonKey.trim());
   }
 };
@@ -70,24 +73,30 @@ export const clearSupabaseCredentials = () => {
 };
 
 export const getSupabaseConfig = (): SupabaseConfig => {
-  if (typeof window === 'undefined') return { url: '', anonKey: '' };
+  if (typeof window === 'undefined') return { url: supabaseUrl, anonKey: supabaseAnonKey };
   const envUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
   const envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
   const localUrl = localStorage.getItem('wevids_supabase_url') || '';
   const localKey = localStorage.getItem('wevids_supabase_anon_key') || '';
 
-  const rawUrl = envUrl || localUrl || '';
-  const rawKey = envKey || localKey || '';
+  const rawUrl = envUrl || localUrl || supabaseUrl || '';
+  const rawKey = envKey || localKey || supabaseAnonKey || '';
 
   return {
-    url: rawUrl.trim().replace(/\/+$/, ''),
+    url: sanitizeBaseUrl(rawUrl),
     anonKey: rawKey.trim(),
   };
 };
 
 export const isSupabaseConfigured = (): boolean => {
   const { url, anonKey } = getSupabaseConfig();
-  return Boolean(url && anonKey && url.startsWith('https://') && anonKey.length > 15);
+  return Boolean(
+    url && 
+    anonKey && 
+    url.startsWith('https://') && 
+    anonKey !== 'YOUR_ANON_KEY_HERE' && 
+    anonKey.length > 15
+  );
 };
 
 // Query Builder for .from('table').select().order().eq().or()
@@ -105,7 +114,7 @@ class PostgrestQueryBuilder<T = any> implements PromiseLike<{ data: T[] | null; 
 
   constructor(table: string, url: string, anonKey: string) {
     this.table = table;
-    this.url = url;
+    this.url = sanitizeBaseUrl(url);
     this.anonKey = anonKey;
   }
 
@@ -162,11 +171,11 @@ class PostgrestQueryBuilder<T = any> implements PromiseLike<{ data: T[] | null; 
 
   async execute(): Promise<{ data: T[] | null; error: any }> {
     const config = getSupabaseConfig();
-    const effectiveUrl = this.url || config.url;
+    const effectiveUrl = sanitizeBaseUrl(this.url || config.url);
     const effectiveKey = this.anonKey || config.anonKey;
 
-    if (!effectiveUrl || !effectiveKey) {
-      return { data: null, error: 'Supabase URL or Key not set' };
+    if (!effectiveUrl || !effectiveKey || effectiveKey === 'YOUR_ANON_KEY_HERE') {
+      return { data: null, error: 'Valid Supabase Anon Key is required' };
     }
 
     try {
@@ -252,7 +261,7 @@ export class RealtimeChannel {
     this.isSubscribed = true;
 
     const { url, anonKey } = getSupabaseConfig();
-    if (url && anonKey && typeof window !== 'undefined') {
+    if (url && anonKey && anonKey !== 'YOUR_ANON_KEY_HERE' && typeof window !== 'undefined') {
       try {
         const wsUrl = url.replace(/^http/, 'ws') + `/realtime/v1/websocket?apikey=${encodeURIComponent(anonKey)}&vsn=1.0.0`;
         this.ws = new WebSocket(wsUrl);
@@ -309,9 +318,9 @@ export class SupabaseClientInstance {
   public auth = {
     signUp: async ({ email, password, options }: { email: string; password: string; options?: any }) => {
       const config = getSupabaseConfig();
-      const u = this.url || config.url;
+      const u = sanitizeBaseUrl(this.url || config.url);
       const k = this.anonKey || config.anonKey;
-      if (!u || !k) return { data: null, error: { message: 'Supabase credentials missing' } };
+      if (!u || !k || k === 'YOUR_ANON_KEY_HERE') return { data: null, error: { message: 'Supabase credentials missing' } };
 
       try {
         const res = await fetch(`${u}/auth/v1/signup?apikey=${encodeURIComponent(k)}`, {
@@ -329,9 +338,9 @@ export class SupabaseClientInstance {
     },
     signInWithPassword: async ({ email, password }: { email: string; password: string }) => {
       const config = getSupabaseConfig();
-      const u = this.url || config.url;
+      const u = sanitizeBaseUrl(this.url || config.url);
       const k = this.anonKey || config.anonKey;
-      if (!u || !k) return { data: null, error: { message: 'Supabase credentials missing' } };
+      if (!u || !k || k === 'YOUR_ANON_KEY_HERE') return { data: null, error: { message: 'Supabase credentials missing' } };
 
       try {
         const res = await fetch(`${u}/auth/v1/token?grant_type=password&apikey=${encodeURIComponent(k)}`, {
@@ -349,7 +358,7 @@ export class SupabaseClientInstance {
     },
     signOut: async () => {
       const config = getSupabaseConfig();
-      const u = this.url || config.url;
+      const u = sanitizeBaseUrl(this.url || config.url);
       const k = this.anonKey || config.anonKey;
       const session = getStoredSession();
       if (u && k && session?.access_token) {
@@ -371,7 +380,7 @@ export class SupabaseClientInstance {
   };
 
   constructor(url: string, anonKey: string) {
-    this.url = url;
+    this.url = sanitizeBaseUrl(url);
     this.anonKey = anonKey;
   }
 
@@ -394,9 +403,9 @@ export class SupabaseClientInstance {
 
   public async signInWithGoogle(): Promise<{ url?: string; error?: string }> {
     const config = getSupabaseConfig();
-    const u = this.url || config.url;
+    const u = sanitizeBaseUrl(this.url || config.url);
     const k = this.anonKey || config.anonKey;
-    if (!u || !k) return { error: 'Please configure your Supabase URL & Anon Key.' };
+    if (!u || !k || k === 'YOUR_ANON_KEY_HERE') return { error: 'Please configure your Supabase URL & Anon Key.' };
     const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
     const oauthUrl = `${u}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(currentOrigin)}&apikey=${encodeURIComponent(k)}`;
     if (typeof window !== 'undefined') {
@@ -423,9 +432,9 @@ export class SupabaseClientInstance {
 
   public async testConnection(): Promise<{ ok: boolean; message: string }> {
     const config = getSupabaseConfig();
-    const u = this.url || config.url;
+    const u = sanitizeBaseUrl(this.url || config.url);
     const k = this.anonKey || config.anonKey;
-    if (!u || !k) return { ok: false, message: 'URL and Anon Key are missing.' };
+    if (!u || !k || k === 'YOUR_ANON_KEY_HERE') return { ok: false, message: 'URL and Anon Key are missing or unset.' };
 
     try {
       const res = await fetch(`${u}/rest/v1/posts?select=id&limit=1`, {
@@ -443,7 +452,7 @@ export class SupabaseClientInstance {
 }
 
 export const createClient = (url: string, anonKey: string): SupabaseClientInstance => {
-  return new SupabaseClientInstance(url, anonKey);
+  return new SupabaseClientInstance(sanitizeBaseUrl(url), anonKey);
 };
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
