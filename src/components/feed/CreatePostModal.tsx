@@ -15,18 +15,31 @@ import { supabase, checkContentModeration } from '../../lib/supabase';
 import { PostItem, ShortClipItem } from '../../types/wevids';
 import { toast } from 'sonner';
 
-// Helper to extract a readable error message from any Supabase error shape
+// Robust helper to extract a readable error message
 const getErrorMessage = (error: any): string => {
   if (!error) return 'Unknown error';
   if (typeof error === 'string') return error;
   if (typeof error === 'object') {
-    // Prefer explicit message/hint fields
-    if (error.message) return error.message;
-    if (error.hint) return error.hint;
-    if (error.error_description) return error.error_description;
-    return JSON.stringify(error);
+    if (typeof error.message === 'string') return error.message;
+    if (typeof error.hint === 'string') return error.hint;
+    if (typeof error.error_description === 'string') return error.error_description;
+
+    if (typeof error.message === 'object' && error.message !== null) {
+      const nested = error.message;
+      if (typeof nested.message === 'string') return nested.message;
+      if (typeof nested.hint === 'string') return nested.hint;
+      return JSON.stringify(nested);
+    }
+
+    try {
+      const str = JSON.stringify(error);
+      if (str && str !== '{}') return str;
+    } catch {
+      // ignore
+    }
   }
-  return String(error);
+  const str = String(error);
+  return str !== '[object Object]' ? str : 'Unknown database error';
 };
 
 interface CreatePostModalProps {
@@ -194,7 +207,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         onClose();
       }
     } catch (err: any) {
-      toast.error(err.message || 'Failed to publish');
+      toast.error(getErrorMessage(err));
     } finally {
       setIsUploading(false);
     }
