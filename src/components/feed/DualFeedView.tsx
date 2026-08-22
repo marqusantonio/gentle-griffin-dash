@@ -16,22 +16,10 @@ import {
 import { RichCommentInput } from '../comments/RichCommentInput';
 import { CreatePostModal } from './CreatePostModal';
 import { sounds } from '../../lib/soundFx';
-import { supabase, checkContentModeration } from '../../lib/supabase';
-import { PostItem, ShortClipItem } from '../../types/wevids';
+import { supabase } from '../../lib/supabase';
+import { PostItem, ShortClipItem, CommentItem } from '../../types/wevids';
 import { getErrorMessage } from '../../lib/errorUtils';
 import { toast } from 'sonner';
-
-interface CommentItem {
-  id: string;
-  userId: string;
-  authorName: string;
-  authorAvatar: string;
-  authorColor: string;
-  text: string;
-  created_at: string;
-  likes: number;
-  replies: CommentItem[];
-}
 
 export const DualFeedView: React.FC = () => {
   const { currentUser, setActiveView } = useWevids();
@@ -44,7 +32,6 @@ export const DualFeedView: React.FC = () => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [expandedComments, setExpandedComments] = useState<string | null>(null);
   const [playingClipId, setPlayingClipId] = useState<string | null>(null);
-  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
 
   const fetchFeed = useCallback(async () => {
     setLoading(true);
@@ -87,7 +74,7 @@ export const DualFeedView: React.FC = () => {
     const targetPost = posts.find(p => p.id === postId);
     if (!targetPost) return;
 
-    const newLikes = targetPost.likes + 1;
+    const newLikes = (Number(targetPost.likes) || 0) + 1;
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, likes: newLikes } : p));
     sounds.pop();
 
@@ -106,7 +93,7 @@ export const DualFeedView: React.FC = () => {
     const targetClip = clips.find(c => c.id === clipId);
     if (!targetClip) return;
 
-    const newLikes = targetClip.likes + 1;
+    const newLikes = (Number(targetClip.likes) || 0) + 1;
     setClips(prev => prev.map(c => c.id === clipId ? { ...c, likes: newLikes } : c));
     sounds.pop();
 
@@ -125,7 +112,7 @@ export const DualFeedView: React.FC = () => {
     const targetPost = posts.find(p => p.id === postId);
     if (!targetPost) return;
 
-    const newShares = targetPost.shares + 1;
+    const newShares = (Number(targetPost.shares) || 0) + 1;
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, shares: newShares } : p));
     sounds.success();
 
@@ -163,7 +150,7 @@ export const DualFeedView: React.FC = () => {
     const targetClip = clips.find(c => c.id === clipId);
     if (!targetClip) return;
 
-    const newShares = targetClip.shares + 1;
+    const newShares = (Number(targetClip.shares) || 0) + 1;
     setClips(prev => prev.map(c => c.id === clipId ? { ...c, shares: newShares } : c));
     sounds.success();
 
@@ -224,27 +211,25 @@ export const DualFeedView: React.FC = () => {
     setExpandedComments(prev => prev === postId ? null : postId);
   };
 
-  const handleSubmitComment = async (postId: string, text: string) => {
-    if (!text.trim()) return;
-
+  const handleSendComment = async (postId: string, commentData: { text: string; media?: string; mediaType?: 'image' | 'gif' | 'sticker' | 'audio' }) => {
     const targetPost = posts.find(p => p.id === postId);
     if (!targetPost) return;
 
     const newComment: CommentItem = {
       id: `comment-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      userId: currentUser?.id || 'guest',
-      authorName: currentUser?.name || 'Creator',
-      authorAvatar: currentUser?.avatar || 'C',
-      authorColor: currentUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
-      text: text.trim(),
-      created_at: new Date().toISOString(),
-      likes: 0,
-      replies: []
+      user: currentUser?.id || 'guest',
+      userName: currentUser?.name || 'Creator',
+      userAvatar: currentUser?.avatar || 'C',
+      userColor: currentUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
+      text: commentData.text,
+      media: commentData.media,
+      mediaType: commentData.mediaType,
+      timestamp: 'Just now',
+      likes: 0
     };
 
-    const updatedComments = [...(targetPost.comments || []), newComment];
+    const updatedComments = [newComment, ...(targetPost.comments || [])];
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, comments: updatedComments } : p));
-    setCommentDrafts(prev => ({ ...prev, [postId]: '' }));
     sounds.success();
 
     try {
@@ -271,7 +256,7 @@ export const DualFeedView: React.FC = () => {
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto">
+    <div className="w-full max-w-2xl mx-auto space-y-4">
       {/* Header / Tab Bar */}
       <div className="flex items-center justify-between gap-2 mb-4">
         <div className="flex-1 grid grid-cols-2 gap-1.5 rounded-2xl bg-white/5 border border-white/10 p-1.5">
@@ -461,21 +446,26 @@ export const DualFeedView: React.FC = () => {
                     {/* Existing Comments */}
                     {post.comments && post.comments.length > 0 && (
                       <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
-                        {post.comments.map((comment: any) => (
+                        {post.comments.map((comment: CommentItem) => (
                           <div key={comment.id} className="flex items-start gap-2.5">
                             <div
                               className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-slate-900 shrink-0"
-                              style={{ background: comment.authorColor || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
+                              style={{ background: comment.userColor || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
                             >
-                              {comment.authorAvatar || 'U'}
+                              {comment.userAvatar || 'U'}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="rounded-2xl bg-white/5 border border-white/5 px-3 py-2">
-                                <span className="text-xs font-bold text-white">{comment.authorName}</span>
-                                <p className="text-xs text-white/80 mt-0.5 whitespace-pre-wrap">{comment.text}</p>
+                              <div className="rounded-2xl bg-white/5 border border-white/5 px-3 py-2 space-y-1">
+                                <span className="text-xs font-bold text-white">{comment.userName}</span>
+                                {comment.text && <p className="text-xs text-white/80 whitespace-pre-wrap">{comment.text}</p>}
+                                {comment.media && (
+                                  <div className="rounded-xl overflow-hidden max-h-32 border border-white/10 mt-1">
+                                    <img src={comment.media} alt="Attached" className="w-full h-full object-cover" />
+                                  </div>
+                                )}
                               </div>
                               <div className="text-[10px] text-[#8a8aa8] mt-1 px-2">
-                                {new Date(comment.created_at).toLocaleString()}
+                                {comment.timestamp || 'Just now'}
                               </div>
                             </div>
                           </div>
@@ -486,18 +476,9 @@ export const DualFeedView: React.FC = () => {
                     {/* Comment Input */}
                     <div className="pt-1">
                       <RichCommentInput
-                        onSubmit={(text) => handleSubmitComment(post.id, text)}
-                        placeholder="Add a comment..."
-                        disabled={!currentUser}
-                        value={commentDrafts[post.id] || ''}
-                        onChange={(val) => setCommentDrafts(prev => ({ ...prev, [post.id]: val }))}
-                        submitLabel="POST"
+                        onSend={(c) => handleSendComment(post.id, c)}
+                        placeholder="Add a comment, GIF, or sticker..."
                       />
-                      {!currentUser && (
-                        <p className="text-[10px] text-[#8a8aa8] mt-1.5">
-                          Sign in to comment
-                        </p>
-                      )}
                     </div>
                   </div>
                 )}
@@ -619,13 +600,6 @@ export const DualFeedView: React.FC = () => {
         onClose={() => setIsCreateOpen(false)}
         defaultTarget={activeTab}
       />
-
-      {/* Footer Hint */}
-      <div className="text-center py-6">
-        <p className="text-[10px] text-[#8a8aa8] font-orbitron tracking-widest">
-          ∞ SCROLL FOR MORE · WEVIDS COMMUNITY ∞
-        </p>
-      </div>
     </div>
   );
 };
