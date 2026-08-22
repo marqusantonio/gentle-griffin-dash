@@ -1,6 +1,6 @@
 // Self-contained Supabase Client with standard PostgREST and Realtime support
 const rawSupabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || 'https://dmoxkwtifnwymcalzbie.supabase.co';
-const rawSupabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+const rawSupabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'sb_publishable_secKTwXm6CJ4GaTOho_7OA_wG6S5Ut8';
 
 // Clean base URL ensuring no trailing slashes or /rest/v1 paths in base URL
 export const sanitizeBaseUrl = (url: string): string => {
@@ -476,8 +476,8 @@ export const checkContentModeration = (text: string): { flagged: boolean; reason
   return { flagged: false };
 };
 
-export const SUPABASE_SQL_SCHEMA = `-- Run this in your Supabase SQL Editor (supabase.com -> Project -> SQL Editor)
--- This script will create all tables, backfill any missing columns, configure RLS, and enable Realtime safely.
+export const SUPABASE_SQL_SCHEMA = `-- Copy this entire script and run it in your Supabase SQL Editor:
+-- (Supabase Dashboard -> Project -> SQL Editor -> New Query -> Run)
 
 -- 1. Profiles Table
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -526,6 +526,7 @@ CREATE TABLE IF NOT EXISTS public.posts (
   content TEXT,
   "mediaUrl" TEXT,
   "mediaType" TEXT,
+  video_url TEXT,
   likes INT DEFAULT 0,
   dislikes INT DEFAULT 0,
   shares INT DEFAULT 0,
@@ -543,6 +544,7 @@ ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS time TEXT;
 ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS content TEXT;
 ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS "mediaUrl" TEXT;
 ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS "mediaType" TEXT;
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS video_url TEXT;
 ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS likes INT DEFAULT 0;
 ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS dislikes INT DEFAULT 0;
 ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS shares INT DEFAULT 0;
@@ -557,6 +559,7 @@ CREATE TABLE IF NOT EXISTS public.clips (
   title TEXT,
   description TEXT,
   "videoUrl" TEXT,
+  video_url TEXT,
   "audioTrack" TEXT,
   likes INT DEFAULT 0,
   dislikes INT DEFAULT 0,
@@ -568,6 +571,7 @@ ALTER TABLE public.clips ADD COLUMN IF NOT EXISTS "userId" TEXT;
 ALTER TABLE public.clips ADD COLUMN IF NOT EXISTS title TEXT;
 ALTER TABLE public.clips ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE public.clips ADD COLUMN IF NOT EXISTS "videoUrl" TEXT;
+ALTER TABLE public.clips ADD COLUMN IF NOT EXISTS video_url TEXT;
 ALTER TABLE public.clips ADD COLUMN IF NOT EXISTS "audioTrack" TEXT;
 ALTER TABLE public.clips ADD COLUMN IF NOT EXISTS likes INT DEFAULT 0;
 ALTER TABLE public.clips ADD COLUMN IF NOT EXISTS dislikes INT DEFAULT 0;
