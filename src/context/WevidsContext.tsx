@@ -24,6 +24,7 @@ export interface WevidsContextType extends WevidsState {
   addPost: (post: Partial<PostItem>) => Promise<boolean>;
   deletePost: (postId: string) => Promise<boolean>;
   addClip: (clip: ShortClipItem) => Promise<void>;
+  deleteClip: (clipId: string) => Promise<boolean>;
   addLongVideo: (video: LongVideoItem) => void;
   addRom: (rom: Partial<RomItem>) => Promise<void>;
   addProduct: (product: ProductItem) => Promise<void>;
@@ -43,6 +44,9 @@ export interface WevidsContextType extends WevidsState {
   setIsSupabaseModalOpen: (open: boolean) => void;
   updateCurrentUser: (updates: Partial<UserProfile>) => Promise<void>;
   toggleFollowUser: (userId: string) => Promise<void>;
+  blockUser: (userId: string) => Promise<void>;
+  unblockUser: (userId: string) => Promise<void>;
+  isBlocked: (userId?: string) => boolean;
   isFollowing: (userId?: string) => boolean;
   isMutualFriend: (userId?: string) => boolean;
   togglePostLike: (postId: string) => Promise<void>;
@@ -63,6 +67,8 @@ export interface WevidsContextType extends WevidsState {
   updateCartQuantity: (productId: string, quantity: number) => void;
   clearCart: () => void;
   setSoundEnabled: (enabled: boolean) => void;
+  deactivateAccount: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
 }
 
 const WevidsContext = createContext<WevidsContextType | undefined>(undefined);
@@ -219,12 +225,13 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         dispatch({ type: 'SET_POSTS', payload: postsRes.data });
       }
 
-      // If clips table is populated, use it. Otherwise, fallback to video posts from posts table
+      // If clips table is populated, use it. Filter strictly for video media to never allow ghost video text posts
       if (clipsRes.data && clipsRes.data.length > 0) {
-        dispatch({ type: 'SET_CLIPS', payload: clipsRes.data });
+        const genuineClips = clipsRes.data.filter((c: any) => Boolean(c.videoUrl || c.video_url));
+        dispatch({ type: 'SET_CLIPS', payload: genuineClips });
       } else if (postsRes.data) {
         const videoClipsFromPosts: ShortClipItem[] = postsRes.data
-          .filter((p: any) => p.mediaType === 'video' || p.video_url || (p.mediaUrl && p.mediaUrl.endsWith('.mp4')))
+          .filter((p: any) => p.mediaType === 'video' && Boolean(p.mediaUrl || p.video_url))
           .map((p: any) => ({
             id: p.id,
             userId: p.userId || p.user_id || 'guest',
@@ -237,9 +244,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             shares: Number(p.shares) || 0,
             comments: Array.isArray(p.comments) ? p.comments : []
           }));
-        if (videoClipsFromPosts.length > 0) {
-          dispatch({ type: 'SET_CLIPS', payload: videoClipsFromPosts });
-        }
+        dispatch({ type: 'SET_CLIPS', payload: videoClipsFromPosts });
       }
 
       if (audioRes.data) dispatch({ type: 'SET_AUDIO_TRACKS', payload: audioRes.data });
@@ -264,13 +269,11 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   }, [state.currentUser.id]);
 
-  // Initial fetch and automatic real-time WebSocket channel subscriptions
   useEffect(() => {
     syncWithSupabase(true);
 
     if (!isSupabaseConfigured()) return;
 
-    // Realtime listeners across multiple tables
     const postsChannel = supabase
       .channel('realtime-posts')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => {
@@ -301,7 +304,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     window.addEventListener('focus', handleFocus);
     window.addEventListener('online', handleOnline);
 
-    // Periodic automatic background sync heartbeat (every 5 seconds)
     const interval = setInterval(() => syncWithSupabase(true), 5000);
 
     return () => {
@@ -347,9 +349,9 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       try {
         const { error } = await insertPostWithAutoFallback(fullPost as unknown as Record<string, any>);
         if (error) {
-          toast.error('Supabase write notice: ' + (error.message || error));
+          toast.error('Supabase notice: ' + (error.message || error));
         } else {
-          toast.success('Post published to Supabase!');
+          toast.success('Post published to Feed and Profile!');
         }
       } catch (err: any) {
         toast.error('Failed to write post: ' + err.message);
@@ -368,8 +370,25 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     if (isSupabaseConfigured()) {
       try {
         await supabase.from('posts').delete().eq('id', postId);
+        await supabase.from('clips').delete().eq('id', postId);
       } catch (err: any) {
-        toast.error('Failed to delete post: ' + err.message);
+        toast.error('Notice: ' + err.message);
+      }
+    }
+    return true;
+  };
+
+  const deleteClip = async (clipId: string): Promise<boolean> => {
+    sounds.pop();
+    dispatch({ type: 'DELETE_CLIP', payload: { clipId } });
+    toast.success('Clip removed.');
+
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('clips').delete().eq('id', clipId);
+        await supabase.from('posts').delete().eq('id', clipId);
+      } catch (err: any) {
+        toast.error('Notice: ' + err.message);
       }
     }
     return true;
@@ -430,7 +449,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       try {
         const { error } = await supabase.from('clips').upsert(clip);
         if (error) {
-          // If clips table does not exist, store it directly in posts table so it never fails!
           await insertPostWithAutoFallback({
             id: clip.id,
             userId: clip.userId,
@@ -730,6 +748,11 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return (state.currentUser.followingIds || []).includes(userId);
   };
 
+  const isBlocked = (userId?: string) => {
+    if (!userId) return false;
+    return (state.currentUser.blockedUserIds || []).includes(userId);
+  };
+
   const isMutualFriend = (userId?: string) => {
     if (!userId || userId === state.currentUser.id) return false;
     const targetUser = state.allUsers[userId];
@@ -778,6 +801,57 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     } else {
       toast.info('Unfollowed.');
     }
+  };
+
+  const blockUser = async (userId: string) => {
+    sounds.pop();
+    dispatch({ type: 'BLOCK_USER', payload: { userId } });
+    toast.error('User blocked. Their posts and messages are hidden.');
+
+    const newBlocked = [...(state.currentUser.blockedUserIds || []), userId];
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('profiles').update({
+          blockedUserIds: newBlocked
+        }).eq('id', state.currentUser.id);
+      } catch {}
+    }
+  };
+
+  const unblockUser = async (userId: string) => {
+    sounds.pop();
+    dispatch({ type: 'UNBLOCK_USER', payload: { userId } });
+    toast.success('User unblocked.');
+
+    const newBlocked = (state.currentUser.blockedUserIds || []).filter(id => id !== userId);
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('profiles').update({
+          blockedUserIds: newBlocked
+        }).eq('id', state.currentUser.id);
+      } catch {}
+    }
+  };
+
+  const deactivateAccount = async () => {
+    sounds.pop();
+    await updateCurrentUser({ isDeactivated: true });
+    toast.info('Account deactivated. Your profile is now hidden.');
+  };
+
+  const deleteAccount = async () => {
+    sounds.pop();
+    dispatch({ type: 'PURGE_ACCOUNT' });
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('posts').delete().eq('userId', state.currentUser.id);
+        await supabase.from('clips').delete().eq('userId', state.currentUser.id);
+        await supabase.from('profiles').delete().eq('id', state.currentUser.id);
+      } catch {}
+    }
+    localStorage.clear();
+    toast.success('Your account and data have been permanently deleted.');
+    window.location.reload();
   };
 
   const startOrOpenChatWithUser = (userId: string) => {
@@ -837,6 +911,12 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const receiverId = activeConv.members.find(m => m !== state.currentUser.id) || '';
     const isFriend = isMutualFriend(receiverId);
 
+    // If not friends and not active, enforce single message limit until approved
+    if (!isFriend && activeConv.status === 'pending_request' && activeConv.requestedBy === state.currentUser.id && activeConv.messages.length >= 1) {
+      toast.error('Message limit reached. Please wait for the creator to accept your request.');
+      return;
+    }
+
     sounds.pop();
     const newMessage = {
       id: `msg-${Date.now()}`,
@@ -877,7 +957,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const acceptMessageRequest = async (convId: string) => {
     sounds.success();
     dispatch({ type: 'SET_CONVERSATION_STATUS', payload: { convId, status: 'active' } });
-    toast.success('Message request accepted!');
+    toast.success('Message request accepted! You can now chat freely.');
   };
 
   const declineMessageRequest = async (convId: string) => {
@@ -887,9 +967,12 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const blockMessageUser = async (convId: string) => {
-    sounds.pop();
+    const conv = state.conversations.find(c => c.id === convId);
+    const partnerId = conv?.members.find(m => m !== state.currentUser.id);
+    if (partnerId) {
+      await blockUser(partnerId);
+    }
     dispatch({ type: 'SET_CONVERSATION_STATUS', payload: { convId, status: 'blocked' } });
-    toast.error('User blocked.');
   };
 
   const openVideoCall = (userName: string) => {
@@ -933,6 +1016,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     addPost,
     deletePost,
     addClip,
+    deleteClip,
     addLongVideo,
     addRom,
     addProduct,
@@ -952,6 +1036,9 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setIsSupabaseModalOpen,
     updateCurrentUser,
     toggleFollowUser,
+    blockUser,
+    unblockUser,
+    isBlocked,
     isFollowing,
     isMutualFriend,
     togglePostLike,
@@ -972,6 +1059,8 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     updateCartQuantity,
     clearCart,
     setSoundEnabled,
+    deactivateAccount,
+    deleteAccount
   };
 
   return <WevidsContext.Provider value={value}>{children}</WevidsContext.Provider>;

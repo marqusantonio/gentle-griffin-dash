@@ -31,6 +31,8 @@ export interface UserProfile {
   following: number;
   followingIds?: string[];
   followerIds?: string[];
+  blockedUserIds?: string[];
+  isDeactivated?: boolean;
   videos: number;
   likes: number;
   views: string;

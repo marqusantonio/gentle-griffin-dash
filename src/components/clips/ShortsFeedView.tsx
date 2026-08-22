@@ -13,7 +13,8 @@ import {
   Music2,
   Plus,
   Film,
-  Bookmark
+  Bookmark,
+  Trash2
 } from 'lucide-react';
 import { RichCommentInput } from '../comments/RichCommentInput';
 import { CreatePostModal } from '../feed/CreatePostModal';
@@ -25,6 +26,7 @@ export const ShortsFeedView: React.FC = () => {
   const { 
     clips, 
     addClip,
+    deletePost,
     toggleClipLike, 
     toggleClipDislike, 
     toggleClipBookmark,
@@ -35,7 +37,8 @@ export const ShortsFeedView: React.FC = () => {
     toggleFollowUser,
     isFollowing,
     isMutualFriend,
-    openUserProfileModal
+    openUserProfileModal,
+    isBlocked
   } = useWevids();
 
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -43,7 +46,11 @@ export const ShortsFeedView: React.FC = () => {
   const [showComments, setShowComments] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
-  // Real-time Supabase postgres_changes listener for newly published vertical clips
+  // STRICT VIDEO FILTER: Exclude any items that do not possess a genuine videoUrl
+  const validClips = (clips || []).filter(c => 
+    Boolean(c?.videoUrl && c.videoUrl.length > 5 && !isBlocked(c.userId))
+  );
+
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
 
@@ -53,7 +60,7 @@ export const ShortsFeedView: React.FC = () => {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'clips' },
         (payload: any) => {
-          if (payload?.new) {
+          if (payload?.new && payload.new.videoUrl) {
             sounds.success();
             toast.info(`New short clip: "${payload.new.title}"!`);
             addClip(payload.new);
@@ -67,16 +74,16 @@ export const ShortsFeedView: React.FC = () => {
     };
   }, []);
 
-  if (clips.length === 0) {
+  if (validClips.length === 0) {
     return (
       <div className="max-w-md mx-auto py-20 text-center space-y-5">
         <div className="w-20 h-20 rounded-3xl liquid-glass border border-[#ff2d95]/40 flex items-center justify-center mx-auto text-[#ff2d95] shadow-2xl">
           <Film className="w-10 h-10 animate-pulse" />
         </div>
         <div className="space-y-2">
-          <h2 className="font-orbitron font-bold text-2xl text-white">No Clips Uploaded Yet</h2>
+          <h2 className="font-orbitron font-bold text-2xl text-white">No Video Clips Uploaded Yet</h2>
           <p className="text-xs text-[#8a8aa8]">
-            Vertical short clips uploaded by creators appear here in full 60FPS vertical video.
+            Vertical short videos appear here in full 60FPS. Pure text posts are strictly routed to the Community Feed.
           </p>
         </div>
 
@@ -100,25 +107,27 @@ export const ShortsFeedView: React.FC = () => {
     );
   }
 
-  const activeClip = clips[currentIndex] || clips[0];
+  const activeClip = validClips[currentIndex] || validClips[0];
   const clipAuthor = allUsers[activeClip?.userId] || currentUser;
   const isUserFollowing = isFollowing(activeClip?.userId);
   const isFriend = isMutualFriend(activeClip?.userId);
+  const isMine = activeClip?.userId === currentUser?.id;
 
   const handleNext = () => {
     sounds.pop();
-    setCurrentIndex(prev => (prev + 1) % clips.length);
+    setCurrentIndex(prev => (prev + 1) % validClips.length);
   };
 
   const handlePrev = () => {
     sounds.pop();
-    setCurrentIndex(prev => (prev - 1 + clips.length) % clips.length);
+    setCurrentIndex(prev => (prev - 1 + validClips.length) % validClips.length);
   };
 
   return (
     <div className="flex flex-col lg:flex-row gap-6 justify-center items-start pb-20 max-w-5xl mx-auto">
       <div className="relative w-full max-w-[440px] mx-auto h-[680px] rounded-3xl overflow-hidden liquid-glass border border-white/20 shadow-[0_25px_80px_rgba(0,0,0,0.85)] flex items-center justify-center bg-black">
         <video
+          key={activeClip.id}
           src={activeClip.videoUrl}
           autoPlay
           loop
@@ -129,11 +138,21 @@ export const ShortsFeedView: React.FC = () => {
 
         <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
           <span className="px-3 py-1 rounded-full bg-black/70 backdrop-blur-md text-[10px] font-bold text-[#00e5ff] border border-[#00e5ff]/30 font-orbitron">
-            CLIP {currentIndex + 1}/{clips.length}
+            CLIP {currentIndex + 1}/{validClips.length}
           </span>
         </div>
 
         <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+          {isMine && (
+            <button
+              onClick={() => deletePost(activeClip.id)}
+              className="p-2.5 rounded-full bg-black/60 backdrop-blur-md text-white hover:bg-red-500 transition-all border border-white/10 shadow-lg"
+              title="Delete My Clip"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+
           <button
             onClick={() => {
               sounds.pop();
@@ -156,7 +175,7 @@ export const ShortsFeedView: React.FC = () => {
           </button>
         </div>
 
-        {clips.length > 1 && (
+        {validClips.length > 1 && (
           <div className="absolute right-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
             <button
               onClick={handlePrev}
@@ -281,7 +300,6 @@ export const ShortsFeedView: React.FC = () => {
             <button onClick={() => setShowComments(false)} className="text-xs text-[#8a8aa8] hover:text-white">✕</button>
           </div>
 
-          {/* Comments List */}
           <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
             {!activeClip.comments || activeClip.comments.length === 0 ? (
               <div className="text-center py-20 text-xs text-[#8a8aa8]">

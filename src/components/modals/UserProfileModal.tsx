@@ -14,7 +14,10 @@ import {
   FileText,
   UserPlus,
   UserCheck,
-  Send
+  Send,
+  ShieldAlert,
+  ShieldBan,
+  Trash2
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
 import { toast } from 'sonner';
@@ -26,16 +29,21 @@ export const UserProfileModal: React.FC = () => {
     toggleFollowUser, 
     isFollowing, 
     isMutualFriend, 
+    blockUser,
+    unblockUser,
+    isBlocked,
     startOrOpenChatWithUser,
     currentUser,
     clips,
     posts,
     conversations,
-    setActiveView
+    setActiveView,
+    deletePost
   } = useWevids();
 
-  const [activeTab, setActiveTab] = useState<'videos' | 'posts'>('videos');
+  const [activeTab, setActiveTab] = useState<'all' | 'clips' | 'posts'>('all');
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   if (!viewingProfileUser) return null;
@@ -44,17 +52,18 @@ export const UserProfileModal: React.FC = () => {
   const currentUserId = currentUser?.id || 'guest';
   const following = isFollowing(targetId);
   const mutualFriend = isMutualFriend(targetId);
+  const blocked = isBlocked(targetId);
   const isMe = targetId === currentUserId;
 
-  // Filter user's clips and posts safely
-  const userClips = (clips || []).filter(c => c && c.userId === targetId);
+  // Filter creator's items dynamically
+  const userClips = (clips || []).filter(c => c && c.userId === targetId && Boolean(c.videoUrl));
   const userPosts = (posts || []).filter(p => p && p.userId === targetId);
+  const userMediaPosts = userPosts.filter(p => Boolean(p.mediaUrl));
 
-  // Calculate dynamic total likes from all content + profile baseline
-  const dynamicClipLikes = userClips.reduce((acc, c) => acc + (Number(c?.likes) || 0), 0);
-  const dynamicPostLikes = userPosts.reduce((acc, p) => acc + (Number(p?.likes) || 0), 0);
-  const baseLikes = Number(viewingProfileUser.likes) || 0;
-  const totalLikes = Math.max(baseLikes, dynamicClipLikes + dynamicPostLikes);
+  // Dynamic likes count
+  const dynamicLikes = userPosts.reduce((acc, p) => acc + (Number(p?.likes) || 0), 0) + 
+                       userClips.reduce((acc, c) => acc + (Number(c?.likes) || 0), 0);
+  const totalLikes = Math.max(Number(viewingProfileUser.likes) || 0, dynamicLikes);
 
   // Check if a request is already pending
   const existingConv = (conversations || []).find(c =>
@@ -88,20 +97,25 @@ export const UserProfileModal: React.FC = () => {
     } else if (isRequestPending) {
       toast.info('Message request already pending approval from this creator.');
     } else {
-      toast.info(`Message request mode: You can send 1 message until ${viewingProfileUser.name || 'this creator'} follows you back or accepts your request.`);
+      toast.info(`Message request mode: You can send 1 message until ${viewingProfileUser.name || 'this creator'} accepts your request.`);
     }
   };
 
-  const handleOpenClip = (clipId: string) => {
-    sounds.pop();
-    closeUserProfileModal();
-    setActiveView('clips');
+  const handleBlockToggle = () => {
+    if (blocked) {
+      unblockUser(targetId);
+      setShowBlockConfirm(false);
+    } else {
+      blockUser(targetId);
+      setShowBlockConfirm(false);
+      closeUserProfileModal();
+    }
   };
 
   const avatarColor = viewingProfileUser.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)';
   const displayName = viewingProfileUser.name || 'Creator';
   const handleName = viewingProfileUser.handle || `@${displayName.toLowerCase().replace(/\s+/g, '_')}`;
-  const locationName = viewingProfileUser.location || 'WEVIDS Node';
+  const locationName = viewingProfileUser.location || 'Earth Node';
   const followersCount = Number(viewingProfileUser.followers) || 0;
 
   return (
@@ -177,7 +191,7 @@ export const UserProfileModal: React.FC = () => {
 
         <p className="text-xs text-[#e8e8f4] leading-relaxed">{viewingProfileUser.bio || 'WEVIDS creator and community member.'}</p>
 
-        {/* Dynamic Stats Row with Total Likes */}
+        {/* Dynamic Stats Row */}
         <div className="grid grid-cols-3 gap-2 text-center text-xs">
           <div className="p-2.5 rounded-xl bg-white/5 border border-white/5">
             <div className="font-bold font-orbitron text-[#00e5ff]">{followersCount.toLocaleString()}</div>
@@ -191,12 +205,12 @@ export const UserProfileModal: React.FC = () => {
             <div className="text-[10px] text-[#8a8aa8]">Total Likes</div>
           </div>
           <div className="p-2.5 rounded-xl bg-white/5 border border-white/5">
-            <div className="font-bold font-orbitron text-[#fbbf24]">{userClips.length + userPosts.length}</div>
-            <div className="text-[10px] text-[#8a8aa8]">Uploads</div>
+            <div className="font-bold font-orbitron text-[#fbbf24]">{userPosts.length}</div>
+            <div className="text-[10px] text-[#8a8aa8]">Total Posts</div>
           </div>
         </div>
 
-        {/* Action Buttons: Follow & Message */}
+        {/* Action Buttons: Follow, Message, & Anti-Bullying Block */}
         {!isMe && (
           <div className="flex gap-2 pt-1">
             <button
@@ -236,101 +250,99 @@ export const UserProfileModal: React.FC = () => {
               ) : (
                 <>
                   <Send className="w-3.5 h-3.5 text-[#00e5ff]" />
-                  <span>Request Chat (1 msg)</span>
+                  <span>Request Chat</span>
                 </>
               )}
+            </button>
+
+            <button
+              onClick={() => setShowBlockConfirm(true)}
+              className="p-2.5 rounded-xl bg-white/5 hover:bg-red-500/20 text-[#8a8aa8] hover:text-red-400 border border-white/10 transition-colors"
+              title="Block / Report Creator"
+            >
+              <ShieldBan className="w-4 h-4" />
             </button>
           </div>
         )}
 
-        {/* User Uploads Tab Selector */}
+        {/* Block Confirmation Drawer */}
+        {showBlockConfirm && (
+          <div className="p-4 rounded-2xl bg-red-500/15 border border-red-500/30 space-y-2.5 text-xs animate-fade-in">
+            <div className="flex items-center gap-2 text-red-400 font-bold">
+              <ShieldAlert className="w-4 h-4" />
+              <span>{blocked ? `Unblock ${displayName}?` : `Block ${displayName}?`}</span>
+            </div>
+            <p className="text-[#8a8aa8] leading-relaxed">
+              {blocked 
+                ? 'Unblocking will allow you to see their posts and receive messages.'
+                : 'Blocking will instantly hide all posts, comments, and direct messages from this user.'}
+            </p>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={() => setShowBlockConfirm(false)}
+                className="px-3 py-1.5 rounded-lg bg-white/10 text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBlockToggle}
+                className="px-3.5 py-1.5 rounded-lg bg-red-500 text-white font-bold"
+              >
+                {blocked ? 'Confirm Unblock' : 'Confirm Block'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* User Content Tabs: All Posts vs Media Clips */}
         <div className="pt-2 border-t border-white/10">
           <div className="flex items-center gap-2 mb-3">
             <button
-              onClick={() => {
-                sounds.click();
-                setActiveTab('videos');
-              }}
+              onClick={() => { sounds.click(); setActiveTab('all'); }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-orbitron font-bold transition-all ${
-                activeTab === 'videos'
+                activeTab === 'all'
                   ? 'bg-[#00e5ff] text-slate-900 shadow-md'
                   : 'bg-white/5 text-[#8a8aa8] hover:text-white'
               }`}
             >
-              <Film className="w-3.5 h-3.5" />
-              <span>Clips & Videos ({userClips.length})</span>
+              <FileText className="w-3.5 h-3.5" />
+              <span>All Posts ({userPosts.length})</span>
             </button>
 
             <button
-              onClick={() => {
-                sounds.click();
-                setActiveTab('posts');
-              }}
+              onClick={() => { sounds.click(); setActiveTab('clips'); }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-orbitron font-bold transition-all ${
-                activeTab === 'posts'
+                activeTab === 'clips'
                   ? 'bg-[#ff2d95] text-slate-900 shadow-md'
                   : 'bg-white/5 text-[#8a8aa8] hover:text-white'
               }`}
             >
-              <FileText className="w-3.5 h-3.5" />
-              <span>Posts ({userPosts.length})</span>
+              <Film className="w-3.5 h-3.5" />
+              <span>Media & Clips ({userMediaPosts.length + userClips.length})</span>
             </button>
           </div>
 
-          {/* Videos Grid */}
-          {activeTab === 'videos' && (
-            <div>
-              {userClips.length === 0 ? (
-                <div className="p-6 text-center text-xs text-[#8a8aa8] bg-white/[0.02] rounded-2xl border border-white/5 space-y-1">
-                  <Video className="w-6 h-6 text-[#00e5ff] mx-auto opacity-50" />
-                  <p>No video clips uploaded yet by this creator.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2.5 max-h-60 overflow-y-auto pr-1">
-                  {userClips.map((clip) => (
-                    <div
-                      key={clip.id}
-                      onClick={() => handleOpenClip(clip.id)}
-                      className="relative aspect-[9/14] rounded-2xl overflow-hidden bg-black border border-white/10 cursor-pointer group shadow-md"
-                    >
-                      <video
-                        src={clip.videoUrl}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent flex flex-col justify-end p-2.5 space-y-1">
-                        <div className="text-[11px] font-bold text-white line-clamp-1 group-hover:text-[#00e5ff] transition-colors">
-                          {clip.title}
-                        </div>
-                        <div className="flex items-center justify-between text-[10px] text-[#ff2d95]">
-                          <span className="flex items-center gap-1">
-                            <Heart className="w-3 h-3 fill-current" />
-                            {clip.likes || 0}
-                          </span>
-                          <span className="text-[#8a8aa8]">▶ View</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Posts Grid */}
-          {activeTab === 'posts' && (
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+          {/* All Posts Stream */}
+          {activeTab === 'all' && (
+            <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
               {userPosts.length === 0 ? (
                 <div className="p-6 text-center text-xs text-[#8a8aa8] bg-white/[0.02] rounded-2xl border border-white/5">
-                  No written posts yet.
+                  No posts published yet.
                 </div>
               ) : (
                 userPosts.map((post) => (
-                  <div
-                    key={post.id}
-                    className="p-3 rounded-2xl bg-white/5 border border-white/5 space-y-1.5 text-xs"
-                  >
-                    <p className="text-[#e8e8f4] line-clamp-2">{post.content}</p>
-                    <div className="flex items-center justify-between text-[10px] text-[#8a8aa8]">
+                  <div key={post.id} className="p-3 rounded-2xl bg-white/5 border border-white/5 space-y-1.5 text-xs">
+                    <p className="text-white/90 whitespace-pre-wrap">{post.content}</p>
+
+                    {post.mediaUrl && post.mediaType === 'image' && (
+                      <img src={post.mediaUrl} alt="Post attachment" className="rounded-xl max-h-40 object-cover mt-1" />
+                    )}
+
+                    {post.mediaUrl && post.mediaType === 'video' && (
+                      <video src={post.mediaUrl} controls className="rounded-xl max-h-40 object-cover mt-1 bg-black w-full" />
+                    )}
+
+                    <div className="flex items-center justify-between text-[10px] text-[#8a8aa8] pt-1">
                       <span>{post.time}</span>
                       <span className="text-[#ff2d95] flex items-center gap-1 font-bold">
                         <Heart className="w-3 h-3 fill-current" />
@@ -339,6 +351,61 @@ export const UserProfileModal: React.FC = () => {
                     </div>
                   </div>
                 ))
+              )}
+            </div>
+          )}
+
+          {/* Media Clips Stream */}
+          {activeTab === 'clips' && (
+            <div className="grid grid-cols-2 gap-2.5 max-h-60 overflow-y-auto pr-1">
+              {userClips.length === 0 && userMediaPosts.length === 0 ? (
+                <div className="col-span-2 p-6 text-center text-xs text-[#8a8aa8] bg-white/[0.02] rounded-2xl border border-white/5 space-y-1">
+                  <Video className="w-6 h-6 text-[#00e5ff] mx-auto opacity-50" />
+                  <p>No video clips or photos uploaded yet.</p>
+                </div>
+              ) : (
+                <>
+                  {userClips.map((clip) => (
+                    <div
+                      key={clip.id}
+                      onClick={() => {
+                        closeUserProfileModal();
+                        setActiveView('clips');
+                      }}
+                      className="relative aspect-[9/14] rounded-2xl overflow-hidden bg-black border border-white/10 cursor-pointer group shadow-md"
+                    >
+                      <video src={clip.videoUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent flex flex-col justify-end p-2.5 space-y-1">
+                        <div className="text-[11px] font-bold text-white line-clamp-1 group-hover:text-[#00e5ff]">
+                          {clip.title}
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-[#ff2d95]">
+                          <span className="flex items-center gap-1">
+                            <Heart className="w-3 h-3 fill-current" />
+                            {clip.likes || 0}
+                          </span>
+                          <span className="text-[#8a8aa8]">▶ View Clip</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {userMediaPosts.map((mediaPost) => (
+                    <div
+                      key={mediaPost.id}
+                      className="relative aspect-[9/14] rounded-2xl overflow-hidden bg-black border border-white/10 group shadow-md"
+                    >
+                      {mediaPost.mediaType === 'video' ? (
+                        <video src={mediaPost.mediaUrl} controls className="w-full h-full object-cover" />
+                      ) : (
+                        <img src={mediaPost.mediaUrl} alt="Photo" className="w-full h-full object-cover" />
+                      )}
+                      <div className="absolute inset-x-0 bottom-0 bg-black/70 backdrop-blur-md p-2 text-[10px] text-white truncate">
+                        {mediaPost.content || 'Photo Post'}
+                      </div>
+                    </div>
+                  ))}
+                </>
               )}
             </div>
           )}

@@ -103,6 +103,8 @@ export type WevidsAction =
   | { type: 'UPDATE_CURRENT_USER'; payload: Partial<UserProfile> }
   | { type: 'SET_ALL_USERS'; payload: Record<string, UserProfile> }
   | { type: 'TOGGLE_FOLLOW_USER'; payload: { userId: string; isFollowing: boolean } }
+  | { type: 'BLOCK_USER'; payload: { userId: string } }
+  | { type: 'UNBLOCK_USER'; payload: { userId: string } }
   | { type: 'TOGGLE_POST_LIKE'; payload: { postId: string } }
   | { type: 'ADD_POST_COMMENT'; payload: { postId: string; comment: CommentItem } }
   | { type: 'TOGGLE_CLIP_LIKE'; payload: { clipId: string } }
@@ -124,6 +126,7 @@ export type WevidsAction =
   | { type: 'DELETE_POST'; payload: { postId: string } }
   | { type: 'SET_POSTS'; payload: PostItem[] }
   | { type: 'ADD_CLIP'; payload: ShortClipItem }
+  | { type: 'DELETE_CLIP'; payload: { clipId: string } }
   | { type: 'SET_CLIPS'; payload: ShortClipItem[] }
   | { type: 'ADD_LONG_VIDEO'; payload: LongVideoItem }
   | { type: 'ADD_ROM'; payload: RomItem }
@@ -137,7 +140,8 @@ export type WevidsAction =
   | { type: 'ADD_FILM'; payload: FilmItem }
   | { type: 'SET_FILMS'; payload: FilmItem[] }
   | { type: 'SET_CLOUD_SYNCING'; payload: boolean }
-  | { type: 'SET_LAST_CLOUD_SYNC'; payload: string };
+  | { type: 'SET_LAST_CLOUD_SYNC'; payload: string }
+  | { type: 'PURGE_ACCOUNT' };
 
 export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsState => {
   switch (action.type) {
@@ -203,6 +207,35 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
               : [...(targetUser.followerIds || []), state.currentUser.id]
           },
         },
+      };
+    }
+    case 'BLOCK_USER': {
+      const { userId } = action.payload;
+      const currentBlocked = state.currentUser.blockedUserIds || [];
+      if (currentBlocked.includes(userId)) return state;
+      const updatedBlocked = [...currentBlocked, userId];
+
+      return {
+        ...state,
+        currentUser: { ...state.currentUser, blockedUserIds: updatedBlocked },
+        posts: state.posts.filter(p => p.userId !== userId),
+        clips: state.clips.filter(c => c.userId !== userId),
+        conversations: state.conversations.map(conv => 
+          conv.members.includes(userId) ? { ...conv, status: 'blocked' } : conv
+        )
+      };
+    }
+    case 'UNBLOCK_USER': {
+      const { userId } = action.payload;
+      const currentBlocked = state.currentUser.blockedUserIds || [];
+      const updatedBlocked = currentBlocked.filter(id => id !== userId);
+
+      return {
+        ...state,
+        currentUser: { ...state.currentUser, blockedUserIds: updatedBlocked },
+        conversations: state.conversations.map(conv => 
+          conv.members.includes(userId) && conv.status === 'blocked' ? { ...conv, status: 'active' } : conv
+        )
       };
     }
     case 'TOGGLE_POST_LIKE':
@@ -363,11 +396,17 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
     case 'ADD_POST':
       return { ...state, posts: [action.payload, ...state.posts.filter(p => p.id !== action.payload.id)] };
     case 'DELETE_POST':
-      return { ...state, posts: state.posts.filter(p => p.id !== action.payload.postId) };
+      return { 
+        ...state, 
+        posts: state.posts.filter(p => p.id !== action.payload.postId),
+        clips: state.clips.filter(c => c.id !== action.payload.postId)
+      };
     case 'SET_POSTS':
       return { ...state, posts: action.payload || [] };
     case 'ADD_CLIP':
       return { ...state, clips: [action.payload, ...state.clips.filter(c => c.id !== action.payload.id)] };
+    case 'DELETE_CLIP':
+      return { ...state, clips: state.clips.filter(c => c.id !== action.payload.clipId) };
     case 'SET_CLIPS':
       return { ...state, clips: action.payload || [] };
     case 'ADD_LONG_VIDEO':
@@ -396,6 +435,15 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
       return { ...state, isCloudSyncing: action.payload };
     case 'SET_LAST_CLOUD_SYNC':
       return { ...state, lastCloudSync: action.payload };
+    case 'PURGE_ACCOUNT': {
+      return {
+        ...state,
+        posts: state.posts.filter(p => p.userId !== state.currentUser.id),
+        clips: state.clips.filter(c => c.userId !== state.currentUser.id),
+        conversations: [],
+        directMessages: []
+      };
+    }
     default:
       return state;
   }

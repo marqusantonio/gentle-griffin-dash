@@ -5,17 +5,37 @@ import {
   Camera, 
   Music2, 
   Play, 
-  Pause
+  Pause,
+  FileText,
+  Film,
+  Trash2,
+  Heart,
+  ShieldBan,
+  UserX,
+  AlertTriangle,
+  Settings,
+  Lock
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
+import { toast } from 'sonner';
 
 export const ProfileView: React.FC = () => {
   const { 
     currentUser, 
-    updateCurrentUser
+    updateCurrentUser,
+    posts,
+    clips,
+    deletePost,
+    unblockUser,
+    deactivateAccount,
+    deleteAccount,
+    allUsers
   } = useWevids();
   
   const [isEditing, setIsEditing] = useState(false);
+  const [profileTab, setProfileTab] = useState<'posts' | 'media' | 'settings'>('posts');
+  
+  // Edit profile state
   const [name, setName] = useState(currentUser?.name || 'Guest Creator');
   const [handle, setHandle] = useState(currentUser?.handle || '@guest');
   const [bio, setBio] = useState(currentUser?.bio || '');
@@ -23,8 +43,18 @@ export const ProfileView: React.FC = () => {
   const [pronouns, setPronouns] = useState(currentUser?.pronouns || 'they/them');
   const [bioAudioTitle, setBioAudioTitle] = useState(currentUser?.bioAudioTitle || 'Ambient Neon Theme');
 
+  // Deletion confirm modal
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Sync author's own posts dynamically
+  const myPosts = (posts || []).filter(p => p.userId === currentUser?.id || (currentUser?.isGuest && p.userId === 'guest'));
+  const myMediaPosts = myPosts.filter(p => Boolean(p.mediaUrl));
+  const myClips = (clips || []).filter(c => c.userId === currentUser?.id);
+
+  const blockedUserIds = currentUser?.blockedUserIds || [];
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -59,6 +89,8 @@ export const ProfileView: React.FC = () => {
       bioAudioTitle 
     });
     setIsEditing(false);
+    sounds.success();
+    toast.success('Profile saved!');
   };
 
   const walletBalanceNumber = Number(currentUser?.walletBalance) || 50;
@@ -75,7 +107,7 @@ export const ProfileView: React.FC = () => {
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-black/60 backdrop-blur-md border border-white/10 text-xs font-bold text-white hover:bg-[#ff2d95] transition-all"
             >
               <Edit3 className="w-3.5 h-3.5" />
-              {isEditing ? 'Cancel' : 'Edit Profile & Audio'}
+              {isEditing ? 'Cancel' : 'Edit Profile'}
             </button>
           </div>
         </div>
@@ -95,7 +127,6 @@ export const ProfileView: React.FC = () => {
                 )}
               </div>
 
-              {/* Upload avatar */}
               <label className="absolute bottom-0 right-0 p-2 rounded-full bg-[#ff2d95] text-slate-900 cursor-pointer shadow-lg hover:scale-110 transition-transform">
                 <Camera className="w-4 h-4" />
                 <input type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" />
@@ -112,8 +143,8 @@ export const ProfileView: React.FC = () => {
                 <div className="text-[10px] text-[#8a8aa8]">Following</div>
               </div>
               <div className="text-center p-2 rounded-xl bg-white/5 border border-white/5">
-                <div className="font-orbitron font-bold text-sm text-[#fbbf24]">{walletBalanceNumber.toFixed(0)} WVDS</div>
-                <div className="text-[10px] text-[#8a8aa8]">Token Balance</div>
+                <div className="font-orbitron font-bold text-sm text-[#fbbf24]">{myPosts.length}</div>
+                <div className="text-[10px] text-[#8a8aa8]">Posts</div>
               </div>
             </div>
           </div>
@@ -154,7 +185,7 @@ export const ProfileView: React.FC = () => {
                 </div>
               )}
 
-              <p className="text-xs text-[#e8e8f4] max-w-2xl leading-relaxed pt-1">{currentUser?.bio || 'Exploring WEVIDS.'}</p>
+              <p className="text-xs text-[#e8e8f4] max-w-2xl leading-relaxed pt-1">{currentUser?.bio || 'Exploring WEVIDS social ecosystem.'}</p>
             </div>
           ) : (
             <form onSubmit={handleSave} className="space-y-3 pt-2 text-xs">
@@ -222,6 +253,251 @@ export const ProfileView: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Tabs Selector: All Posts / Media Clips / Account Settings */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => { sounds.click(); setProfileTab('posts'); }}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-orbitron font-bold transition-all ${
+            profileTab === 'posts'
+              ? 'bg-[#00e5ff] text-slate-900 shadow-md'
+              : 'bg-white/5 text-[#8a8aa8] hover:text-white border border-white/10'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>My Posts ({myPosts.length})</span>
+        </button>
+
+        <button
+          onClick={() => { sounds.click(); setProfileTab('media'); }}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-orbitron font-bold transition-all ${
+            profileTab === 'media'
+              ? 'bg-[#ff2d95] text-slate-900 shadow-md'
+              : 'bg-white/5 text-[#8a8aa8] hover:text-white border border-white/10'
+          }`}
+        >
+          <Film className="w-4 h-4" />
+          <span>Media Clips ({myMediaPosts.length + myClips.length})</span>
+        </button>
+
+        <button
+          onClick={() => { sounds.click(); setProfileTab('settings'); }}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-orbitron font-bold transition-all ${
+            profileTab === 'settings'
+              ? 'bg-[#fbbf24] text-slate-900 shadow-md'
+              : 'bg-white/5 text-[#8a8aa8] hover:text-white border border-white/10'
+          }`}
+        >
+          <Settings className="w-4 h-4" />
+          <span>Account & Safety</span>
+        </button>
+      </div>
+
+      {/* TAB 1: MY POSTS STREAM */}
+      {profileTab === 'posts' && (
+        <div className="space-y-4">
+          {myPosts.length === 0 ? (
+            <div className="p-12 text-center text-xs text-[#8a8aa8] bg-white/[0.02] rounded-3xl border border-white/5">
+              You haven't posted any updates yet. Share something in the Feed!
+            </div>
+          ) : (
+            myPosts.map((post) => (
+              <div
+                key={post.id}
+                className="liquid-glass rounded-3xl p-5 border border-white/10 space-y-3 shadow-lg"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-slate-900 text-xs"
+                      style={{ background: currentUser?.color || '#00e5ff' }}
+                    >
+                      {currentUser?.avatar || 'U'}
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-white">{currentUser?.name}</div>
+                      <div className="text-[10px] text-[#8a8aa8]">{post.time}</div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => deletePost(post.id)}
+                    className="p-1.5 rounded-lg text-[#8a8aa8] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    title="Delete Post"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <p className="text-sm text-white/95 whitespace-pre-wrap">{post.content}</p>
+
+                {post.mediaUrl && post.mediaType === 'image' && (
+                  <img src={post.mediaUrl} alt="Attachment" className="rounded-2xl max-h-80 w-full object-cover" />
+                )}
+
+                {post.mediaUrl && post.mediaType === 'video' && (
+                  <video src={post.mediaUrl} controls className="rounded-2xl max-h-80 w-full object-cover bg-black" />
+                )}
+
+                <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs text-[#8a8aa8]">
+                  <span className="flex items-center gap-1 text-[#ff2d95] font-bold">
+                    <Heart className="w-3.5 h-3.5 fill-current" />
+                    {(Number(post.likes) || 0).toLocaleString()} likes
+                  </span>
+                  <span>{post.comments?.length || 0} comments</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* TAB 2: MEDIA CLIPS */}
+      {profileTab === 'media' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          {myMediaPosts.length === 0 && myClips.length === 0 ? (
+            <div className="col-span-full p-12 text-center text-xs text-[#8a8aa8] bg-white/[0.02] rounded-3xl border border-white/5">
+              No photos or video clips uploaded to your profile yet.
+            </div>
+          ) : (
+            <>
+              {myClips.map((clip) => (
+                <div key={clip.id} className="rounded-2xl overflow-hidden bg-black border border-white/10 relative group aspect-[9/14]">
+                  <video src={clip.videoUrl} controls className="w-full h-full object-cover" />
+                  <div className="absolute top-2 right-2 flex gap-1">
+                    <button
+                      onClick={() => deletePost(clip.id)}
+                      className="p-1.5 rounded-full bg-black/80 text-white hover:bg-red-500 transition-colors"
+                      title="Delete Clip"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {myMediaPosts.map((post) => (
+                <div key={post.id} className="rounded-2xl overflow-hidden bg-black border border-white/10 relative group aspect-[9/14]">
+                  {post.mediaType === 'video' ? (
+                    <video src={post.mediaUrl} controls className="w-full h-full object-cover" />
+                  ) : (
+                    <img src={post.mediaUrl} alt="Media" className="w-full h-full object-cover" />
+                  )}
+                  <div className="absolute top-2 right-2 flex gap-1">
+                    <button
+                      onClick={() => deletePost(post.id)}
+                      className="p-1.5 rounded-full bg-black/80 text-white hover:bg-red-500 transition-colors"
+                      title="Delete Post"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* TAB 3: ACCOUNT MANAGEMENT & SAFETY TOOLS */}
+      {profileTab === 'settings' && (
+        <div className="space-y-6">
+          {/* Blocked Users Section */}
+          <div className="liquid-glass rounded-3xl p-6 border border-white/10 space-y-4">
+            <h3 className="font-orbitron font-bold text-sm text-white flex items-center gap-2">
+              <ShieldBan className="w-4 h-4 text-[#ff2d95]" />
+              Blocked Accounts ({blockedUserIds.length})
+            </h3>
+            <p className="text-xs text-[#8a8aa8]">
+              Blocked accounts cannot view your profile or message you. Their posts and comments are completely hidden from your feed.
+            </p>
+
+            {blockedUserIds.length === 0 ? (
+              <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 text-xs text-[#8a8aa8] text-center">
+                You haven't blocked any accounts.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {blockedUserIds.map((id) => {
+                  const u = allUsers[id];
+                  return (
+                    <div key={id} className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/5 text-xs">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-7 h-7 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center font-bold">
+                          <UserX className="w-3.5 h-3.5" />
+                        </div>
+                        <span className="font-bold text-white">{u?.name || id}</span>
+                      </div>
+                      <button
+                        onClick={() => unblockUser(id)}
+                        className="px-3 py-1 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-[11px]"
+                      >
+                        Unblock
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Deactivation & Permanent Delete */}
+          <div className="liquid-glass rounded-3xl p-6 border border-red-500/20 space-y-4">
+            <h3 className="font-orbitron font-bold text-sm text-red-400 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" />
+              Account Deactivation & Permanent Data Purge
+            </h3>
+            <p className="text-xs text-[#8a8aa8] leading-relaxed">
+              You can temporarily deactivate your profile or permanently purge all posts, clips, relationships, and data from the network.
+            </p>
+
+            <div className="flex flex-wrap gap-3 pt-2">
+              <button
+                onClick={deactivateAccount}
+                className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs"
+              >
+                Deactivate Profile (Hide Temporarily)
+              </button>
+
+              <button
+                onClick={() => setShowDeleteAccountModal(true)}
+                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-orbitron font-bold text-xs shadow-md"
+              >
+                Permanently Delete Account
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Permanent Deletion Confirmation Modal */}
+      {showDeleteAccountModal && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="liquid-glass rounded-3xl p-6 border border-red-500/40 max-w-md w-full space-y-4 shadow-2xl">
+            <div className="flex items-center gap-2 text-red-400 font-bold font-orbitron text-base">
+              <AlertTriangle className="w-5 h-5" />
+              <span>Confirm Permanent Account Deletion</span>
+            </div>
+            <p className="text-xs text-[#e8e8f4] leading-relaxed">
+              This action <strong>cannot be undone</strong>. All your posts, uploaded media, direct messages, followers, and profile details will be permanently wiped from the database.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setShowDeleteAccountModal(false)}
+                className="px-4 py-2 rounded-xl bg-white/10 text-white text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={deleteAccount}
+                className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-orbitron font-bold text-xs shadow-lg"
+              >
+                Yes, Delete Everything
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -16,7 +16,8 @@ import {
   UserX,
   ShieldBan,
   Clock,
-  Radio
+  Radio,
+  UserPlus
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
@@ -43,9 +44,12 @@ export const MessagesView: React.FC = () => {
     startOrOpenChatWithUser,
     openUserProfileModal,
     isMutualFriend,
+    isFollowing,
+    toggleFollowUser,
     acceptMessageRequest,
     declineMessageRequest,
     blockMessageUser,
+    isBlocked,
     syncWithSupabase
   } = useWevids();
 
@@ -59,7 +63,6 @@ export const MessagesView: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Subscribe to real-time direct_messages via Supabase
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
 
@@ -73,7 +76,7 @@ export const MessagesView: React.FC = () => {
             sounds.pop();
             syncWithSupabase();
             if (payload.new.receiver_id === currentUser.id) {
-              toast.info(`New message from ${payload.new.sender_id}!`);
+              toast.info(`New message received!`);
             }
           }
         }
@@ -88,7 +91,6 @@ export const MessagesView: React.FC = () => {
   const activeConv = conversations.find(c => c.id === activeConvId) || conversations[0] || null;
   const otherMemberId = activeConv?.members?.find(id => id !== currentUser.id) || '';
   
-  // Partner Profile
   const otherUser = otherMemberId ? (allUsers[otherMemberId] || {
     id: otherMemberId,
     name: otherMemberId.startsWith('guest-') ? `Guest_${otherMemberId.replace('guest-', '')}` : (activeConv?.groupName || 'Creator'),
@@ -108,18 +110,24 @@ export const MessagesView: React.FC = () => {
   }) : null;
 
   const isFriend = otherMemberId ? isMutualFriend(otherMemberId) : false;
+  const isTargetBlocked = otherMemberId ? isBlocked(otherMemberId) : false;
 
-  // Filter incoming pending message requests
   const pendingRequests = conversations.filter(c => 
-    c.status === 'pending_request' && c.requestedBy !== currentUser.id
+    c.status === 'pending_request' && c.requestedBy !== currentUser.id && !c.members.some(m => isBlocked(m))
   );
 
-  // Active or mutual chat conversations
   const activeChats = conversations.filter(c => 
-    c.status === 'active' || (c.status === 'pending_request' && c.requestedBy === currentUser.id)
+    (c.status === 'active' || (c.status === 'pending_request' && c.requestedBy === currentUser.id)) &&
+    !c.members.some(m => isBlocked(m))
   );
 
-  const availableCreators = Object.values(allUsers).filter(u => u.id !== currentUser.id);
+  const availableCreators = Object.values(allUsers).filter(u => u.id !== currentUser.id && !isBlocked(u.id));
+
+  // Determine if further messaging is locked (non-friends who already sent 1 request message)
+  const isMessageLocked = !isFriend && 
+    activeConv?.status === 'pending_request' && 
+    activeConv?.requestedBy === currentUser.id && 
+    (activeConv?.messages?.length || 0) >= 1;
 
   const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -135,7 +143,7 @@ export const MessagesView: React.FC = () => {
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeConv) return;
+    if (!activeConv || isMessageLocked) return;
     if (!messageText.trim() && !attachedImage) return;
 
     sendMessage(activeConv.id, {
@@ -150,7 +158,7 @@ export const MessagesView: React.FC = () => {
   };
 
   const handleSelectGif = (url: string) => {
-    if (!activeConv) return;
+    if (!activeConv || isMessageLocked) return;
     sounds.success();
     sendMessage(activeConv.id, {
       mediaUrl: url,
@@ -161,7 +169,7 @@ export const MessagesView: React.FC = () => {
   };
 
   const handleSendVoiceNote = () => {
-    if (!activeConv) return;
+    if (!activeConv || isMessageLocked) return;
     setIsRecordingVoice(true);
     sounds.pop();
     setTimeout(() => {
@@ -269,9 +277,6 @@ export const MessagesView: React.FC = () => {
                           <div className="flex items-center justify-between text-xs mb-0.5">
                             <span className="font-bold text-white truncate flex items-center gap-1">
                               {partnerName}
-                              {partner?.isGuest && (
-                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-white/10 text-[#8a8aa8]">Guest</span>
-                              )}
                             </span>
                             <span className="text-[10px] text-[#8a8aa8]">{conv.time}</span>
                           </div>
@@ -298,7 +303,7 @@ export const MessagesView: React.FC = () => {
               /* Message Requests Tab */
               <div className="space-y-3 p-1">
                 <div className="text-[11px] text-[#8a8aa8]">
-                  Users you don't follow back must send a request before chatting.
+                  Creators who aren't mutual friends must request before chatting freely.
                 </div>
 
                 {pendingRequests.length === 0 ? (
@@ -358,7 +363,7 @@ export const MessagesView: React.FC = () => {
 
             {/* Creators Available */}
             <div className="pt-2 border-t border-white/10 space-y-1">
-              <div className="px-2 text-[10px] font-bold text-[#00e5ff] uppercase tracking-wider flex items-center gap-1.5">
+              <div className="px-2 text-[10px] font-bold text-[#00e5ff] uppercase tracking-wider flex items-center gap-1.5 font-orbitron">
                 <Sparkles className="w-3.5 h-3.5 text-[#ff2d95]" />
                 Online Creators ({availableCreators.length})
               </div>
@@ -379,11 +384,6 @@ export const MessagesView: React.FC = () => {
                     <div className="truncate">
                       <div className="text-xs font-bold text-white truncate flex items-center gap-1">
                         {creator.name}
-                        {creator.isGuest ? (
-                          <span className="text-[8px] bg-white/10 px-1 py-0.2 rounded text-[#8a8aa8]">Guest</span>
-                        ) : (
-                          <span className="text-[8px] bg-[#00e5ff]/20 px-1 py-0.2 rounded text-[#00e5ff]">Account</span>
-                        )}
                       </div>
                       <div className="text-[10px] text-[#8a8aa8]">{creator.handle}</div>
                     </div>
@@ -416,15 +416,6 @@ export const MessagesView: React.FC = () => {
                 <div>
                   <div className="text-xs font-bold text-white flex items-center gap-1.5 group-hover:text-[#00e5ff]">
                     {otherUser.name}
-                    {otherUser.isGuest ? (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/10 text-[#8a8aa8]">
-                        Guest Creator
-                      </span>
-                    ) : (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#00e5ff]/15 text-[#00e5ff] border border-[#00e5ff]/30">
-                        Verified Account
-                      </span>
-                    )}
                     {isFriend && (
                       <span className="text-[9px] text-[#10b981] bg-[#10b981]/20 px-2 py-0.5 rounded-full border border-[#10b981]/30">
                         🤝 Friends
@@ -437,13 +428,23 @@ export const MessagesView: React.FC = () => {
                 </div>
               </div>
 
-              <button
-                onClick={() => openVideoCall(otherUser.name)}
-                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white transition-colors"
-                title="Launch Video Call"
-              >
-                <Video className="w-4 h-4 text-[#00e5ff]" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => openVideoCall(otherUser.name)}
+                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white transition-colors"
+                  title="Launch Video Call"
+                >
+                  <Video className="w-4 h-4 text-[#00e5ff]" />
+                </button>
+
+                <button
+                  onClick={() => blockMessageUser(activeConv.id)}
+                  className="p-2 rounded-xl bg-white/5 hover:bg-red-500/20 text-[#8a8aa8] hover:text-red-400 transition-colors"
+                  title="Block User"
+                >
+                  <ShieldBan className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             {/* Request banner if non-mutual and pending */}
@@ -453,7 +454,9 @@ export const MessagesView: React.FC = () => {
                   <Clock className="w-4 h-4" />
                   <span>
                     {activeConv.requestedBy === currentUser.id 
-                      ? 'Message request pending approval. You can send 1 introductory message.' 
+                      ? isMessageLocked 
+                        ? '1 introduction message sent. Awaiting friend approval.' 
+                        : 'Non-friend mode: You can send 1 introductory message.' 
                       : `${otherUser.name} sent you a message request.`}
                   </span>
                 </div>
@@ -604,8 +607,9 @@ export const MessagesView: React.FC = () => {
             <form onSubmit={handleSendMessage} className="p-3 border-t border-white/10 flex items-center gap-2 bg-white/[0.02]">
               <button
                 type="button"
+                disabled={isMessageLocked}
                 onClick={() => fileInputRef.current?.click()}
-                className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-[#fbbf24] transition-colors"
+                className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-[#fbbf24] transition-colors disabled:opacity-40"
                 title="Attach Image"
               >
                 <ImageIcon className="w-4 h-4" />
@@ -613,8 +617,9 @@ export const MessagesView: React.FC = () => {
 
               <button
                 type="button"
+                disabled={isMessageLocked}
                 onClick={() => setShowGifPicker(!showGifPicker)}
-                className={`p-2.5 rounded-xl transition-colors ${showGifPicker ? 'bg-[#00e5ff] text-slate-900' : 'bg-white/5 hover:bg-white/10 text-[#00e5ff]'}`}
+                className={`p-2.5 rounded-xl transition-colors disabled:opacity-40 ${showGifPicker ? 'bg-[#00e5ff] text-slate-900' : 'bg-white/5 hover:bg-white/10 text-[#00e5ff]'}`}
                 title="Search GIPHY / TENOR"
               >
                 <Film className="w-4 h-4" />
@@ -622,8 +627,9 @@ export const MessagesView: React.FC = () => {
 
               <button
                 type="button"
+                disabled={isMessageLocked}
                 onClick={handleSendVoiceNote}
-                className={`p-2.5 rounded-xl transition-all ${
+                className={`p-2.5 rounded-xl transition-all disabled:opacity-40 ${
                   isRecordingVoice
                     ? 'bg-red-500 text-white animate-pulse'
                     : 'bg-white/5 hover:bg-white/10 text-[#8a8aa8] hover:text-white'
@@ -636,18 +642,19 @@ export const MessagesView: React.FC = () => {
               <input
                 type="text"
                 value={messageText}
+                disabled={isMessageLocked}
                 onChange={(e) => setMessageText(e.target.value)}
                 placeholder={
-                  !isFriend && activeConv.status === 'pending_request' && activeConv.requestedBy === currentUser.id
-                    ? 'Message request pending approval...'
+                  isMessageLocked
+                    ? '1 message sent. Awaiting friend approval...'
                     : `Message ${otherUser.name}...`
                 }
-                className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:outline-none focus:border-[#00e5ff]"
+                className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:outline-none focus:border-[#00e5ff] disabled:opacity-50"
               />
 
               <button
                 type="submit"
-                disabled={!messageText.trim() && !attachedImage}
+                disabled={isMessageLocked || (!messageText.trim() && !attachedImage)}
                 className="p-2.5 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-bold hover:scale-105 transition-transform shadow-md disabled:opacity-50"
               >
                 <Send className="w-4 h-4" />
