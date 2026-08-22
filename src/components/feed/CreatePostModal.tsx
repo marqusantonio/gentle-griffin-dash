@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
 import { supabase, checkContentModeration } from '../../lib/supabase';
+import { sanitizePostForSchema } from '../../lib/schemaAdapter';
 import { PostItem, ShortClipItem } from '../../types/wevids';
 import { getErrorMessage } from '../../lib/errorUtils';
 import { toast } from 'sonner';
@@ -170,7 +171,8 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         created_at: new Date().toISOString()
       };
 
-      const { error } = await supabase.from('posts').insert([newPost]);
+      const safePost = await sanitizePostForSchema({ ...newPost } as Record<string, any>);
+      const { error } = await supabase.from('posts').insert([safePost]);
       if (error) {
         toast.error(`Error saving post: ${getErrorMessage(error)}`);
       } else {
@@ -242,7 +244,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               }}
               className={`p-3 rounded-2xl border text-xs font-bold font-orbitron flex items-center justify-center gap-2 transition-all ${
                 targetType === 'clips'
-                  ? 'bg-gradient-to-r from-[#00e5ff] to-[#ff2d95] text-slate-900 shadow-md border-transparent'
+                  ? 'bg-gradient-to-r from-[#00e5ff] to-[#ff2d95] text-black shadow-md border-transparent'
                   : 'bg-white/5 border-white/10 text-[#8a8aa8] hover:text-white'
               }`}
             >
@@ -261,7 +263,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Crazy Gaming Combo or Shader Test"
+                  placeholder="e.g. Tabletop Gaming Combo or Shader Test"
                   className="w-full px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:border-[#00e5ff] focus:outline-none"
                   required
                 />

@@ -1,26 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect, ReactNode, useCallback } from 'react';
-import { 
-  PostItem, 
-  ShortClipItem, 
-  LongVideoItem, 
-  RomItem, 
-  ProductItem, 
-  Conversation, 
-  UserProfile, 
-  SharedFileItem, 
-  AudioTrackItem, 
-  FilmItem, 
-  ViewName,
-  DirectMessageItem,
-  ChatMessage
-} from '../types/wevids';
-import { wevidsReducer, initialWevidsState, WevidsState } from './wevidsReducer';
-import { supabase, isSupabaseConfigured, checkContentModeration, getStoredSession } from '../lib/supabase';
-import { sounds } from '../lib/soundFx';
-import { toast } from 'sonner';
-
-export interface WevidsContextType extends WevidsState {
-  addPost: (post: Partial<PostItem>) => Promise<boolean>;
+) => Promise<boolean>;
   deletePost: (postId: string) => Promise<boolean>;
   addClip: (clip: ShortClipItem) => Promise<void>;
   addLongVideo: (video: LongVideoItem) => void;
@@ -321,7 +299,8 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     if (isSupabaseConfigured()) {
       try {
-        await supabase.from('posts').upsert(fullPost);
+        const safePost = await sanitizePostForSchema(fullPost as unknown as Record<string, any>);
+        await supabase.from('posts').upsert(safePost);
       } catch (err: any) {
         toast.error('Failed to write post to Supabase: ' + err.message);
       }
