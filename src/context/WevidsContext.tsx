@@ -309,7 +309,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       mediaUrl: post.mediaUrl,
       mediaType: post.mediaType || (post.mediaUrl ? 'image' : undefined),
       likes: 0,
-      dislikes: 0,
       shares: 0,
       comments: [],
       tags: post.tags || ['#WEVIDS'],

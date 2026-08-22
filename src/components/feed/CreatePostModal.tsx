@@ -165,7 +165,6 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         mediaUrl: mediaUrl || undefined,
         mediaType: mediaUrl ? mediaType : undefined,
         likes: 0,
-        dislikes: 0,
         shares: 0,
         comments: [],
         tags: [selectedTag],
