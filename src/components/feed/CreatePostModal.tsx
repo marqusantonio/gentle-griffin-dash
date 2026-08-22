@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
 import { supabase, checkContentModeration } from '../../lib/supabase';
-import { sanitizePostForSchema } from '../../lib/schemaAdapter';
+import { insertPostWithAutoFallback } from '../../lib/schemaAdapter';
 import { PostItem, ShortClipItem } from '../../types/wevids';
 import { getErrorMessage } from '../../lib/errorUtils';
 import { toast } from 'sonner';
@@ -28,7 +28,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   onClose,
   defaultTarget = 'feed'
 }) => {
-  const { currentUser, setActiveView } = useWevids();
+  const { currentUser, setActiveView, syncWithSupabase } = useWevids();
   
   const [targetType, setTargetType] = useState<'feed' | 'clips'>(defaultTarget);
   const [content, setContent] = useState('');
@@ -139,6 +139,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
           sounds.success();
           toast.success('Short Clip uploaded directly to Supabase!');
           resetForm();
+          syncWithSupabase();
           setActiveView('clips');
           onClose();
         }
@@ -171,14 +172,14 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         created_at: new Date().toISOString()
       };
 
-      const safePost = await sanitizePostForSchema({ ...newPost } as Record<string, any>);
-      const { error } = await supabase.from('posts').insert([safePost]);
+      const { error } = await insertPostWithAutoFallback(newPost);
       if (error) {
         toast.error(`Error saving post: ${getErrorMessage(error)}`);
       } else {
         sounds.success();
         toast.success('Post saved directly to Supabase!');
         resetForm();
+        syncWithSupabase();
         setActiveView('feed');
         onClose();
       }

@@ -16,7 +16,7 @@ import {
   ChatMessage 
 } from '../types/wevids';
 import { supabase, isSupabaseConfigured, getStoredSession, checkContentModeration } from '../lib/supabase';
-import { sanitizePostForSchema } from '../lib/schemaAdapter';
+import { insertPostWithAutoFallback } from '../lib/schemaAdapter';
 import { sounds } from '../lib/soundFx';
 import { toast } from 'sonner';
 
@@ -318,15 +318,20 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     sounds.success();
     dispatch({ type: 'ADD_POST', payload: fullPost });
-    toast.success('Post published to Supabase!');
 
     if (isSupabaseConfigured()) {
       try {
-        const safePost = await sanitizePostForSchema(fullPost as unknown as Record<string, any>);
-        await supabase.from('posts').upsert(safePost);
+        const { error } = await insertPostWithAutoFallback(fullPost as unknown as Record<string, any>);
+        if (error) {
+          toast.error('Supabase write notice: ' + (error.message || error));
+        } else {
+          toast.success('Post published to Supabase!');
+        }
       } catch (err: any) {
-        toast.error('Failed to write post to Supabase: ' + err.message);
+        toast.error('Failed to write post: ' + err.message);
       }
+    } else {
+      toast.success('Post published locally!');
     }
     return true;
   };
