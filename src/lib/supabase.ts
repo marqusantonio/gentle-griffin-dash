@@ -37,6 +37,12 @@ export interface SupabaseSession {
   user: SupabaseUser;
 }
 
+export const isValidJwt = (token?: string | null): boolean => {
+  if (!token || typeof token !== 'string') return false;
+  const parts = token.trim().split('.');
+  return parts.length === 3 && parts.every(p => p.length > 0);
+};
+
 export const getStoredSession = (): SupabaseSession | null => {
   if (typeof window === 'undefined') return null;
   const raw = localStorage.getItem('wevids_supabase_session');
@@ -190,9 +196,11 @@ class PostgrestQueryBuilder<T = any> implements PromiseLike<{ data: T[] | null; 
       };
 
       const session = getStoredSession();
-      const bearer = session?.access_token || effectiveKey;
-      if (bearer) {
-        headers['Authorization'] = `Bearer ${bearer}`;
+      // Ensure only valid 3-part JWTs are sent in Authorization: Bearer
+      if (session?.access_token && isValidJwt(session.access_token)) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      } else if (isValidJwt(effectiveKey)) {
+        headers['Authorization'] = `Bearer ${effectiveKey}`;
       }
 
       if (this.isUpsert) {
@@ -209,7 +217,6 @@ class PostgrestQueryBuilder<T = any> implements PromiseLike<{ data: T[] | null; 
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
-        // Better error message for missing columns
         if (errJson.message && errJson.message.includes("schema cache")) {
           return { data: null, error: { message: errJson.message, hint: 'Run the SQL schema script to add missing columns.' } };
         }
@@ -359,7 +366,7 @@ export class SupabaseClientInstance {
       const u = sanitizeBaseUrl(this.url || config.url);
       const k = this.anonKey || config.anonKey;
       const session = getStoredSession();
-      if (u && session?.access_token) {
+      if (u && session?.access_token && isValidJwt(session.access_token)) {
         try {
           await fetch(`${u}/auth/v1/logout?apikey=${encodeURIComponent(k)}`, {
             method: 'POST',
@@ -521,7 +528,6 @@ CREATE TABLE IF NOT EXISTS public.posts (
   "mediaUrl" TEXT,
   "mediaType" TEXT,
   likes INT DEFAULT 0,
-  dislikes INT DEFAULT 0,
   shares INT DEFAULT 0,
   tags JSONB DEFAULT '[]'::jsonb,
   comments JSONB DEFAULT '[]'::jsonb,
