@@ -13,34 +13,8 @@ import {
 import { sounds } from '../../lib/soundFx';
 import { supabase, checkContentModeration } from '../../lib/supabase';
 import { PostItem, ShortClipItem } from '../../types/wevids';
+import { getErrorMessage } from '../../lib/errorUtils';
 import { toast } from 'sonner';
-
-// Robust helper to extract a readable error message
-const getErrorMessage = (error: any): string => {
-  if (!error) return 'Unknown error';
-  if (typeof error === 'string') return error;
-  if (typeof error === 'object') {
-    if (typeof error.message === 'string') return error.message;
-    if (typeof error.hint === 'string') return error.hint;
-    if (typeof error.error_description === 'string') return error.error_description;
-
-    if (typeof error.message === 'object' && error.message !== null) {
-      const nested = error.message;
-      if (typeof nested.message === 'string') return nested.message;
-      if (typeof nested.hint === 'string') return nested.hint;
-      return JSON.stringify(nested);
-    }
-
-    try {
-      const str = JSON.stringify(error);
-      if (str && str !== '{}') return str;
-    } catch {
-      // ignore
-    }
-  }
-  const str = String(error);
-  return str !== '[object Object]' ? str : 'Unknown database error';
-};
 
 interface CreatePostModalProps {
   isOpen: boolean;

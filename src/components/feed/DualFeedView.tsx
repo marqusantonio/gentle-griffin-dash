@@ -11,7 +11,6 @@ import {
   Trash2,
   Play,
   Pause,
-  ChevronDown,
   ChevronUp
 } from 'lucide-react';
 import { RichCommentInput } from '../comments/RichCommentInput';
@@ -19,34 +18,8 @@ import { CreatePostModal } from './CreatePostModal';
 import { sounds } from '../../lib/soundFx';
 import { supabase, checkContentModeration } from '../../lib/supabase';
 import { PostItem, ShortClipItem } from '../../types/wevids';
+import { getErrorMessage } from '../../lib/errorUtils';
 import { toast } from 'sonner';
-
-// Robust helper to extract a readable error message from any Supabase error shape
-const getErrorMessage = (error: any): string => {
-  if (!error) return 'Unknown error';
-  if (typeof error === 'string') return error;
-  if (typeof error === 'object') {
-    if (typeof error.message === 'string') return error.message;
-    if (typeof error.hint === 'string') return error.hint;
-    if (typeof error.error_description === 'string') return error.error_description;
-
-    if (typeof error.message === 'object' && error.message !== null) {
-      const nested = error.message;
-      if (typeof nested.message === 'string') return nested.message;
-      if (typeof nested.hint === 'string') return nested.hint;
-      return JSON.stringify(nested);
-    }
-
-    try {
-      const str = JSON.stringify(error);
-      if (str && str !== '{}') return str;
-    } catch {
-      // ignore
-    }
-  }
-  const str = String(error);
-  return str !== '[object Object]' ? str : 'Unknown database error';
-};
 
 interface CommentItem {
   id: string;
@@ -514,7 +487,7 @@ export const DualFeedView: React.FC = () => {
                     <div className="pt-1">
                       <RichCommentInput
                         onSubmit={(text) => handleSubmitComment(post.id, text)}
-                        placeholder="Add a comment... (**_markdown_ supported**)"
+                        placeholder="Add a comment..."
                         disabled={!currentUser}
                         value={commentDrafts[post.id] || ''}
                         onChange={(val) => setCommentDrafts(prev => ({ ...prev, [post.id]: val }))}
