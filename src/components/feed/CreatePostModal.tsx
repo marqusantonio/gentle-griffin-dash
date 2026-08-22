@@ -75,7 +75,6 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     const reader = new FileReader();
     reader.onload = () => {
       setMediaUrl(reader.result as string);
-      setIsUploadingfalse);
       setIsUploading(false);
       sounds.pop();
       toast.success(`Photo attached: ${file.name}`);
