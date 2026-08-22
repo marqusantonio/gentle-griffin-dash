@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useWevids } from '../../context/WevidsContext';
 import { 
   Heart, 
@@ -13,20 +13,33 @@ import {
   Pause, 
   ChevronUp, 
   Database, 
-  Code 
+  Code,
+  Image as ImageIcon,
+  Video as VideoIcon,
+  Send,
+  Sparkles,
+  Bookmark,
+  Check,
+  Flame,
+  LayoutGrid,
+  ListFilter,
+  Eye
 } from 'lucide-react';
 import { RichCommentInput } from '../comments/RichCommentInput';
 import { CreatePostModal } from './CreatePostModal';
 import { sounds } from '../../lib/soundFx';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { insertPostWithAutoFallback } from '../../lib/schemaAdapter';
 import { PostItem, ShortClipItem, CommentItem } from '../../types/wevids';
 import { getErrorMessage, isTableOrSchemaMissingError } from '../../lib/errorUtils';
 import { toast } from 'sonner';
 
 export const DualFeedView: React.FC = () => {
-  const { currentUser, setActiveView, setIsSupabaseModalOpen } = useWevids();
+  const { currentUser, setActiveView, openUserProfileModal, allUsers } = useWevids();
 
   const [activeTab, setActiveTab] = useState<'feed' | 'clips'>('feed');
+  const [filterTag, setFilterTag] = useState<string>('All');
+  const [viewDensity, setViewDensity] = useState<'cozy' | 'compact'>('cozy');
   const [posts, setPosts] = useState<PostItem[]>([]);
   const [clips, setClips] = useState<ShortClipItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -34,7 +47,20 @@ export const DualFeedView: React.FC = () => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [expandedComments, setExpandedComments] = useState<string | null>(null);
   const [playingClipId, setPlayingClipId] = useState<string | null>(null);
-  const [isSchemaMissing, setIsSchemaMissing] = useState(false);
+  const [copiedPostId, setCopiedPostId] = useState<string | null>(null);
+  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
+
+  // Inline Fast Composer State
+  const [inlineText, setInlineText] = useState('');
+  const [inlineMediaUrl, setInlineMediaUrl] = useState<string | null>(null);
+  const [inlineMediaType, setInlineMediaType] = useState<'image' | 'video' | null>(null);
+  const [inlineTag, setInlineTag] = useState('#WEVIDS');
+  const [isInlinePosting, setIsInlinePosting] = useState(false);
+
+  const inlineImageInputRef = useRef<HTMLInputElement | null>(null);
+  const inlineVideoInputRef = useRef<HTMLInputElement | null>(null);
+
+  const quickFilterTags = ['All', '#WEVIDS', '#Tech', '#CustomROM', '#Gaming', '#Anime', '#Cyberpunk', '#AI'];
 
   const fetchFeed = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) setRefreshing(true);
@@ -53,40 +79,56 @@ export const DualFeedView: React.FC = () => {
         .order('created_at', { ascending: false });
 
       if (postsError) {
-        if (isTableOrSchemaMissingError(postsError)) {
-          setIsSchemaMissing(true);
-        } else if (isManualRefresh) {
+        if (!isTableOrSchemaMissingError(postsError) && isManualRefresh) {
           toast.error(`Error loading posts: ${getErrorMessage(postsError)}`);
         }
       } else if (postsData) {
-        const normalizedPosts: PostItem[] = postsData.map((p: any) => ({
-          id: p.id,
-          userId: p.userId || p.user_id || 'guest',
-          authorName: p.authorName || 'Creator',
-          authorHandle: p.authorHandle || '@creator',
-          authorAvatar: p.authorAvatar || 'C',
-          authorColor: p.authorColor || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
-          location: p.location || 'Earth Node',
-          time: p.created_at ? new Date(p.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
-          content: p.content || p.caption || '',
-          mediaUrl: p.mediaUrl || p.video_url || undefined,
-          mediaType: p.mediaType || (p.video_url ? 'video' : p.mediaUrl ? 'image' : undefined),
-          likes: Number(p.likes) || 0,
-          shares: Number(p.shares) || 0,
-          comments: Array.isArray(p.comments) ? p.comments : [],
-          tags: Array.isArray(p.tags) ? p.tags : []
-        }));
+        const normalizedPosts: PostItem[] = postsData.map((p: any) => {
+          // STRICT MEDIA DETECTION: Only render media if explicitly marked as image or video with actual URL
+          const hasVideo = p.mediaType === 'video' || Boolean(p.video_url && p.video_url.length > 5);
+          const hasImage = p.mediaType === 'image' || Boolean(p.mediaUrl && !p.mediaUrl.endsWith('.mp4') && p.mediaUrl.startsWith('data:image') || (p.mediaUrl && /\.(jpg|jpeg|png|webp|gif)$/i.test(p.mediaUrl)));
+          
+          let mediaUrl: string | undefined = undefined;
+          let mediaType: 'image' | 'video' | undefined = undefined;
+
+          if (hasVideo && (p.video_url || p.mediaUrl)) {
+            mediaUrl = p.video_url || p.mediaUrl;
+            mediaType = 'video';
+          } else if (hasImage && p.mediaUrl) {
+            mediaUrl = p.mediaUrl;
+            mediaType = 'image';
+          }
+
+          return {
+            id: p.id,
+            userId: p.userId || p.user_id || 'guest',
+            authorName: p.authorName || 'Creator',
+            authorHandle: p.authorHandle || '@creator',
+            authorAvatar: p.authorAvatar || 'C',
+            authorColor: p.authorColor || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
+            location: p.location || 'Earth Node',
+            time: p.created_at ? new Date(p.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
+            content: p.content || p.caption || '',
+            mediaUrl,
+            mediaType,
+            likes: Number(p.likes) || 0,
+            shares: Number(p.shares) || 0,
+            comments: Array.isArray(p.comments) ? p.comments : [],
+            tags: Array.isArray(p.tags) ? p.tags : []
+          };
+        });
+
         setPosts(normalizedPosts);
 
-        // Extract video clips from posts
+        // Filter valid video clips
         const videoClips: ShortClipItem[] = normalizedPosts
-          .filter(p => p.mediaType === 'video' || (p.mediaUrl && p.mediaUrl.endsWith('.mp4')))
+          .filter(p => p.mediaType === 'video' && p.mediaUrl)
           .map(p => ({
             id: p.id,
             userId: p.userId,
             title: p.content?.slice(0, 40) || 'Video Clip',
             description: p.content || '',
-            videoUrl: p.mediaUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+            videoUrl: p.mediaUrl!,
             audioTrack: 'Original Audio Track',
             likes: p.likes || 0,
             dislikes: 0,
@@ -110,98 +152,58 @@ export const DualFeedView: React.FC = () => {
   const handleRefresh = () => {
     sounds.click();
     fetchFeed(true);
+    toast.success('Feed updated!');
   };
 
-  const handleLikePost = async (postId: string) => {
-    const targetPost = posts.find(p => p.id === postId);
-    if (!targetPost) return;
+  const handleLikePost = (postId: string) => {
+    sounds.like();
+    setPosts(prev => prev.map(p => p.id === postId ? { ...p, likes: (Number(p.likes) || 0) + 1 } : p));
+  };
 
-    const newLikes = (Number(targetPost.likes) || 0) + 1;
-    setPosts(prev => prev.map(p => p.id === postId ? { ...p, likes: newLikes } : p));
+  const handleLikeClip = (clipId: string) => {
+    sounds.like();
+    setClips(prev => prev.map(c => c.id === clipId ? { ...c, likes: (Number(c.likes) || 0) + 1 } : c));
+  };
+
+  const handleBookmark = (postId: string) => {
     sounds.pop();
+    setBookmarkedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(postId)) {
+        next.delete(postId);
+        toast.info('Removed from bookmarks');
+      } else {
+        next.add(postId);
+        toast.success('Saved to your library vault!');
+      }
+      return next;
+    });
   };
 
-  const handleLikeClip = async (clipId: string) => {
-    const targetClip = clips.find(c => c.id === clipId);
-    if (!targetClip) return;
-
-    const newLikes = (Number(targetClip.likes) || 0) + 1;
-    setClips(prev => prev.map(c => c.id === clipId ? { ...c, likes: newLikes } : c));
-    sounds.pop();
-  };
-
-  const handleSharePost = async (postId: string) => {
-    const targetPost = posts.find(p => p.id === postId);
-    if (!targetPost) return;
-
-    const newShares = (Number(targetPost.shares) || 0) + 1;
-    setPosts(prev => prev.map(p => p.id === postId ? { ...p, shares: newShares } : p));
+  const handleSharePost = async (post: PostItem) => {
     sounds.success();
-
+    const shareText = `${post.authorName}: "${post.content?.slice(0, 80)}" on WEVIDS`;
     if (navigator.share) {
       try {
-        await navigator.share({
-          title: `${targetPost.authorName}'s post on WEVIDS`,
-          text: targetPost.content || 'Check out this post!',
-          url: window.location.href
-        });
+        await navigator.share({ title: 'WEVIDS Social Post', text: shareText, url: window.location.href });
       } catch {}
     } else {
-      try {
-        await navigator.clipboard.writeText(window.location.href);
-        toast.success('Post link copied to clipboard!');
-      } catch {
-        toast.error('Unable to copy link');
-      }
-    }
-  };
-
-  const handleShareClip = async (clipId: string) => {
-    const targetClip = clips.find(c => c.id === clipId);
-    if (!targetClip) return;
-
-    const newShares = (Number(targetClip.shares) || 0) + 1;
-    setClips(prev => prev.map(c => c.id === clipId ? { ...c, shares: newShares } : c));
-    sounds.success();
-
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `${targetClip.title} on WEVIDS`,
-          text: targetClip.description || 'Check out this clip!',
-          url: window.location.href
-        });
-      } catch {}
-    } else {
-      try {
-        await navigator.clipboard.writeText(window.location.href);
-        toast.success('Clip link copied to clipboard!');
-      } catch {
-        toast.error('Unable to copy link');
-      }
+      navigator.clipboard.writeText(`${shareText} - ${window.location.href}`);
+      setCopiedPostId(post.id);
+      toast.success('Link copied to clipboard!');
+      setTimeout(() => setCopiedPostId(null), 2000);
     }
   };
 
   const handleDeletePost = async (postId: string) => {
     const { error } = await supabase.from('posts').delete().eq('id', postId);
     if (error) {
-      toast.error(`Error deleting post: ${getErrorMessage(error)}`);
+      toast.error(`Error: ${getErrorMessage(error)}`);
       return;
     }
     setPosts(prev => prev.filter(p => p.id !== postId));
     sounds.pop();
-    toast.success('Post deleted');
-  };
-
-  const handleDeleteClip = async (clipId: string) => {
-    const { error } = await supabase.from('posts').delete().eq('id', clipId);
-    if (error) {
-      toast.error(`Error deleting clip: ${getErrorMessage(error)}`);
-      return;
-    }
-    setClips(prev => prev.filter(c => c.id !== clipId));
-    sounds.pop();
-    toast.success('Clip deleted');
+    toast.success('Post removed');
   };
 
   const handleToggleComments = (postId: string) => {
@@ -231,53 +233,131 @@ export const DualFeedView: React.FC = () => {
     sounds.success();
 
     try {
-      await supabase
-        .from('posts')
-        .update({ comments: updatedComments })
-        .eq('id', postId);
+      await supabase.from('posts').update({ comments: updatedComments }).eq('id', postId);
     } catch {}
   };
 
-  const handleToggleClipPlay = (clipId: string) => {
-    setPlayingClipId(prev => prev === clipId ? null : clipId);
+  // Instant Inline Fast Post Submission
+  const handleInlineSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inlineText.trim() && !inlineMediaUrl) {
+      toast.error('Type a message or attach a photo/video');
+      return;
+    }
+
+    setIsInlinePosting(true);
+    const newPost: PostItem = {
+      id: `post-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      userId: currentUser?.id || 'guest',
+      authorName: currentUser?.name || 'Creator',
+      authorHandle: currentUser?.handle || '@creator',
+      authorAvatar: currentUser?.avatar || 'C',
+      authorColor: currentUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
+      location: currentUser?.location || 'Earth Node',
+      time: 'Just now',
+      content: inlineText.trim(),
+      mediaUrl: inlineMediaUrl || undefined,
+      mediaType: inlineMediaUrl ? (inlineMediaType || 'image') : undefined,
+      likes: 0,
+      shares: 0,
+      comments: [],
+      tags: [inlineTag],
+      created_at: new Date().toISOString()
+    };
+
+    // Optimistic UI update
+    setPosts(prev => [newPost, ...prev]);
+    sounds.success();
+    toast.success('Post published live!');
+
+    setInlineText('');
+    setInlineMediaUrl(null);
+    setInlineMediaType(null);
+
+    try {
+      await insertPostWithAutoFallback(newPost);
+    } catch (err: any) {
+      toast.error(getErrorMessage(err));
+    } finally {
+      setIsInlinePosting(false);
+    }
+  };
+
+  const handleInlineImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setInlineMediaUrl(reader.result as string);
+      setInlineMediaType('image');
+      sounds.pop();
+      toast.success('Photo attached');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleInlineVideoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setInlineMediaUrl(reader.result as string);
+      setInlineMediaType('video');
+      sounds.success();
+      toast.success('Video attached');
+    };
+    reader.readAsDataURL(file);
   };
 
   const isOwnPost = (post: PostItem) => {
     return currentUser?.id === post.userId || (!currentUser && post.userId === 'guest');
   };
 
-  const isOwnClip = (clip: ShortClipItem) => {
-    return currentUser?.id === clip.userId || (!currentUser && clip.userId === 'guest');
-  };
+  const filteredPosts = posts.filter(p => {
+    if (filterTag === 'All') return true;
+    return p.tags?.includes(filterTag) || p.content.toLowerCase().includes(filterTag.toLowerCase());
+  });
 
   return (
-    <div className="w-full max-w-2xl mx-auto space-y-4">
-      {/* Header / Tab Bar */}
-      <div className="flex items-center justify-between gap-2 mb-4">
+    <div className="w-full max-w-2xl mx-auto space-y-4 pb-20">
+      {/* Tab Switcher & Density Controls */}
+      <div className="flex items-center justify-between gap-2">
         <div className="flex-1 grid grid-cols-2 gap-1.5 rounded-2xl bg-white/5 border border-white/10 p-1.5">
           <button
             onClick={() => { sounds.click(); setActiveTab('feed'); }}
-            className={`px-3 py-2 rounded-xl text-xs font-orbitron font-bold transition-all ${
+            className={`px-3 py-2 rounded-xl text-xs font-orbitron font-bold transition-all flex items-center justify-center gap-1.5 ${
               activeTab === 'feed'
                 ? 'bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 shadow-md'
                 : 'text-[#8a8aa8] hover:text-white'
             }`}
           >
-            COMMUNITY FEED
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>COMMUNITY FEED</span>
           </button>
           <button
             onClick={() => { sounds.click(); setActiveTab('clips'); }}
-            className={`px-3 py-2 rounded-xl text-xs font-orbitron font-bold transition-all ${
+            className={`px-3 py-2 rounded-xl text-xs font-orbitron font-bold transition-all flex items-center justify-center gap-1.5 ${
               activeTab === 'clips'
                 ? 'bg-gradient-to-r from-[#00e5ff] to-[#ff2d95] text-slate-900 shadow-md'
                 : 'text-[#8a8aa8] hover:text-white'
             }`}
           >
-            SHORTS CLIPS
+            <Film className="w-3.5 h-3.5" />
+            <span>SHORTS CLIPS ({clips.length})</span>
           </button>
         </div>
 
         <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setViewDensity(d => d === 'cozy' ? 'compact' : 'cozy')}
+            className={`p-2.5 rounded-xl border transition-colors ${
+              viewDensity === 'compact' ? 'bg-[#00e5ff]/20 text-[#00e5ff] border-[#00e5ff]/40' : 'bg-white/5 border-white/10 text-[#8a8aa8] hover:text-white'
+            }`}
+            title={`Switch to ${viewDensity === 'cozy' ? 'Compact' : 'Cozy'} Layout`}
+          >
+            <LayoutGrid className="w-4 h-4" />
+          </button>
+
           <button
             onClick={handleRefresh}
             disabled={refreshing}
@@ -286,215 +366,339 @@ export const DualFeedView: React.FC = () => {
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
           </button>
-          <button
-            onClick={() => { sounds.click(); setIsCreateOpen(true); }}
-            className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold text-xs shadow-lg hover:scale-105 transition-transform flex items-center gap-1.5"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">CREATE</span>
-          </button>
         </div>
       </div>
 
-      {/* Feed Content */}
+      {/* Instant Fast Creator Box (Inline Composer) */}
+      {activeTab === 'feed' && (
+        <form 
+          onSubmit={handleInlineSubmit}
+          className="rounded-3xl bg-[#161632]/80 border border-white/15 p-4 backdrop-blur-xl shadow-xl space-y-3 relative overflow-hidden"
+        >
+          <div className="flex items-start gap-3">
+            <div
+              onClick={() => openUserProfileModal(currentUser)}
+              className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-900 text-sm shadow-md shrink-0 cursor-pointer hover:scale-105 transition-transform"
+              style={{ background: currentUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
+            >
+              {currentUser?.avatar || 'U'}
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <textarea
+                value={inlineText}
+                onChange={(e) => setInlineText(e.target.value)}
+                placeholder="What's happening? Share thoughts, custom ROM tweaks, gaming clips, or AI art..."
+                rows={2}
+                className="w-full bg-transparent text-sm text-white placeholder-[#8a8aa8] focus:outline-none resize-none"
+              />
+
+              {/* Media Attachment Preview */}
+              {inlineMediaUrl && (
+                <div className="relative rounded-2xl overflow-hidden border border-white/20 my-2 max-h-48 bg-black flex items-center justify-center">
+                  {inlineMediaType === 'image' ? (
+                    <img src={inlineMediaUrl} alt="Upload preview" className="w-full h-full object-cover max-h-48" />
+                  ) : (
+                    <video src={inlineMediaUrl} controls className="w-full h-full object-cover max-h-48" />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { setInlineMediaUrl(null); setInlineMediaType(null); }}
+                    className="absolute top-2 right-2 p-1.5 rounded-full bg-black/80 hover:bg-red-500 text-white transition-colors"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10">
+            <div className="flex items-center gap-1.5 text-xs">
+              <input type="file" ref={inlineImageInputRef} accept="image/*" className="hidden" onChange={handleInlineImageFile} />
+              <input type="file" ref={inlineVideoInputRef} accept="video/*" className="hidden" onChange={handleInlineVideoFile} />
+
+              <button
+                type="button"
+                onClick={() => inlineImageInputRef.current?.click()}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-[#fbbf24] font-semibold transition-colors"
+              >
+                <ImageIcon className="w-4 h-4" />
+                <span className="hidden xs:inline">Photo</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => inlineVideoInputRef.current?.click()}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-[#00e5ff] font-semibold transition-colors"
+              >
+                <VideoIcon className="w-4 h-4" />
+                <span className="hidden xs:inline">Video</span>
+              </button>
+
+              {/* Tag selector */}
+              <select
+                value={inlineTag}
+                onChange={(e) => setInlineTag(e.target.value)}
+                className="px-2 py-1 rounded-xl bg-white/5 border border-white/10 text-[11px] text-white focus:outline-none"
+              >
+                {quickFilterTags.filter(t => t !== 'All').map(t => (
+                  <option key={t} value={t} className="bg-[#161632]">{t}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsCreateOpen(true)}
+                className="text-[11px] text-[#8a8aa8] hover:text-white underline hidden sm:inline"
+              >
+                Full Studio
+              </button>
+              <button
+                type="submit"
+                disabled={isInlinePosting || (!inlineText.trim() && !inlineMediaUrl)}
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold text-xs shadow-md hover:scale-105 transition-transform flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isInlinePosting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                <span>POST</span>
+              </button>
+            </div>
+          </div>
+        </form>
+      )}
+
+      {/* Quick Tag Filter Bar */}
+      {activeTab === 'feed' && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+          {quickFilterTags.map(tag => (
+            <button
+              key={tag}
+              onClick={() => { sounds.click(); setFilterTag(tag); }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                filterTag === tag
+                  ? 'bg-[#00e5ff] text-slate-900 font-bold shadow-md'
+                  : 'bg-white/5 text-[#8a8aa8] hover:text-white border border-white/5'
+              }`}
+            >
+              {tag === 'All' ? '⚡ All Posts' : tag}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Feed Content Stream */}
       {loading ? (
         <div className="flex flex-col items-center justify-center py-24 space-y-4">
           <Loader2 className="w-8 h-8 text-[#00e5ff] animate-spin" />
-          <p className="text-xs text-[#8a8aa8] font-orbitron">LOADING {activeTab === 'feed' ? 'COMMUNITY' : 'CLIPS'}...</p>
+          <p className="text-xs text-[#8a8aa8] font-orbitron">SYNCING COMMUNITY STREAM...</p>
         </div>
       ) : activeTab === 'feed' ? (
-        posts.length === 0 ? (
-          <div className="text-center py-24 space-y-4">
-            <div className="text-5xl">📡</div>
-            <h3 className="font-orbitron font-bold text-white text-lg">NO POSTS YET</h3>
-            <p className="text-sm text-[#8a8aa8] max-w-xs mx-auto">
-              Be the first to share what you built, discovered, or played today!
+        filteredPosts.length === 0 ? (
+          <div className="text-center py-20 space-y-4 rounded-3xl bg-white/[0.02] border border-white/5 p-8">
+            <div className="text-5xl animate-bounce">📡</div>
+            <h3 className="font-orbitron font-bold text-white text-lg">NO POSTS IN THIS FILTER</h3>
+            <p className="text-xs text-[#8a8aa8] max-w-xs mx-auto">
+              Be the first to share an update, review a ROM, or post a game highlight!
             </p>
-            <button
-              onClick={() => { sounds.click(); setIsCreateOpen(true); }}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold text-xs shadow-lg hover:scale-105 transition-transform"
-            >
-              CREATE FIRST POST
-            </button>
           </div>
         ) : (
           <div className="space-y-4">
-            {posts.map(post => (
-              <article
-                key={post.id}
-                className="rounded-3xl bg-[#161632]/80 border border-white/10 backdrop-blur-xl overflow-hidden hover:border-[#00e5ff]/30 transition-colors"
-              >
-                {/* Post Header */}
-                <div className="flex items-start justify-between px-4 pt-4 pb-2">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-900 text-sm shadow-md shrink-0"
-                      style={{ background: post.authorColor || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
+            {filteredPosts.map(post => {
+              const isSaved = bookmarkedIds.has(post.id);
+              const authorProfile = allUsers[post.userId];
+
+              return (
+                <article
+                  key={post.id}
+                  className={`rounded-3xl bg-[#161632]/80 border border-white/10 backdrop-blur-xl overflow-hidden hover:border-[#00e5ff]/40 transition-all ${
+                    viewDensity === 'compact' ? 'p-3' : 'p-4'
+                  }`}
+                >
+                  {/* Post Header */}
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div 
+                      onClick={() => openUserProfileModal(authorProfile || { id: post.userId, name: post.authorName, handle: post.authorHandle, avatar: post.authorAvatar, color: post.authorColor, location: post.location, bio: '', followers: 0, following: 0, videos: 0, likes: 0, views: '0', joined: '2026', walletBalance: 0 })}
+                      className="flex items-center gap-3 cursor-pointer group flex-1 min-w-0"
                     >
-                      {post.authorAvatar || 'U'}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-sm text-white truncate">{post.authorName}</span>
-                        <span className="text-[#00e5ff] text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#00e5ff]/10 border border-[#00e5ff]/20 shrink-0">
-                          WEVIDS
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-[#8a8aa8] truncate">
-                        {post.location ? `${post.location} · ` : ''}{post.time}
-                      </div>
-                    </div>
-                  </div>
-
-                  {isOwnPost(post) && (
-                    <button
-                      onClick={() => handleDeletePost(post.id)}
-                      className="p-1.5 rounded-lg text-[#8a8aa8] hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                      title="Delete Post"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-
-                {/* Post Content */}
-                <div className="px-4 pb-3">
-                  <p className="text-sm text-white/90 leading-relaxed whitespace-pre-wrap">
-                    {post.content}
-                  </p>
-                  {post.tags && post.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {post.tags.map(tag => (
-                        <span
-                          key={tag}
-                          className="px-2.5 py-0.5 rounded-full bg-[#ff2d95]/10 border border-[#ff2d95]/20 text-[11px] font-bold text-[#ff8ac2]"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Post Media */}
-                {post.mediaUrl && (
-                  <div className="px-4 pb-3">
-                    {post.mediaType === 'image' ? (
-                      <img
-                        src={post.mediaUrl}
-                        alt="Post media"
-                        className="w-full max-h-96 object-cover rounded-2xl border border-white/10"
-                      />
-                    ) : (
-                      <video
-                        src={post.mediaUrl}
-                        controls
-                        loop
-                        className="w-full max-h-96 object-cover rounded-2xl border border-white/10 bg-black"
-                      />
-                    )}
-                  </div>
-                )}
-
-                {/* Action Bar */}
-                <div className="flex items-center gap-1 px-4 pb-3 pt-1 border-t border-white/5">
-                  <button
-                    onClick={() => handleLikePost(post.id)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-[#8a8aa8] hover:text-[#ff2d95] hover:bg-[#ff2d95]/10 transition-all group"
-                  >
-                    <Heart className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                    <span>{post.likes}</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleToggleComments(post.id)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-[#8a8aa8] hover:text-[#00e5ff] hover:bg-[#00e5ff]/10 transition-all group"
-                  >
-                    <MessageCircle className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                    <span>{post.comments?.length || 0}</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleSharePost(post.id)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-[#8a8aa8] hover:text-white hover:bg-white/10 transition-all group"
-                  >
-                    <Share2 className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                    <span>{post.shares}</span>
-                  </button>
-                </div>
-
-                {/* Comments Section */}
-                {expandedComments === post.id && (
-                  <div className="px-4 pb-4 space-y-3 border-t border-white/5 pt-3 bg-black/20">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-[#8a8aa8] uppercase tracking-wider">
-                        {post.comments?.length || 0} COMMENTS
-                      </span>
-                      <button
-                        onClick={() => setExpandedComments(null)}
-                        className="p-1 rounded-lg text-[#8a8aa8] hover:text-white transition-colors"
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-900 text-sm shadow-md shrink-0 group-hover:scale-105 transition-transform"
+                        style={{ background: post.authorColor || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
                       >
-                        <ChevronUp className="w-4 h-4" />
-                      </button>
+                        {post.authorAvatar || 'U'}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-sm text-white truncate group-hover:text-[#00e5ff] transition-colors">{post.authorName}</span>
+                          <span className="text-[#00e5ff] text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-[#00e5ff]/10 border border-[#00e5ff]/20 shrink-0">
+                            CREATOR
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-[#8a8aa8] truncate">
+                          {post.authorHandle} · {post.time}
+                        </div>
+                      </div>
                     </div>
 
-                    {/* Existing Comments */}
-                    {post.comments && post.comments.length > 0 && (
-                      <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
-                        {post.comments.map((comment: CommentItem) => (
-                          <div key={comment.id} className="flex items-start gap-2.5">
-                            <div
-                              className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-slate-900 shrink-0"
-                              style={{ background: comment.userColor || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
-                            >
-                              {comment.userAvatar || 'U'}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="rounded-2xl bg-white/5 border border-white/5 px-3 py-2 space-y-1">
-                                <span className="text-xs font-bold text-white">{comment.userName}</span>
-                                {comment.text && <p className="text-xs text-white/80 whitespace-pre-wrap">{comment.text}</p>}
-                                {comment.media && (
-                                  <div className="rounded-xl overflow-hidden max-h-32 border border-white/10 mt-1">
-                                    <img src={comment.media} alt="Attached" className="w-full h-full object-cover" />
-                                  </div>
-                                )}
-                              </div>
-                              <div className="text-[10px] text-[#8a8aa8] mt-1 px-2">
-                                {comment.timestamp || 'Just now'}
-                              </div>
-                            </div>
-                          </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleBookmark(post.id)}
+                        className={`p-1.5 rounded-lg transition-colors ${isSaved ? 'text-[#fbbf24] bg-[#fbbf24]/15' : 'text-[#8a8aa8] hover:text-white'}`}
+                        title={isSaved ? 'Bookmarked' : 'Bookmark post'}
+                      >
+                        <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-current' : ''}`} />
+                      </button>
+
+                      {isOwnPost(post) && (
+                        <button
+                          onClick={() => handleDeletePost(post.id)}
+                          className="p-1.5 rounded-lg text-[#8a8aa8] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                          title="Delete Post"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Post Content */}
+                  <div className="space-y-2 mb-3">
+                    <p className="text-sm text-white/95 leading-relaxed whitespace-pre-wrap">
+                      {post.content}
+                    </p>
+                    {post.tags && post.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {post.tags.map(tag => (
+                          <span
+                            key={tag}
+                            onClick={() => setFilterTag(tag)}
+                            className="px-2.5 py-0.5 rounded-full bg-[#ff2d95]/10 border border-[#ff2d95]/20 text-[11px] font-bold text-[#ff8ac2] cursor-pointer hover:bg-[#ff2d95]/20 transition-colors"
+                          >
+                            {tag}
+                          </span>
                         ))}
                       </div>
                     )}
+                  </div>
 
-                    {/* Comment Input */}
-                    <div className="pt-1">
-                      <RichCommentInput
-                        onSend={(c) => handleSendComment(post.id, c)}
-                        placeholder="Add a comment, GIF, or sticker..."
+                  {/* Post Media: STRICTLY ONLY RENDER IF TRUE VALID IMAGE/VIDEO (FIXES 0S GHOST BUG) */}
+                  {post.mediaUrl && post.mediaType === 'image' && (
+                    <div className="mb-3 rounded-2xl overflow-hidden border border-white/10 bg-black max-h-96 flex items-center justify-center">
+                      <img
+                        src={post.mediaUrl}
+                        alt="Attached photo"
+                        className="w-full h-full object-cover max-h-96"
                       />
                     </div>
+                  )}
+
+                  {post.mediaUrl && post.mediaType === 'video' && (
+                    <div className="mb-3 rounded-2xl overflow-hidden border border-white/10 bg-black max-h-96">
+                      <video
+                        src={post.mediaUrl}
+                        controls
+                        playsInline
+                        className="w-full max-h-96 object-cover bg-black"
+                      />
+                    </div>
+                  )}
+
+                  {/* Action Bar */}
+                  <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs text-[#8a8aa8]">
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => handleLikePost(post.id)}
+                        className="flex items-center gap-1.5 text-xs font-bold text-[#8a8aa8] hover:text-[#ff2d95] transition-all group"
+                      >
+                        <Heart className="w-4 h-4 group-hover:scale-125 transition-transform group-hover:fill-[#ff2d95]" />
+                        <span>{(Number(post.likes) || 0).toLocaleString()}</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleToggleComments(post.id)}
+                        className="flex items-center gap-1.5 text-xs font-bold text-[#8a8aa8] hover:text-[#00e5ff] transition-all group"
+                      >
+                        <MessageCircle className="w-4 h-4 group-hover:scale-125 transition-transform" />
+                        <span>{post.comments?.length || 0}</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleSharePost(post)}
+                        className="flex items-center gap-1.5 text-xs font-bold text-[#8a8aa8] hover:text-white transition-all group"
+                      >
+                        {copiedPostId === post.id ? <Check className="w-4 h-4 text-[#10b981]" /> : <Share2 className="w-4 h-4 group-hover:scale-125 transition-transform" />}
+                        <span>{copiedPostId === post.id ? 'Copied' : 'Share'}</span>
+                      </button>
+                    </div>
+
+                    <div className="text-[10px] text-[#8a8aa8] font-mono">
+                      #ID-{post.id.slice(-4)}
+                    </div>
                   </div>
-                )}
-              </article>
-            ))}
+
+                  {/* Comments Expansion */}
+                  {expandedComments === post.id && (
+                    <div className="mt-3 pt-3 border-t border-white/5 space-y-3 bg-black/20 -mx-4 -mb-4 p-4 rounded-b-3xl">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-[#8a8aa8] uppercase tracking-wider">
+                          {post.comments?.length || 0} Comments & Reactions
+                        </span>
+                        <button
+                          onClick={() => setExpandedComments(null)}
+                          className="text-xs text-[#8a8aa8] hover:text-white"
+                        >
+                          ✕ Close
+                        </button>
+                      </div>
+
+                      {post.comments && post.comments.length > 0 && (
+                        <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+                          {post.comments.map((comment: CommentItem) => (
+                            <div key={comment.id} className="flex items-start gap-2.5">
+                              <div
+                                className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[10px] text-slate-900 shrink-0"
+                                style={{ background: comment.userColor || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
+                              >
+                                {comment.userAvatar || 'U'}
+                              </div>
+                              <div className="flex-1 min-w-0 bg-white/5 rounded-2xl p-2.5 border border-white/5 text-xs">
+                                <div className="font-bold text-white mb-0.5">{comment.userName}</div>
+                                {comment.text && <p className="text-white/90 leading-relaxed">{comment.text}</p>}
+                                {comment.media && (
+                                  <img src={comment.media} alt="Attached" className="rounded-xl mt-1 max-h-32 object-cover" />
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <RichCommentInput
+                        onSend={(c) => handleSendComment(post.id, c)}
+                        placeholder="Leave a rich comment or reaction..."
+                      />
+                    </div>
+                  )}
+                </article>
+              );
+            })}
           </div>
         )
       ) : (
-        /* Clips / Shorts Tab */
+        /* Shorts Clips View */
         clips.length === 0 ? (
-          <div className="text-center py-24 space-y-4">
-            <div className="text-5xl">🎬</div>
-            <h3 className="font-orbitron font-bold text-white text-lg">NO CLIPS YET</h3>
-            <p className="text-sm text-[#8a8aa8] max-w-xs mx-auto">
-              Upload your first vertical short clip and share it with the community!
+          <div className="text-center py-24 space-y-4 rounded-3xl bg-white/[0.02] border border-white/5 p-8">
+            <div className="text-5xl animate-pulse">🎬</div>
+            <h3 className="font-orbitron font-bold text-white text-lg">NO SHORT CLIPS UPLOADED</h3>
+            <p className="text-xs text-[#8a8aa8] max-w-xs mx-auto">
+              Upload a vertical short clip (MP4) to showcase ROM smoothness, gaming fps, or creative edits!
             </p>
             <button
-              onClick={() => { sounds.click(); setIsCreateOpen(true); setActiveView('clips'); }}
+              onClick={() => { sounds.click(); setIsCreateOpen(true); }}
               className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#00e5ff] to-[#ff2d95] text-slate-900 font-orbitron font-bold text-xs shadow-lg hover:scale-105 transition-transform"
             >
-              UPLOAD FIRST CLIP
+              UPLOAD VERTICAL CLIP
             </button>
           </div>
         ) : (
@@ -504,20 +708,18 @@ export const DualFeedView: React.FC = () => {
                 key={clip.id}
                 className="rounded-3xl bg-[#161632]/80 border border-white/10 backdrop-blur-xl overflow-hidden hover:border-[#00e5ff]/40 transition-colors group"
               >
-                {/* Clip Video */}
                 <div className="relative aspect-[9/16] bg-black overflow-hidden">
                   <video
                     src={clip.videoUrl}
                     loop
                     muted
                     playsInline
-                    onClick={() => handleToggleClipPlay(clip.id)}
+                    onClick={() => setPlayingClipId(playingClipId === clip.id ? null : clip.id)}
                     className="w-full h-full object-cover"
                   />
 
-                  {/* Play/Pause Overlay */}
                   <button
-                    onClick={() => handleToggleClipPlay(clip.id)}
+                    onClick={() => setPlayingClipId(playingClipId === clip.id ? null : clip.id)}
                     className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     {playingClipId === clip.id ? (
@@ -527,60 +729,24 @@ export const DualFeedView: React.FC = () => {
                     )}
                   </button>
 
-                  {/* Clip Badge */}
                   <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md border border-[#ff2d95]/30">
                     <Film className="w-3 h-3 text-[#ff2d95]" />
-                    <span className="text-[10px] font-bold text-white">SHORT CLIP</span>
+                    <span className="text-[10px] font-bold text-white">CLIP</span>
                   </div>
-
-                  {/* Audio Track */}
-                  <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-black/70 backdrop-blur-md border border-white/10">
-                    <svg className="w-3.5 h-3.5 text-[#00e5ff]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M9 18V5l12-2v13" />
-                      <circle cx="6" cy="18" r="3" />
-                      <circle cx="18" cy="16" r="3" />
-                    </svg>
-                    <span className="text-[10px] font-bold text-white truncate">{clip.audioTrack}</span>
-                  </div>
-
-                  {/* Delete Own Clip */}
-                  {isOwnClip(clip) && (
-                    <button
-                      onClick={() => handleDeleteClip(clip.id)}
-                      className="absolute top-2.5 right-2.5 p-2 rounded-xl bg-black/70 hover:bg-red-500/80 text-white backdrop-blur-md transition-colors"
-                      title="Delete Clip"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
                 </div>
 
-                {/* Clip Info */}
                 <div className="p-3.5 space-y-2">
-                  <h3 className="font-bold text-sm text-white leading-snug line-clamp-2">
-                    {clip.title}
-                  </h3>
-                  <p className="text-xs text-[#8a8aa8] line-clamp-2">
-                    {clip.description}
-                  </p>
-
-                  {/* Clip Stats & Actions */}
-                  <div className="flex items-center gap-1 pt-1">
+                  <h3 className="font-bold text-sm text-white line-clamp-1">{clip.title}</h3>
+                  <p className="text-xs text-[#8a8aa8] line-clamp-2">{clip.description}</p>
+                  <div className="flex items-center justify-between pt-1 border-t border-white/5 text-xs text-[#8a8aa8]">
                     <button
                       onClick={() => handleLikeClip(clip.id)}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-[#8a8aa8] hover:text-[#ff2d95] hover:bg-[#ff2d95]/10 transition-all group"
+                      className="flex items-center gap-1 hover:text-[#ff2d95] font-bold"
                     >
-                      <Heart className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                      <Heart className="w-4 h-4" />
                       <span>{clip.likes}</span>
                     </button>
-
-                    <button
-                      onClick={() => handleShareClip(clip.id)}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-[#8a8aa8] hover:text-white hover:bg-white/10 transition-all group"
-                    >
-                      <Share2 className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
-                      <span>{clip.shares}</span>
-                    </button>
+                    <span className="text-[10px] font-mono text-[#00e5ff]">HD 60FPS</span>
                   </div>
                 </div>
               </div>
@@ -589,7 +755,7 @@ export const DualFeedView: React.FC = () => {
         )
       )}
 
-      {/* Create Post Modal */}
+      {/* Full Modal Composer */}
       <CreatePostModal
         isOpen={isCreateOpen}
         onClose={() => {

@@ -5,10 +5,12 @@ import {
   Video as VideoIcon, 
   X, 
   Send, 
-  Film,
-  Music2,
-  Tv,
-  Loader2
+  Film, 
+  Music2, 
+  Tv, 
+  Loader2,
+  Sparkles,
+  Smile
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
 import { supabase, checkContentModeration } from '../../lib/supabase';
@@ -35,7 +37,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   const [title, setTitle] = useState('');
   const [audioTrack, setAudioTrack] = useState('Original Audio Track');
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
-  const [mediaType, setMediaType] = useState<'image' | 'video'>('image');
+  const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
   const [selectedTag, setSelectedTag] = useState('#WEVIDS');
   const [isUploading, setIsUploading] = useState(false);
   const [fileName, setFileName] = useState('');
@@ -45,7 +47,8 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
   if (!isOpen) return null;
 
-  const popularTags = ['#WEVIDS', '#Tech', '#CustomROM', '#Anime', '#Gaming', '#Cyberpunk', '#Music'];
+  const popularTags = ['#WEVIDS', '#Tech', '#CustomROM', '#Anime', '#Gaming', '#Cyberpunk', '#Music', '#AI', '#Voxel'];
+  const quickEmojis = ['🔥', '⚡', '🚀', '✨', '💎', '🎮', '❤️', '🤯'];
 
   const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -97,6 +100,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     setContent('');
     setTitle('');
     setMediaUrl(null);
+    setMediaType(null);
     setFileName('');
   };
 
@@ -134,10 +138,10 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
         const { error } = await supabase.from('clips').insert([newClip]);
         if (error) {
-          toast.error(`Error saving clip: ${getErrorMessage(error)}`);
+          toast.error(`Notice: ${getErrorMessage(error)}`);
         } else {
           sounds.success();
-          toast.success('Short Clip uploaded directly to Supabase!');
+          toast.success('Short Clip uploaded!');
           resetForm();
           syncWithSupabase();
           setActiveView('clips');
@@ -147,7 +151,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
       }
 
       if (!content.trim() && !mediaUrl) {
-        toast.error('Please type a message or upload media');
+        toast.error('Please write something or attach media');
         setIsUploading(false);
         return;
       }
@@ -163,7 +167,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         time: 'Just now',
         content: content.trim(),
         mediaUrl: mediaUrl || undefined,
-        mediaType: mediaUrl ? mediaType : undefined,
+        mediaType: mediaUrl ? (mediaType || 'image') : undefined,
         likes: 0,
         shares: 0,
         comments: [],
@@ -176,7 +180,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         toast.error(`Error saving post: ${getErrorMessage(error)}`);
       } else {
         sounds.success();
-        toast.success('Post saved directly to Supabase!');
+        toast.success('Post published to feed!');
         resetForm();
         syncWithSupabase();
         setActiveView('feed');
@@ -202,14 +206,17 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         {/* Header */}
         <div className="flex items-center gap-3 pb-3 border-b border-white/10">
           <div
-            className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-900 text-sm shadow-md"
+            className="w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-slate-900 text-sm shadow-md"
             style={{ background: currentUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
           >
             {currentUser?.avatar || 'G'}
           </div>
           <div>
-            <h3 className="font-orbitron font-bold text-base text-white">Publish Directly to Supabase</h3>
-            <div className="text-xs text-[#00e5ff]">Posting as {currentUser?.name || 'Creator'} ({currentUser?.handle || '@creator'})</div>
+            <h3 className="font-orbitron font-bold text-base text-white flex items-center gap-2">
+              <span>Create New Content</span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#00e5ff]/20 text-[#00e5ff] font-semibold border border-[#00e5ff]/30">Live Sync</span>
+            </h3>
+            <div className="text-xs text-[#8a8aa8]">Posting as <strong className="text-white">{currentUser?.name || 'Creator'}</strong> ({currentUser?.handle || '@creator'})</div>
           </div>
         </div>
 
@@ -244,7 +251,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               }}
               className={`p-3 rounded-2xl border text-xs font-bold font-orbitron flex items-center justify-center gap-2 transition-all ${
                 targetType === 'clips'
-                  ? 'bg-gradient-to-r from-[#00e5ff] to-[#ff2d95] text-black shadow-md border-transparent'
+                  ? 'bg-gradient-to-r from-[#00e5ff] to-[#ff2d95] text-slate-900 shadow-md border-transparent'
                   : 'bg-white/5 border-white/10 text-[#8a8aa8] hover:text-white'
               }`}
             >
@@ -263,8 +270,8 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Tabletop Gaming Combo or Shader Test"
-                  className="w-full px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:border-[#00e5ff] focus:outline-none"
+                  placeholder="e.g. Speedrun Record / Snapdragon 8 Gen 3 Gameplay"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:border-[#00e5ff] focus:outline-none"
                   required
                 />
               </div>
@@ -278,21 +285,35 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                   value={audioTrack}
                   onChange={(e) => setAudioTrack(e.target.value)}
                   placeholder="e.g. Neon Horizon · Original Sound"
-                  className="w-full px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:border-[#00e5ff] focus:outline-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:border-[#00e5ff] focus:outline-none"
                 />
               </div>
             </>
           )}
 
           <div>
-            <label className="text-xs font-bold text-white block mb-1">
-              {targetType === 'clips' ? 'Clip Description' : 'Post Thoughts / Text'}
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-bold text-white">
+                {targetType === 'clips' ? 'Clip Description' : 'Post Thoughts / Text'}
+              </label>
+              <div className="flex items-center gap-1">
+                {quickEmojis.map(emoji => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => setContent(prev => prev + emoji)}
+                    className="hover:scale-125 transition-transform text-xs p-0.5"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              rows={targetType === 'clips' ? 2 : 3}
-              placeholder={targetType === 'clips' ? 'Tell viewers about this vertical clip...' : 'What did you build, discover, or play today?'}
+              rows={targetType === 'clips' ? 2 : 4}
+              placeholder={targetType === 'clips' ? 'Tell viewers about this vertical clip...' : 'What did you build, discover, test, or play today?'}
               className="w-full px-4 py-3 rounded-2xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:outline-none focus:border-[#00e5ff] resize-none"
             />
           </div>
@@ -326,6 +347,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                 type="button"
                 onClick={() => {
                   setMediaUrl(null);
+                  setMediaType(null);
                   setFileName('');
                 }}
                 className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 hover:bg-red-500 text-white transition-colors"
@@ -335,7 +357,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               </button>
 
               <span className="absolute bottom-2 left-2 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md text-[10px] font-bold text-white uppercase">
-                {mediaType}: {fileName || 'Ready'}
+                {mediaType}: {fileName || 'Attached'}
               </span>
             </div>
           )}
@@ -372,7 +394,9 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                 <button
                   type="button"
                   onClick={() => imageInputRef.current?.click()}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-white border border-white/10 transition-colors"
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-colors ${
+                    mediaType === 'image' ? 'bg-[#fbbf24]/20 text-[#fbbf24] border-[#fbbf24]' : 'bg-white/5 hover:bg-white/10 text-white border-white/10'
+                  }`}
                   title="Attach Photo"
                 >
                   <ImageIcon className="w-4 h-4 text-[#fbbf24]" />
@@ -383,7 +407,9 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               <button
                 type="button"
                 onClick={() => videoInputRef.current?.click()}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-bold text-white border border-white/10 transition-colors"
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-colors ${
+                  mediaType === 'video' ? 'bg-[#00e5ff]/20 text-[#00e5ff] border-[#00e5ff]' : 'bg-white/5 hover:bg-white/10 text-white border-white/10'
+                }`}
                 title="Attach Video File"
               >
                 <VideoIcon className="w-4 h-4 text-[#00e5ff]" />
@@ -397,7 +423,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold text-xs shadow-lg hover:scale-105 transition-transform flex items-center gap-1.5 disabled:opacity-50"
             >
               {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-              <span>{isUploading ? 'SAVING TO SUPABASE...' : targetType === 'clips' ? 'PUBLISH CLIP' : 'PUBLISH POST'}</span>
+              <span>{isUploading ? 'PUBLISHING...' : targetType === 'clips' ? 'PUBLISH CLIP' : 'PUBLISH POST'}</span>
             </button>
           </div>
         </form>
