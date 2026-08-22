@@ -5,15 +5,15 @@ import {
   MessageCircle, 
   Share2, 
   Plus, 
-  Film,
-  RefreshCw,
-  Loader2,
-  Trash2,
-  Play,
-  Pause,
-  ChevronUp,
-  Database,
-  Code
+  Film, 
+  RefreshCw, 
+  Loader2, 
+  Trash2, 
+  Play, 
+  Pause, 
+  ChevronUp, 
+  Database, 
+  Code 
 } from 'lucide-react';
 import { RichCommentInput } from '../comments/RichCommentInput';
 import { CreatePostModal } from './CreatePostModal';
@@ -47,28 +47,53 @@ export const DualFeedView: React.FC = () => {
         return;
       }
 
-      const [{ data: postsData, error: postsError }, { data: clipsData, error: clipsError }] = await Promise.all([
-        supabase.from('posts').select('*').order('created_at', { ascending: false }),
-        supabase.from('clips').select('*').order('created_at', { ascending: false })
-      ]);
-
-      const hasSchemaIssue = isTableOrSchemaMissingError(postsError) || isTableOrSchemaMissingError(clipsError);
-      setIsSchemaMissing(hasSchemaIssue);
+      const { data: postsData, error: postsError } = await supabase
+        .from('posts')
+        .select('*')
+        .order('created_at', { ascending: false });
 
       if (postsError) {
-        if (!isTableOrSchemaMissingError(postsError) && isManualRefresh) {
+        if (isTableOrSchemaMissingError(postsError)) {
+          setIsSchemaMissing(true);
+        } else if (isManualRefresh) {
           toast.error(`Error loading posts: ${getErrorMessage(postsError)}`);
         }
       } else if (postsData) {
-        setPosts(postsData as PostItem[]);
-      }
+        const normalizedPosts: PostItem[] = postsData.map((p: any) => ({
+          id: p.id,
+          userId: p.userId || p.user_id || 'guest',
+          authorName: p.authorName || 'Creator',
+          authorHandle: p.authorHandle || '@creator',
+          authorAvatar: p.authorAvatar || 'C',
+          authorColor: p.authorColor || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
+          location: p.location || 'Earth Node',
+          time: p.created_at ? new Date(p.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
+          content: p.content || p.caption || '',
+          mediaUrl: p.mediaUrl || p.video_url || undefined,
+          mediaType: p.mediaType || (p.video_url ? 'video' : p.mediaUrl ? 'image' : undefined),
+          likes: Number(p.likes) || 0,
+          shares: Number(p.shares) || 0,
+          comments: Array.isArray(p.comments) ? p.comments : [],
+          tags: Array.isArray(p.tags) ? p.tags : []
+        }));
+        setPosts(normalizedPosts);
 
-      if (clipsError) {
-        if (!isTableOrSchemaMissingError(clipsError) && isManualRefresh) {
-          toast.error(`Error loading clips: ${getErrorMessage(clipsError)}`);
-        }
-      } else if (clipsData) {
-        setClips(clipsData as ShortClipItem[]);
+        // Extract video clips from posts
+        const videoClips: ShortClipItem[] = normalizedPosts
+          .filter(p => p.mediaType === 'video' || (p.mediaUrl && p.mediaUrl.endsWith('.mp4')))
+          .map(p => ({
+            id: p.id,
+            userId: p.userId,
+            title: p.content?.slice(0, 40) || 'Video Clip',
+            description: p.content || '',
+            videoUrl: p.mediaUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+            audioTrack: 'Original Audio Track',
+            likes: p.likes || 0,
+            dislikes: 0,
+            shares: p.shares || 0,
+            comments: p.comments || []
+          }));
+        setClips(videoClips);
       }
     } catch (err: any) {
       if (isManualRefresh) toast.error(getErrorMessage(err));
@@ -94,18 +119,6 @@ export const DualFeedView: React.FC = () => {
     const newLikes = (Number(targetPost.likes) || 0) + 1;
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, likes: newLikes } : p));
     sounds.pop();
-
-    try {
-      const { error } = await supabase
-        .from('posts')
-        .update({ likes: newLikes })
-        .eq('id', postId);
-      if (error && !isTableOrSchemaMissingError(error)) {
-        toast.error(`Error updating likes: ${getErrorMessage(error)}`);
-      }
-    } catch (err: any) {
-      // safe fallback
-    }
   };
 
   const handleLikeClip = async (clipId: string) => {
@@ -115,18 +128,6 @@ export const DualFeedView: React.FC = () => {
     const newLikes = (Number(targetClip.likes) || 0) + 1;
     setClips(prev => prev.map(c => c.id === clipId ? { ...c, likes: newLikes } : c));
     sounds.pop();
-
-    try {
-      const { error } = await supabase
-        .from('clips')
-        .update({ likes: newLikes })
-        .eq('id', clipId);
-      if (error && !isTableOrSchemaMissingError(error)) {
-        toast.error(`Error updating likes: ${getErrorMessage(error)}`);
-      }
-    } catch (err: any) {
-      // safe fallback
-    }
   };
 
   const handleSharePost = async (postId: string) => {
@@ -137,15 +138,6 @@ export const DualFeedView: React.FC = () => {
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, shares: newShares } : p));
     sounds.success();
 
-    try {
-      await supabase
-        .from('posts')
-        .update({ shares: newShares })
-        .eq('id', postId);
-    } catch {
-      // safe ignore
-    }
-
     if (navigator.share) {
       try {
         await navigator.share({
@@ -153,9 +145,7 @@ export const DualFeedView: React.FC = () => {
           text: targetPost.content || 'Check out this post!',
           url: window.location.href
         });
-      } catch {
-        // user cancelled
-      }
+      } catch {}
     } else {
       try {
         await navigator.clipboard.writeText(window.location.href);
@@ -174,15 +164,6 @@ export const DualFeedView: React.FC = () => {
     setClips(prev => prev.map(c => c.id === clipId ? { ...c, shares: newShares } : c));
     sounds.success();
 
-    try {
-      await supabase
-        .from('clips')
-        .update({ shares: newShares })
-        .eq('id', clipId);
-    } catch {
-      // safe ignore
-    }
-
     if (navigator.share) {
       try {
         await navigator.share({
@@ -190,9 +171,7 @@ export const DualFeedView: React.FC = () => {
           text: targetClip.description || 'Check out this clip!',
           url: window.location.href
         });
-      } catch {
-        // user cancelled
-      }
+      } catch {}
     } else {
       try {
         await navigator.clipboard.writeText(window.location.href);
@@ -215,7 +194,7 @@ export const DualFeedView: React.FC = () => {
   };
 
   const handleDeleteClip = async (clipId: string) => {
-    const { error } = await supabase.from('clips').delete().eq('id', clipId);
+    const { error } = await supabase.from('posts').delete().eq('id', clipId);
     if (error) {
       toast.error(`Error deleting clip: ${getErrorMessage(error)}`);
       return;
@@ -252,16 +231,11 @@ export const DualFeedView: React.FC = () => {
     sounds.success();
 
     try {
-      const { error } = await supabase
+      await supabase
         .from('posts')
         .update({ comments: updatedComments })
         .eq('id', postId);
-      if (error && !isTableOrSchemaMissingError(error)) {
-        toast.error(`Error saving comment: ${getErrorMessage(error)}`);
-      }
-    } catch {
-      // safe fallback
-    }
+    } catch {}
   };
 
   const handleToggleClipPlay = (clipId: string) => {
@@ -278,28 +252,6 @@ export const DualFeedView: React.FC = () => {
 
   return (
     <div className="w-full max-w-2xl mx-auto space-y-4">
-      {/* Schema Missing Helper Banner */}
-      {isSchemaMissing && (
-        <div className="p-4 rounded-3xl bg-gradient-to-r from-[#ff2d95]/20 via-[#9333ea]/20 to-[#00e5ff]/20 border border-[#00e5ff]/40 space-y-2 shadow-xl animate-fade-in">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-white font-bold text-xs font-orbitron">
-              <Database className="w-4 h-4 text-[#00e5ff]" />
-              <span>Supabase Tables Setup Required</span>
-            </div>
-            <button
-              onClick={() => setIsSupabaseModalOpen(true)}
-              className="px-3 py-1 rounded-xl bg-[#00e5ff] text-slate-900 font-orbitron font-bold text-[10px] shadow hover:scale-105 transition-transform flex items-center gap-1"
-            >
-              <Code className="w-3 h-3" />
-              <span>Open SQL Setup</span>
-            </button>
-          </div>
-          <p className="text-[11px] text-[#e8e8f4] leading-relaxed">
-            Your Supabase project is connected, but the database tables (`posts`, `clips`, etc.) have not been created yet. Click <strong>Open SQL Setup</strong>, copy the SQL script, and paste it into your <strong>Supabase SQL Editor</strong> to initialize all tables in seconds.
-          </p>
-        </div>
-      )}
-
       {/* Header / Tab Bar */}
       <div className="flex items-center justify-between gap-2 mb-4">
         <div className="flex-1 grid grid-cols-2 gap-1.5 rounded-2xl bg-white/5 border border-white/10 p-1.5">
