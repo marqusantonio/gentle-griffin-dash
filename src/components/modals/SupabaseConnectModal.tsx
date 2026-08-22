@@ -49,7 +49,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
   const [supabaseUrl, setSupabaseUrl] = useState(() => getSupabaseConfig().url);
   const [supabaseAnonKey, setSupabaseAnonKey] = useState(() => getSupabaseConfig().anonKey);
   const [isTesting, setIsTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string; hint?: string } | null>(null);
   const [copiedSchema, setCopiedSchema] = useState(false);
 
   useEffect(() => {
@@ -101,7 +101,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
     sounds.click();
     navigator.clipboard.writeText(SUPABASE_SQL_SCHEMA);
     setCopiedSchema(true);
-    toast.success('SQL Schema copied! Paste into Supabase SQL Editor.');
+    toast.success('SQL Schema copied! Paste into Supabase SQL Editor and run.');
     setTimeout(() => setCopiedSchema(false), 3000);
   };
 
@@ -263,6 +263,16 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
           )}
         </div>
 
+        {/* Schema missing hint */}
+        {testResult?.ok && testResult.hint && (
+          <div className="p-3 rounded-2xl bg-yellow-500/15 border border-yellow-500/30 text-[11px] text-yellow-400 flex items-start gap-2">
+            <TableProperties className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <span>
+              {testResult.hint} Go to the <strong>SQL Setup</strong> tab, copy the updated script, and run it in your Supabase SQL Editor to add missing columns.
+            </span>
+          </div>
+        )}
+
         {/* Tabs Bar */}
         <div className="flex rounded-xl bg-white/5 p-1 border border-white/10 text-xs font-orbitron font-bold">
           <button
@@ -396,7 +406,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
             </div>
 
             <p className="text-[11px] text-[#8a8aa8]">
-              Copy and execute this script once in your Supabase SQL Editor (supabase.com &rarr; Project &rarr; SQL Editor) to create the tables for posts, clips, audio, films, ROMs, files, and products.
+              Copy and execute this script in your Supabase SQL Editor (supabase.com &rarr; Project &rarr; SQL Editor). It creates all tables AND automatically adds any missing columns to existing tables.
             </p>
 
             <pre className="p-3 rounded-2xl bg-black/70 border border-white/10 text-[11px] text-[#00e5ff] font-mono overflow-x-auto max-h-60 leading-relaxed">

@@ -209,6 +209,10 @@ class PostgrestQueryBuilder<T = any> implements PromiseLike<{ data: T[] | null; 
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
+        // Better error message for missing columns
+        if (errJson.message && errJson.message.includes("schema cache")) {
+          return { data: null, error: { message: errJson.message, hint: 'Run the SQL schema script to add missing columns.' } };
+        }
         return { data: null, error: errJson.message || errJson.error_description || 'Query error' };
       }
 
@@ -467,6 +471,7 @@ export const checkContentModeration = (text: string): { flagged: boolean; reason
 };
 
 export const SUPABASE_SQL_SCHEMA = `-- Run this in your Supabase SQL Editor (supabase.com -> Project -> SQL Editor)
+-- This script will create all tables AND add any missing columns to existing ones.
 
 -- 1. Profiles Table
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -493,6 +498,14 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   email TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS "avatarImage" TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS "bioAudioUrl" TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS "bioAudioTitle" TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS "followingIds" JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS "followerIds" JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS "walletBalance" NUMERIC DEFAULT 50;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
 
 -- 2. Posts Table
 CREATE TABLE IF NOT EXISTS public.posts (
@@ -514,6 +527,16 @@ CREATE TABLE IF NOT EXISTS public.posts (
   comments JSONB DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS "userId" TEXT;
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS "authorName" TEXT;
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS "authorHandle" TEXT;
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS "authorAvatar" TEXT;
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS "authorColor" TEXT;
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS "mediaUrl" TEXT;
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS "mediaType" TEXT;
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS comments JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.posts ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
 
 -- 3. Clips Table
 CREATE TABLE IF NOT EXISTS public.clips (
@@ -529,6 +552,11 @@ CREATE TABLE IF NOT EXISTS public.clips (
   comments JSONB DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+ALTER TABLE public.clips ADD COLUMN IF NOT EXISTS "userId" TEXT;
+ALTER TABLE public.clips ADD COLUMN IF NOT EXISTS "videoUrl" TEXT;
+ALTER TABLE public.clips ADD COLUMN IF NOT EXISTS "audioTrack" TEXT;
+ALTER TABLE public.clips ADD COLUMN IF NOT EXISTS comments JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.clips ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
 
 -- 4. Audio Tracks Table
 CREATE TABLE IF NOT EXISTS public.audio_tracks (
@@ -543,6 +571,8 @@ CREATE TABLE IF NOT EXISTS public.audio_tracks (
   "uploaderId" TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+ALTER TABLE public.audio_tracks ADD COLUMN IF NOT EXISTS "uploaderId" TEXT;
+ALTER TABLE public.audio_tracks ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
 
 -- 5. Films Table
 CREATE TABLE IF NOT EXISTS public.films (
@@ -561,6 +591,12 @@ CREATE TABLE IF NOT EXISTS public.films (
   views TEXT DEFAULT '0',
   created_at TIMESTAMPTZ DEFAULT now()
 );
+ALTER TABLE public.films ADD COLUMN IF NOT EXISTS "releaseYear" INT DEFAULT 2026;
+ALTER TABLE public.films ADD COLUMN IF NOT EXISTS "videoUrl" TEXT;
+ALTER TABLE public.films ADD COLUMN IF NOT EXISTS "posterUrl" TEXT;
+ALTER TABLE public.films ADD COLUMN IF NOT EXISTS "backdropUrl" TEXT;
+ALTER TABLE public.films ADD COLUMN IF NOT EXISTS "uploaderId" TEXT;
+ALTER TABLE public.films ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
 
 -- 6. ROMs Table
 CREATE TABLE IF NOT EXISTS public.roms (
@@ -583,6 +619,15 @@ CREATE TABLE IF NOT EXISTS public.roms (
   changelog JSONB DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+ALTER TABLE public.roms ADD COLUMN IF NOT EXISTS "romType" TEXT;
+ALTER TABLE public.roms ADD COLUMN IF NOT EXISTS "maintainerHandle" TEXT;
+ALTER TABLE public.roms ADD COLUMN IF NOT EXISTS "androidVersion" TEXT DEFAULT 'Android 15';
+ALTER TABLE public.roms ADD COLUMN IF NOT EXISTS "fileSize" TEXT;
+ALTER TABLE public.roms ADD COLUMN IF NOT EXISTS "downloadCount" INT DEFAULT 0;
+ALTER TABLE public.roms ADD COLUMN IF NOT EXISTS "downloadUrl" TEXT;
+ALTER TABLE public.roms ADD COLUMN IF NOT EXISTS "githubUrl" TEXT;
+ALTER TABLE public.roms ADD COLUMN IF NOT EXISTS changelog JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.roms ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
 
 -- 7. Files Table
 CREATE TABLE IF NOT EXISTS public.files (
@@ -599,6 +644,14 @@ CREATE TABLE IF NOT EXISTS public.files (
   "uploadedAt" TEXT,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+ALTER TABLE public.files ADD COLUMN IF NOT EXISTS "fileName" TEXT;
+ALTER TABLE public.files ADD COLUMN IF NOT EXISTS "fileSize" TEXT;
+ALTER TABLE public.files ADD COLUMN IF NOT EXISTS "uploaderId" TEXT;
+ALTER TABLE public.files ADD COLUMN IF NOT EXISTS "uploaderName" TEXT;
+ALTER TABLE public.files ADD COLUMN IF NOT EXISTS "downloadUrl" TEXT;
+ALTER TABLE public.files ADD COLUMN IF NOT EXISTS downloads INT DEFAULT 0;
+ALTER TABLE public.files ADD COLUMN IF NOT EXISTS "uploadedAt" TEXT;
+ALTER TABLE public.files ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
 
 -- 8. Products Table
 CREATE TABLE IF NOT EXISTS public.products (
@@ -617,6 +670,13 @@ CREATE TABLE IF NOT EXISTS public.products (
   "isDigital" BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS "creatorId" TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS "creatorName" TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS "salesCount" INT DEFAULT 0;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS "previewUrl" TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS "affiliateCommission" NUMERIC DEFAULT 10;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS "isDigital" BOOLEAN DEFAULT true;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
 
 -- 9. Direct Messages Table
 CREATE TABLE IF NOT EXISTS public.direct_messages (
@@ -631,6 +691,12 @@ CREATE TABLE IF NOT EXISTS public.direct_messages (
   is_blocked BOOLEAN DEFAULT false,
   created_at TIMESTAMPTZ DEFAULT now()
 );
+ALTER TABLE public.direct_messages ADD COLUMN IF NOT EXISTS "mediaUrl" TEXT;
+ALTER TABLE public.direct_messages ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'text';
+ALTER TABLE public.direct_messages ADD COLUMN IF NOT EXISTS is_friend_request BOOLEAN DEFAULT false;
+ALTER TABLE public.direct_messages ADD COLUMN IF NOT EXISTS is_approved BOOLEAN DEFAULT NULL;
+ALTER TABLE public.direct_messages ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT false;
+ALTER TABLE public.direct_messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
 
 -- Enable RLS & Apply Full Public Access Policy for Guests and Authenticated Users
 ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
