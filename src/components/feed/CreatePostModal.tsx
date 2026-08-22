@@ -15,6 +15,20 @@ import { supabase, checkContentModeration } from '../../lib/supabase';
 import { PostItem, ShortClipItem } from '../../types/wevids';
 import { toast } from 'sonner';
 
+// Helper to extract a readable error message from any Supabase error shape
+const getErrorMessage = (error: any): string => {
+  if (!error) return 'Unknown error';
+  if (typeof error === 'string') return error;
+  if (typeof error === 'object') {
+    // Prefer explicit message/hint fields
+    if (error.message) return error.message;
+    if (error.hint) return error.hint;
+    if (error.error_description) return error.error_description;
+    return JSON.stringify(error);
+  }
+  return String(error);
+};
+
 interface CreatePostModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -61,6 +75,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     const reader = new FileReader();
     reader.onload = () => {
       setMediaUrl(reader.result as string);
+      setIsUploadingfalse);
       setIsUploading(false);
       sounds.pop();
       toast.success(`Photo attached: ${file.name}`);
@@ -132,7 +147,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
         const { error } = await supabase.from('clips').insert([newClip]);
         if (error) {
-          toast.error(`Error saving clip to Supabase: ${error}`);
+          toast.error(`Error saving clip: ${getErrorMessage(error)}`);
         } else {
           sounds.success();
           toast.success('Short Clip uploaded directly to Supabase!');
@@ -171,7 +186,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
       const { error } = await supabase.from('posts').insert([newPost]);
       if (error) {
-        toast.error(`Error saving post to Supabase: ${error}`);
+        toast.error(`Error saving post: ${getErrorMessage(error)}`);
       } else {
         sounds.success();
         toast.success('Post saved directly to Supabase!');
