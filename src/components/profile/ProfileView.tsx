@@ -71,6 +71,8 @@ export const ProfileView: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [profileTab, setProfileTab] = useState<'posts' | 'media' | 'customize' | 'settings'>('posts');
 
+  const isGuestUser = currentUser?.isGuest || currentUser?.id === 'guest';
+
   // Customization Form State
   const [name, setName] = useState(currentUser?.name || 'Guest Creator');
   const [handle, setHandle] = useState(currentUser?.handle || '@guest');
@@ -82,7 +84,11 @@ export const ProfileView: React.FC = () => {
   const [statusEmoji, setStatusEmoji] = useState(currentUser?.statusEmoji || '⚡');
   const [profileFrame, setProfileFrame] = useState(currentUser?.frame || 'neon_cyan');
   const [coverBanner, setCoverBanner] = useState(currentUser?.coverBanner || COVER_PRESETS[0]);
-  const [badges, setBadges] = useState<string[]>(currentUser?.badges || ['⚡ Verified Creator', '💎 Alpha Contributor']);
+  
+  // Default badges: Empty for guest account unless explicitly set
+  const [badges, setBadges] = useState<string[]>(
+    currentUser?.badges || (isGuestUser ? [] : ['💎 Alpha Contributor'])
+  );
 
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
@@ -282,9 +288,15 @@ export const ProfileView: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-bold font-orbitron text-white">{currentUser?.name || 'Creator'}</h1>
-                <span className="px-2.5 py-0.5 rounded-full bg-[#00e5ff]/20 text-[#00e5ff] text-[10px] font-bold border border-[#00e5ff]/30">
-                  VERIFIED NODE
-                </span>
+                {currentUser?.verified ? (
+                  <span className="px-2.5 py-0.5 rounded-full bg-[#00e5ff]/20 text-[#00e5ff] text-[10px] font-bold border border-[#00e5ff]/30">
+                    VERIFIED NODE
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 rounded-full bg-white/10 text-[#8a8aa8] text-[10px] font-bold border border-white/10">
+                    STANDARD NODE
+                  </span>
+                )}
               </div>
               <div className="text-xs text-[#8a8aa8] mt-0.5">
                 {currentUser?.handle || '@guest'} · {currentUser?.pronouns || 'they/them'} · {currentUser?.location || 'Earth Node'}

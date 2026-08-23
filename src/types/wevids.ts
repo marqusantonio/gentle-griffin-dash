@@ -12,7 +12,8 @@ export type ViewName =
   | 'mall' 
   | 'messages' 
   | 'bookmarks' 
-  | 'profile';
+  | 'profile'
+  | 'admin';
 
 export interface UserProfile {
   id: string;
@@ -46,6 +47,7 @@ export interface UserProfile {
   views: string;
   joined: string;
   verified?: boolean;
+  isAdmin?: boolean;
   walletBalance: number;
   isCreator?: boolean;
   isGuest?: boolean;
@@ -89,7 +91,7 @@ export interface DirectMessageItem {
   receiver_id: string;
   content: string;
   is_friend_request?: boolean;
-  is_approved?: boolean | null; // null = pending, true = accepted, false = declined
+  is_approved?: boolean | null;
   is_blocked?: boolean;
   mediaUrl?: string;
   type?: 'text' | 'image' | 'gif' | 'audio' | 'file';
@@ -174,6 +176,7 @@ export interface PostItem {
   comments: CommentItem[];
   tags?: string[];
   created_at?: string;
+  flagged?: boolean;
 }
 
 export interface ShortClipItem {
@@ -191,6 +194,7 @@ export interface ShortClipItem {
   isBookmarked?: boolean;
   comments: CommentItem[];
   created_at?: string;
+  flagged?: boolean;
 }
 
 export interface VideoChapter {
@@ -285,7 +289,7 @@ export interface Conversation {
   groupTopic?: string;
   avatar: string;
   color: string;
-  members: string[]; // user IDs
+  members: string[];
   lastMsg: string;
   time: string;
   unread: number;

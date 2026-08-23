@@ -1,140 +1,57 @@
-import React, { useState, useEffect } from 'react';
-import { WevidsProvider, useWevids } from '../context/WevidsContext';
-import { Sidebar } from '../components/layout/Sidebar';
-import { TopHeader } from '../components/layout/TopHeader';
-import { ShortsFeedView } from '../components/clips/ShortsFeedView';
-import { DualFeedView } from '../components/feed/DualFeedView';
-import { FileDropVaultView } from '../components/files/FileDropVaultView';
-import { AiHubView } from '../components/ai/AiHubView';
-import { GamingHubView } from '../components/gaming/GamingHubView';
-import { AudioHubView } from '../components/audio/AudioHubView';
-import { FilmsHubView } from '../components/films/FilmsHubView';
-import { RomVaultView } from '../components/roms/RomVaultView';
-import { WevidsMallView } from '../components/mall/WevidsMallView';
+import React from 'react';
+import { useWevids } from '../context/WevidsContext';
+import { FeedView } from '../components/feed/FeedView';
+import { ClipsView } from '../components/clips/ClipsView';
+import { ExploreView } from '../components/explore/ExploreView';
+import { FilesView } from '../components/files/FilesView';
+import { AiHubView } from '../components/aihub/AiHubView';
+import { GamingView } from '../components/gaming/GamingView';
+import { AudioView } from '../components/audio/AudioView';
+import { FilmsView } from '../components/films/FilmsView';
+import { LiveView } from '../components/live/LiveView';
+import { RomsView } from '../components/roms/RomsView';
+import { MallView } from '../components/mall/MallView';
 import { MessagesView } from '../components/messages/MessagesView';
-import { LiveStreamView } from '../components/live/LiveStreamView';
-import { ProfileView } from '../components/profile/ProfileView';
 import { BookmarksView } from '../components/bookmarks/BookmarksView';
-import { VideoCallModal } from '../components/modals/VideoCallModal';
-import { ShareModal } from '../components/modals/ShareModal';
+import { ProfileView } from '../components/profile/ProfileView';
+import { AdminConsole } from '../components/admin/AdminConsole';
+import { Sidebar } from '../components/layout/Sidebar';
+import { Header } from '../components/layout/Header';
+import { BottomNav } from '../components/layout/BottomNav';
 import { UserProfileModal } from '../components/modals/UserProfileModal';
-import { SupabaseConnectModal } from '../components/modals/SupabaseConnectModal';
-import { PerformanceModeModal } from '../components/modals/PerformanceModeModal';
-import { AuthOnboardingModal } from '../components/modals/AuthOnboardingModal';
-import { getStoredSession } from '../lib/supabase';
-import { toast } from 'sonner';
 
-const MainContent: React.FC = () => {
+export const Index: React.FC = () => {
   const { activeView } = useWevids();
-  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
-  const [isPerfModalOpen, setIsPerfModalOpen] = useState(false);
-  const [isAuthOnboardingOpen, setIsAuthOnboardingOpen] = useState(false);
-  
-  // Performance mode state: entry (default fast) vs highend (liquid glass)
-  const [perfMode, setPerfMode] = useState<'entry' | 'highend'>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('wevids_perf_mode');
-      if (saved === 'highend' || saved === 'entry') return saved;
-    }
-    return 'entry';
-  });
-
-  // Check first-time user onboarding modal
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const session = getStoredSession();
-      const onboardingCompleted = localStorage.getItem('wevids_onboarding_completed_v3');
-      if (!session && !onboardingCompleted) {
-        setIsAuthOnboardingOpen(true);
-      }
-    }
-  }, []);
-
-  // Apply performance mode class to body
-  useEffect(() => {
-    document.body.classList.remove('perf-entry', 'perf-highend');
-    document.body.classList.add(`perf-${perfMode}`);
-    localStorage.setItem('wevids_perf_mode', perfMode);
-  }, [perfMode]);
-
-  const handleTogglePerfMode = () => {
-    const next = perfMode === 'entry' ? 'highend' : 'entry';
-    setPerfMode(next);
-    if (next === 'entry') {
-      toast.success('⚡ Switched to Entry/Midrange Mode (Fast 60-120 FPS)!');
-    } else {
-      toast.success('💎 Switched to High-End Mode (Liquid Glass Pro)!');
-    }
-  };
 
   return (
-    <div className="min-h-screen w-full bg-[#050512] text-[#f1f1fc] relative overflow-x-hidden selection:bg-[#ff2d95]/40 selection:text-[#00e5ff]">
-      {/* Background Layer (hidden automatically in Entry Mode) */}
-      <div className="bg-blobs-layer fixed inset-0 overflow-hidden pointer-events-none z-0">
-        <div 
-          className="absolute top-[-5vw] left-[-5vw] w-[45vw] h-[45vw] rounded-full bg-gradient-to-br from-[#ff2d95]/20 via-[#c026d3]/15 to-transparent blur-[70px] animate-liquid-blob-1 opacity-70" 
-        />
-        <div 
-          className="absolute bottom-[-5vw] right-[-5vw] w-[45vw] h-[45vw] rounded-full bg-gradient-to-tl from-[#00e5ff]/25 via-[#3b82f6]/15 to-transparent blur-[70px] animate-liquid-blob-2 opacity-70" 
-        />
-      </div>
+    <div className="min-h-screen bg-[#070712] text-white flex flex-col font-sans selection:bg-[#00e5ff] selection:text-slate-900">
+      <Header />
 
-      {/* Fixed Left Sidebar */}
-      <Sidebar />
+      <div className="flex-1 flex max-w-7xl w-full mx-auto px-2 sm:px-4 gap-4 pt-16 pb-16 md:pb-0">
+        <Sidebar />
 
-      {/* Right Side Content Container */}
-      <div className="relative z-10 flex flex-col min-h-screen md:pl-64 w-full">
-        <TopHeader 
-          onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
-          onOpenPerfModal={() => setIsPerfModalOpen(true)}
-          perfMode={perfMode}
-          onTogglePerfMode={handleTogglePerfMode}
-        />
-
-        <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl w-full mx-auto">
-          {activeView === 'clips' && <ShortsFeedView />}
-          {activeView === 'feed' && <DualFeedView />}
-          {activeView === 'films' && <FilmsHubView />}
-          {activeView === 'audio' && <AudioHubView />}
-          {activeView === 'gaming' && <GamingHubView />}
-          {activeView === 'files' && <FileDropVaultView />}
-          {activeView === 'explore' && <ShortsFeedView />}
+        <main className="flex-1 min-w-0 pt-2">
+          {activeView === 'feed' && <FeedView />}
+          {activeView === 'clips' && <ClipsView />}
+          {activeView === 'explore' && <ExploreView />}
+          {activeView === 'files' && <FilesView />}
           {activeView === 'aihub' && <AiHubView />}
-          {activeView === 'roms' && <RomVaultView />}
-          {activeView === 'mall' && <WevidsMallView />}
+          {activeView === 'gaming' && <GamingView />}
+          {activeView === 'audio' && <AudioView />}
+          {activeView === 'films' && <FilmsView />}
+          {activeView === 'live' && <LiveView />}
+          {activeView === 'roms' && <RomsView />}
+          {activeView === 'mall' && <MallView />}
           {activeView === 'messages' && <MessagesView />}
-          {activeView === 'live' && <LiveStreamView />}
-          {activeView === 'profile' && <ProfileView />}
           {activeView === 'bookmarks' && <BookmarksView />}
+          {activeView === 'profile' && <ProfileView />}
+          {activeView === 'admin' && <AdminConsole />}
         </main>
       </div>
 
-      <VideoCallModal />
-      <ShareModal />
+      <BottomNav />
       <UserProfileModal />
-      <SupabaseConnectModal 
-        isOpen={isSupabaseModalOpen} 
-        onClose={() => setIsSupabaseModalOpen(false)} 
-      />
-      <PerformanceModeModal
-        isOpen={isPerfModalOpen}
-        onClose={() => setIsPerfModalOpen(false)}
-        currentMode={perfMode}
-        onSelectMode={(mode) => setPerfMode(mode)}
-      />
-      <AuthOnboardingModal
-        isOpen={isAuthOnboardingOpen}
-        onClose={() => setIsAuthOnboardingOpen(false)}
-      />
     </div>
-  );
-};
-
-const Index: React.FC = () => {
-  return (
-    <WevidsProvider>
-      <MainContent />
-    </WevidsProvider>
   );
 };
 
