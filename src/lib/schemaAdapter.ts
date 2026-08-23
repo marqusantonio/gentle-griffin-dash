@@ -1,12 +1,19 @@
-import { supabase } from './supabase';
+import { supabase } from '../integrations/supabase/client';
+
+export const isUuid = (str: string): boolean => {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+};
 
 /**
  * Clean post serializer for Supabase that matches the existing table schema.
- * Prevents text-only posts from receiving dummy video URLs.
+ * Prevents invalid UUID syntax errors and satisfies the non-null video_url constraint.
  */
 export const insertPostWithAutoFallback = async (post: Record<string, any>): Promise<{ data: any; error: any }> => {
-  const isVideo = post.mediaType === 'video' && Boolean(post.mediaUrl || post.video_url);
-  const isImage = post.mediaType === 'image' && Boolean(post.mediaUrl);
+  const isVideo = post.mediaType === 'video' || Boolean(post.video_url || (post.mediaUrl && (post.mediaUrl.endsWith('.mp4') || post.mediaUrl.startsWith('data:video'))));
+  const isImage = post.mediaType === 'image' || Boolean(post.mediaUrl && !isVideo);
+
+  const videoValue = isVideo ? (post.video_url || post.mediaUrl || '') : '';
+  const mediaValue = post.mediaUrl || (isVideo ? videoValue : null);
 
   const payload: Record<string, any> = {
     content: post.content || post.caption || '',
@@ -17,33 +24,23 @@ export const insertPostWithAutoFallback = async (post: Record<string, any>): Pro
     authorAvatar: post.authorAvatar || 'C',
     authorColor: post.authorColor || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
     userId: post.userId || post.user_id || 'guest',
-    mediaUrl: post.mediaUrl || null,
+    mediaUrl: mediaValue,
     mediaType: isVideo ? 'video' : isImage ? 'image' : null,
-    video_url: isVideo ? (post.video_url || post.mediaUrl) : null,
+    // Satisfy PostgreSQL NOT NULL constraint on video_url column
+    video_url: videoValue || 'none',
+    likes: Number(post.likes) || 0,
+    dislikes: Number(post.dislikes) || 0,
+    shares: Number(post.shares) || 0,
     tags: Array.isArray(post.tags) ? post.tags : [],
     comments: Array.isArray(post.comments) ? post.comments : []
   };
 
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(post.id);
-  if (isUuid) {
+  // Only pass id if it's a valid UUID; otherwise let postgres gen_random_uuid() handle it
+  if (post.id && isUuid(post.id)) {
     payload.id = post.id;
   }
 
-  let { data, error } = await supabase.from('posts').insert(payload);
-  
-  if (error && (error.message?.includes('schema cache') || error.message?.includes('column') || error.message?.includes('does not exist'))) {
-    // Retry with minimal payload if schema cache is lagging
-    const minimalPayload = {
-      content: payload.content,
-      authorName: payload.authorName,
-      authorHandle: payload.authorHandle,
-      userId: payload.userId,
-      mediaUrl: payload.mediaUrl
-    };
-    const retry = await supabase.from('posts').insert(minimalPayload);
-    data = retry.data;
-    error = retry.error;
-  }
+  const { data, error } = await supabase.from('posts').insert([payload]).select();
 
   return { data, error };
 };
