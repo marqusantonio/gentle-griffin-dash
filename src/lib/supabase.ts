@@ -54,8 +54,8 @@ export const checkContentModeration = (text: string): { flagged: boolean; reason
   return { flagged: false };
 };
 
-export const SUPABASE_SQL_SCHEMA = `-- Comprehensive Followers, Messaging & Streaks System SQL Migration
--- Run this in your Supabase SQL Editor (supabase.com -> SQL Editor)
+export const SUPABASE_SQL_SCHEMA = `-- 100x Ultra-Futuristic Cyberpunk Social Engine Migration
+-- Execute this script in your Supabase SQL Editor (supabase.com -> SQL Editor)
 
 -- 1. PROFILES TABLE
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -119,7 +119,7 @@ CREATE TABLE IF NOT EXISTS public.streaks (
   CONSTRAINT unique_streak_pair UNIQUE(user_1, user_2)
 );
 
--- DATA API GRANTS (MANDATORY FOR REST API & supabase-js)
+-- DATA API GRANTS
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.profiles TO service_role, authenticated, anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.follows TO service_role, authenticated, anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.conversations TO service_role, authenticated, anon;
@@ -137,14 +137,113 @@ ALTER TABLE public.streaks ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow public select profiles" ON public.profiles FOR SELECT USING (true);
 CREATE POLICY "Allow full access profiles" ON public.profiles FOR ALL USING (true) WITH CHECK (true);
-
 CREATE POLICY "Allow full access follows" ON public.follows FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow full access conversations" ON public.conversations FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow full access participants" ON public.conversation_participants FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow full access messages" ON public.messages FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow full access streaks" ON public.streaks FOR ALL USING (true) WITH CHECK (true);
 
--- ATOMIC STORED PROCEDURE: Atomic Mutual Follow Switch
+-- RPC 1: ACCEPT MESSAGE REQUEST (Atomically Unlocks Chat & Mutual Follow)
+CREATE OR REPLACE FUNCTION public.accept_message_request(
+  p_sender_id TEXT,
+  p_receiver_id TEXT
+) RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  -- 1. Ensure mutual follow relationship is accepted
+  INSERT INTO public.follows (follower_id, following_id, status)
+  VALUES (p_sender_id, p_receiver_id, 'accepted')
+  ON CONFLICT (follower_id, following_id) DO UPDATE SET status = 'accepted';
+
+  INSERT INTO public.follows (follower_id, following_id, status)
+  VALUES (p_receiver_id, p_sender_id, 'accepted')
+  ON CONFLICT (follower_id, following_id) DO UPDATE SET status = 'accepted';
+
+  -- 2. Approve all pending direct messages between these two users
+  UPDATE public.direct_messages
+  SET is_approved = true
+  WHERE (sender_id = p_sender_id AND receiver_id = p_receiver_id)
+     OR (sender_id = p_receiver_id AND receiver_id = p_sender_id);
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'relationship_status', 'FRIENDS',
+    'message', 'Transmission link established. Mutual Friends unlocked.'
+  );
+END;
+$$;
+
+-- RPC 2: GET RELATIONSHIP STATUS (Returns NONE, FOLLOWING, FOLLOW_BACK, FRIENDS)
+CREATE OR REPLACE FUNCTION public.get_relationship_status(
+  p_current_user_id TEXT,
+  p_target_user_id TEXT
+) RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_i_follow_them BOOLEAN := false;
+  v_i_follow_status TEXT;
+  v_they_follow_me BOOLEAN := false;
+  v_they_follow_status TEXT;
+BEGIN
+  IF p_current_user_id = p_target_user_id THEN
+    RETURN 'FRIENDS';
+  END IF;
+
+  SELECT true, status INTO v_i_follow_them, v_i_follow_status
+  FROM public.follows
+  WHERE follower_id = p_current_user_id AND following_id = p_target_user_id;
+
+  SELECT true, status INTO v_they_follow_me, v_they_follow_status
+  FROM public.follows
+  WHERE follower_id = p_target_user_id AND following_id = p_current_user_id;
+
+  IF COALESCE(v_i_follow_them, false) AND COALESCE(v_they_follow_me, false) THEN
+    RETURN 'FRIENDS';
+  ELSIF COALESCE(v_i_follow_them, false) THEN
+    RETURN 'FOLLOWING';
+  ELSIF COALESCE(v_they_follow_me, false) THEN
+    RETURN 'FOLLOW_BACK';
+  ELSE
+    RETURN 'NONE';
+  END IF;
+END;
+$$;
+
+-- AUTOMATIC TRIGGER: Auto mutual follow trigger
+CREATE OR REPLACE FUNCTION public.handle_auto_mutual_follow()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_reciprocal_exists BOOLEAN;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM public.follows
+    WHERE follower_id = NEW.following_id AND following_id = NEW.follower_id
+  ) INTO v_reciprocal_exists;
+
+  IF v_reciprocal_exists THEN
+    NEW.status := 'accepted';
+    UPDATE public.follows
+    SET status = 'accepted'
+    WHERE follower_id = NEW.following_id AND following_id = NEW.follower_id;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_auto_mutual_follow ON public.follows;
+CREATE TRIGGER trg_auto_mutual_follow
+BEFORE INSERT OR UPDATE ON public.follows
+FOR EACH ROW EXECUTE FUNCTION public.handle_auto_mutual_follow();
+
+-- RPC 3: ATOMIC FOLLOW TOGGLE
 CREATE OR REPLACE FUNCTION public.toggle_follow_atomic(
   p_follower_id TEXT,
   p_following_id TEXT
@@ -153,56 +252,32 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-  v_reverse_exists BOOLEAN;
   v_already_following BOOLEAN;
+  v_relationship TEXT;
 BEGIN
-  -- Check if follower_id already follows following_id
   SELECT EXISTS(
     SELECT 1 FROM public.follows 
     WHERE follower_id = p_follower_id AND following_id = p_following_id
   ) INTO v_already_following;
 
   IF v_already_following THEN
-    -- UNFOLLOW: Remove follow relationship
     DELETE FROM public.follows WHERE follower_id = p_follower_id AND following_id = p_following_id;
-    
-    -- If reverse follow exists, demote reverse status back to 'pending'
-    UPDATE public.follows 
-    SET status = 'pending' 
-    WHERE follower_id = p_following_id AND following_id = p_follower_id;
-
-    RETURN jsonb_build_object('status', 'unfollowed', 'is_mutual', false);
+    UPDATE public.follows SET status = 'pending' WHERE follower_id = p_following_id AND following_id = p_follower_id;
   ELSE
-    -- Check if target user already follows me
-    SELECT EXISTS(
-      SELECT 1 FROM public.follows 
-      WHERE follower_id = p_following_id AND following_id = p_follower_id
-    ) INTO v_reverse_exists;
-
-    IF v_reverse_exists THEN
-      -- Mutual Friend: Set BOTH to 'accepted'
-      INSERT INTO public.follows (follower_id, following_id, status)
-      VALUES (p_follower_id, p_following_id, 'accepted')
-      ON CONFLICT (follower_id, following_id) DO UPDATE SET status = 'accepted';
-
-      UPDATE public.follows 
-      SET status = 'accepted' 
-      WHERE follower_id = p_following_id AND following_id = p_follower_id;
-
-      RETURN jsonb_build_object('status', 'accepted', 'is_mutual', true);
-    ELSE
-      -- One-way follow: Set status = 'pending'
-      INSERT INTO public.follows (follower_id, following_id, status)
-      VALUES (p_follower_id, p_following_id, 'pending')
-      ON CONFLICT (follower_id, following_id) DO UPDATE SET status = 'pending';
-
-      RETURN jsonb_build_object('status', 'pending', 'is_mutual', false);
-    END IF;
+    INSERT INTO public.follows (follower_id, following_id, status)
+    VALUES (p_follower_id, p_following_id, 'pending');
   END IF;
+
+  v_relationship := public.get_relationship_status(p_follower_id, p_following_id);
+
+  RETURN jsonb_build_object(
+    'status', v_relationship,
+    'is_mutual', (v_relationship = 'FRIENDS')
+  );
 END;
 $$;
 
--- ATOMIC STORED PROCEDURE: Get or Create Unique Conversation
+-- RPC 4: GET OR CREATE CONVERSATION
 CREATE OR REPLACE FUNCTION public.get_or_create_conversation(
   p_user_1 TEXT,
   p_user_2 TEXT
@@ -229,7 +304,7 @@ BEGIN
 END;
 $$;
 
--- ATOMIC STORED PROCEDURE: Send Message with 1-Request Rules & 🔥 Streak Updating
+-- RPC 5: SEND MESSAGE WITH 1-REQUEST LIMIT & STREAKS
 CREATE OR REPLACE FUNCTION public.send_message_with_rules(
   p_conversation_id UUID,
   p_sender_id TEXT,
@@ -242,7 +317,7 @@ SECURITY DEFINER
 AS $$
 DECLARE
   v_recipient_id TEXT;
-  v_is_mutual BOOLEAN;
+  v_rel_status TEXT;
   v_sender_msg_count INTEGER;
   v_u1 TEXT;
   v_u2 TEXT;
@@ -250,40 +325,31 @@ DECLARE
   v_streak INTEGER := 0;
   v_msg_id UUID;
 BEGIN
-  -- Get recipient ID
   SELECT user_id INTO v_recipient_id
   FROM public.conversation_participants
   WHERE conversation_id = p_conversation_id AND user_id != p_sender_id
   LIMIT 1;
 
   IF v_recipient_id IS NULL THEN
-    RAISE EXCEPTION 'Recipient participant not found';
+    RAISE EXCEPTION 'Recipient not found in conversation';
   END IF;
 
-  -- Check if users are mutual friends (both follows records exist with status = 'accepted')
-  SELECT (
-    EXISTS(SELECT 1 FROM public.follows WHERE follower_id = p_sender_id AND following_id = v_recipient_id AND status = 'accepted')
-    AND
-    EXISTS(SELECT 1 FROM public.follows WHERE follower_id = v_recipient_id AND following_id = p_sender_id AND status = 'accepted')
-  ) INTO v_is_mutual;
+  v_rel_status := public.get_relationship_status(p_sender_id, v_recipient_id);
 
-  -- If NOT mutual friends, enforce 1-Message Request Limit
-  IF NOT v_is_mutual THEN
+  IF v_rel_status != 'FRIENDS' THEN
     SELECT COUNT(*) INTO v_sender_msg_count
     FROM public.messages
     WHERE conversation_id = p_conversation_id AND sender_id = p_sender_id;
 
     IF v_sender_msg_count >= 1 THEN
-      RAISE EXCEPTION 'Request limit reached: You can only send 1 request message until recipient accepts your follow or reply.';
+      RAISE EXCEPTION 'Request limit reached: Only 1 transmission request allowed until target accepts or follows back.';
     END IF;
   END IF;
 
-  -- Insert Message
   INSERT INTO public.messages (conversation_id, sender_id, content, media_url, type)
   VALUES (p_conversation_id, p_sender_id, p_content, p_media_url, p_type)
   RETURNING id INTO v_msg_id;
 
-  -- Atomic Streak Logic
   IF p_sender_id < v_recipient_id THEN
     v_u1 := p_sender_id; v_u2 := v_recipient_id;
   ELSE
@@ -295,21 +361,17 @@ BEGIN
   WHERE user_1 = v_u1 AND user_2 = v_u2;
 
   IF v_last_date IS NULL THEN
-    -- First message exchange
     INSERT INTO public.streaks (user_1, user_2, current_streak, last_message_date)
     VALUES (v_u1, v_u2, 1, CURRENT_DATE)
     ON CONFLICT (user_1, user_2) DO UPDATE SET current_streak = 1, last_message_date = CURRENT_DATE;
     v_streak := 1;
   ELSIF v_last_date = CURRENT_DATE THEN
-    -- Already communicated today, keep streak
     NULL;
   ELSIF v_last_date = CURRENT_DATE - INTERVAL '1 day' THEN
-    -- Communicated yesterday! Increment 🔥 Streak
     v_streak := COALESCE(v_streak, 0) + 1;
     UPDATE public.streaks SET current_streak = v_streak, last_message_date = CURRENT_DATE
     WHERE user_1 = v_u1 AND user_2 = v_u2;
   ELSE
-    -- Communication gap > 24 hours: Reset streak
     v_streak := 1;
     UPDATE public.streaks SET current_streak = 1, last_message_date = CURRENT_DATE
     WHERE user_1 = v_u1 AND user_2 = v_u2;
@@ -317,7 +379,7 @@ BEGIN
 
   RETURN jsonb_build_object(
     'message_id', v_msg_id,
-    'is_mutual', v_is_mutual,
+    'relationship_status', v_rel_status,
     'current_streak', v_streak
   );
 END;
