@@ -1085,25 +1085,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     dispatch({ type: 'SET_SOUND_ENABLED', payload: enabled });
   };
 
-  const deactivateAccount = async () => {
-    sounds.pop();
-    await updateCurrentUser({ isDeactivated: true });
-    toast.info('Account deactivated. Your profile is now hidden.');
-  };
-
-  const deleteAccount = async () => {
-    sounds.pop();
-    dispatch({ type: 'PURGE_ACCOUNT' });
-    try {
-      await supabase.from('posts').delete().eq('userId', state.currentUser.id);
-      await supabase.from('clips').delete().eq('userId', state.currentUser.id);
-      await supabase.from('profiles').delete().eq('id', state.currentUser.id);
-    } catch {}
-    localStorage.clear();
-    toast.success('Your account and data have been permanently deleted.');
-    window.location.reload();
-  };
-
   const value: WevidsContextType = {
     ...state,
     addPost,
