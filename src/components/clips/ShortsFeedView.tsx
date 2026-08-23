@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useWevids } from '../../context/WevidsContext';
 import { 
   Heart, 
@@ -17,6 +17,7 @@ import {
   Trash2, 
   Play, 
   Pause, 
+  RefreshCw, 
   Sparkles, 
   Gauge, 
   RotateCcw,
@@ -27,6 +28,7 @@ import { CreatePostModal } from '../feed/CreatePostModal';
 import { sounds } from '../../lib/soundFx';
 import { ShortClipItem, CommentItem } from '../../types/wevids';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { toast } from 'sonner';
 
 // High-speed, CORS-friendly MP4 vertical and high-compatibility streams
 const RELIABLE_BACKUP_STREAMS = [
@@ -44,6 +46,7 @@ interface ShortCardProps {
   index: number;
   totalClips: number;
   isActive: boolean;
+  isAdjacent: boolean;
   isMuted: boolean;
   playbackSpeed: number;
   onToggleMute: () => void;
@@ -68,6 +71,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   index,
   totalClips,
   isActive,
+  isAdjacent,
   isMuted,
   playbackSpeed,
   onToggleMute,
@@ -113,7 +117,6 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     if (!video) return;
 
     if (isActive) {
-      video.currentTime = 0;
       video.playbackRate = playbackSpeed;
       video.muted = isMuted;
 
@@ -207,6 +210,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   };
 
   const handleVideoError = () => {
+    // If original fails, fallback to highly resilient CDN stream
     if (fallbackIndex === null) {
       setFallbackIndex(index);
       setVideoError(false);
@@ -239,7 +243,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         </div>
       )}
 
-      {/* Video Element */}
+      {/* Video Element with Preload Optimization */}
       {videoError ? (
         <div className="p-8 text-center space-y-3 z-10 text-xs text-[#8a8aa8]">
           <div className="w-14 h-14 rounded-2xl bg-[#ff2d95]/20 border border-[#ff2d95]/40 flex items-center justify-center mx-auto text-[#ff2d95] animate-pulse">
@@ -268,7 +272,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
           loop
           muted={isMuted}
           playsInline
-          preload="auto"
+          preload={isActive ? 'auto' : isAdjacent ? 'auto' : 'metadata'}
           onWaiting={() => setIsLoadingVideo(true)}
           onPlaying={() => setIsLoadingVideo(false)}
           onLoadedData={() => setIsLoadingVideo(false)}
@@ -534,7 +538,7 @@ export const ShortsFeedView: React.FC = () => {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'clips' },
         () => {
-          syncWithSupabase(false);
+          syncWithSupabase(true);
         }
       )
       .subscribe();
@@ -704,6 +708,7 @@ export const ShortsFeedView: React.FC = () => {
               index={index}
               totalClips={validClips.length}
               isActive={index === activeIndex}
+              isAdjacent={Math.abs(index - activeIndex) === 1}
               isMuted={isMuted}
               playbackSpeed={playbackSpeed}
               onToggleMute={() => {
