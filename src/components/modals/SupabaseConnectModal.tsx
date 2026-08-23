@@ -11,16 +11,14 @@ import {
   Zap,
   Code,
   RefreshCw,
-  TableProperties,
   Github
 } from 'lucide-react';
 import { 
   getStoredSession,
   saveStoredSession,
   getSupabaseConfig,
-  saveSupabaseCredentials,
-  clearSupabaseCredentials,
   isSupabaseConfigured,
+  testSupabaseConnection,
   SUPABASE_SQL_SCHEMA,
   supabase
 } from '../../lib/supabase';
@@ -46,47 +44,35 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
   const [authLoading, setAuthLoading] = useState(false);
   const [currentSessionUser, setCurrentSessionUser] = useState<string | null>(() => getStoredSession()?.user?.email || null);
 
-  // Database credentials state
-  const [supabaseUrl, setSupabaseUrl] = useState(() => getSupabaseConfig().url);
-  const [supabaseAnonKey, setSupabaseAnonKey] = useState(() => getSupabaseConfig().anonKey);
+  // Database status state
   const [isTesting, setIsTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; message: string; hint?: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [copiedSchema, setCopiedSchema] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       const session = getStoredSession();
       setCurrentSessionUser(session?.user?.email || null);
-      const conf = getSupabaseConfig();
-      setSupabaseUrl(conf.url);
-      setSupabaseAnonKey(conf.anonKey);
       if (isSupabaseConfigured()) {
-        supabase.testConnection().then(setTestResult);
+        testSupabaseConnection().then(setTestResult);
       }
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleSaveCredentials = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!supabaseUrl.trim() || !supabaseAnonKey.trim()) {
-      toast.error('Please enter both Supabase Project URL and Anon Key');
-      return;
-    }
-
+  const handleTestDatabase = async () => {
     setIsTesting(true);
-    saveSupabaseCredentials(supabaseUrl, supabaseAnonKey);
-    const result = await supabase.testConnection();
+    const result = await testSupabaseConnection();
     setIsTesting(false);
     setTestResult(result);
 
     if (result.ok) {
       sounds.success();
-      toast.success('Connected to Supabase! Syncing tables...');
+      toast.success('Connected to Supabase database! Syncing...');
       syncWithSupabase();
     } else {
-      toast.error(`Connection check: ${result.message}`);
+      toast.error(`Database check: ${result.message}`);
     }
   };
 
@@ -102,33 +88,33 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
     sounds.click();
     navigator.clipboard.writeText(SUPABASE_SQL_SCHEMA);
     setCopiedSchema(true);
-    toast.success('SQL Schema copied! Paste into Supabase SQL Editor and run.');
+    toast.success('Schema information copied!');
     setTimeout(() => setCopiedSchema(false), 3000);
   };
 
   const handleGoogleLogin = async () => {
     sounds.pop();
-    toast.loading('Connecting with Google OAuth...');
-    const conf = getSupabaseConfig();
-    if (conf.url && typeof window !== 'undefined') {
-      const redirectUrl = `${conf.url}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(window.location.origin)}`;
-      window.location.href = redirectUrl;
-    } else {
-      toast.dismiss();
-      toast.error('Supabase URL not configured for Google OAuth');
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin }
+      });
+      if (error) toast.error(error.message);
+    } catch (err: any) {
+      toast.error(err.message || 'OAuth initiation failed');
     }
   };
 
   const handleGithubLogin = async () => {
     sounds.pop();
-    toast.loading('Connecting with GitHub OAuth...');
-    const conf = getSupabaseConfig();
-    if (conf.url && typeof window !== 'undefined') {
-      const redirectUrl = `${conf.url}/auth/v1/authorize?provider=github&redirect_to=${encodeURIComponent(window.location.origin)}`;
-      window.location.href = redirectUrl;
-    } else {
-      toast.dismiss();
-      toast.error('Supabase URL not configured for GitHub OAuth');
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'github',
+        options: { redirectTo: window.location.origin }
+      });
+      if (error) toast.error(error.message);
+    } catch (err: any) {
+      toast.error(err.message || 'OAuth initiation failed');
     }
   };
 
@@ -151,6 +137,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
     saveStoredSession(guestSession);
     setCurrentSessionUser(guestSession.user.email);
     updateCurrentUser({
+      id: `guest-${guestNum}`,
       name: `Guest_${guestNum}`,
       handle: `@guest_${guestNum}`,
       avatar: 'G',
@@ -167,21 +154,31 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
       return;
     }
     setAuthLoading(true);
-    const res = await supabase.signUp(email, password, name);
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { full_name: name }
+      }
+    });
     setAuthLoading(false);
 
-    if (res.error) {
-      toast.error(res.error);
+    if (error) {
+      toast.error(error.message);
     } else {
       sounds.success();
       const displayName = name || email.split('@')[0];
       setCurrentSessionUser(email);
+      saveStoredSession({ user: data.user });
       updateCurrentUser({ 
+        id: data.user?.id || `user-${Date.now()}`,
         name: displayName, 
         handle: `@${displayName.toLowerCase().replace(/\s+/g, '_')}`,
-        verified: true
+        verified: true,
+        email: email
       });
       toast.success(`Account created! Welcome, ${displayName}!`);
+      syncWithSupabase();
       onClose();
     }
   };
@@ -193,20 +190,26 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
       return;
     }
     setAuthLoading(true);
-    const res = await supabase.signIn(email, password);
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
     setAuthLoading(false);
 
-    if (res.error) {
-      toast.error(res.error);
+    if (error) {
+      toast.error(error.message);
     } else {
       sounds.success();
-      if (res.user?.email) {
-        setCurrentSessionUser(res.user.email);
-        const displayName = res.user.user_metadata?.full_name || res.user.email.split('@')[0];
+      if (data.user?.email) {
+        setCurrentSessionUser(data.user.email);
+        saveStoredSession({ user: data.user });
+        const displayName = data.user.user_metadata?.full_name || data.user.email.split('@')[0];
         updateCurrentUser({ 
+          id: data.user.id,
           name: displayName, 
           handle: `@${displayName.toLowerCase().replace(/\s+/g, '_')}`,
-          verified: true
+          verified: true,
+          email: data.user.email
         });
       }
       toast.success('Signed in successfully!');
@@ -216,11 +219,13 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
   };
 
   const handleSignOut = async () => {
-    await supabase.signOut();
+    await supabase.auth.signOut();
+    saveStoredSession(null);
     setCurrentSessionUser(null);
     sounds.pop();
     const guestNum = Math.floor(1000 + Math.random() * 9000);
     updateCurrentUser({
+      id: `guest-${guestNum}`,
       name: `Guest_${guestNum}`,
       handle: `@guest_${guestNum}`,
       avatar: 'G',
@@ -247,37 +252,35 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
           </div>
           <div>
             <div className="font-orbitron font-bold text-base text-white flex items-center gap-2">
-              Supabase Account & Auth Studio
+              Supabase Cloud Database & Auth
             </div>
-            <p className="text-xs text-[#8a8aa8]">Sign in with Google, GitHub, Email, or Guest to sync posts & profile</p>
+            <p className="text-xs text-[#8a8aa8]">Real-time synchronization for posts, clips, profiles, and media</p>
           </div>
         </div>
 
         {/* Live Sync Status Banner */}
         <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
-            <span className={`w-2.5 h-2.5 rounded-full ${isSupabaseConfigured() ? 'bg-[#10b981] animate-ping' : 'bg-amber-400'}`} />
+            <span className="w-2.5 h-2.5 rounded-full bg-[#10b981] animate-ping" />
             <div>
               <span className="font-bold text-white">
-                {isSupabaseConfigured() ? 'Supabase Cloud Connected' : 'Local Guest Mode'}
+                Supabase Connected
               </span>
               <div className="text-[10px] text-[#8a8aa8]">
-                {lastCloudSync ? `Last synced: ${lastCloudSync}` : 'Ready to sync'} · {posts.length} Posts · {clips.length} Clips
+                {lastCloudSync ? `Last synced: ${lastCloudSync}` : 'Connected'} · {posts.length} Posts · {clips.length} Clips
               </div>
             </div>
           </div>
 
-          {isSupabaseConfigured() && (
-            <button
-              type="button"
-              onClick={handleManualSync}
-              disabled={isCloudSyncing}
-              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-[#00e5ff] font-orbitron font-bold text-[10px] flex items-center gap-1.5 transition-colors"
-            >
-              <RefreshCw className={`w-3 h-3 ${isCloudSyncing ? 'animate-spin' : ''}`} />
-              <span>Sync Now</span>
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleManualSync}
+            disabled={isCloudSyncing}
+            className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-[#00e5ff] font-orbitron font-bold text-[10px] flex items-center gap-1.5 transition-colors"
+          >
+            <RefreshCw className={`w-3 h-3 ${isCloudSyncing ? 'animate-spin' : ''}`} />
+            <span>Sync Now</span>
+          </button>
         </div>
 
         {/* Tabs Bar */}
@@ -304,7 +307,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
               activeTab === 'database' ? 'bg-[#00e5ff] text-slate-900 shadow-md' : 'text-[#8a8aa8] hover:text-white'
             }`}
           >
-            Database Settings
+            Database Status
           </button>
           <button
             type="button"
@@ -456,45 +459,21 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
           </div>
         )}
 
-        {/* TAB 2: DATABASE SETTINGS */}
+        {/* TAB 2: DATABASE STATUS */}
         {activeTab === 'database' && (
-          <form onSubmit={handleSaveCredentials} className="space-y-4 text-xs">
+          <div className="space-y-4 text-xs">
             <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 space-y-1">
               <div className="text-white font-bold flex items-center gap-1.5">
                 <Key className="w-4 h-4 text-[#00e5ff]" />
-                Supabase API Credentials
+                Supabase API Connection Endpoint
               </div>
-              <p className="text-[11px] text-[#8a8aa8]">
-                Get your Project URL & Public Anon Key from Supabase Dashboard &rarr; Settings &rarr; API.
-              </p>
-            </div>
-
-            <div>
-              <label className="font-bold text-white block mb-1">Project URL</label>
-              <input
-                type="url"
-                value={supabaseUrl}
-                onChange={(e) => setSupabaseUrl(e.target.value)}
-                placeholder="https://xyzcompany.supabase.co"
-                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white font-mono text-xs focus:border-[#00e5ff] focus:outline-none"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="font-bold text-white block mb-1">Public Anon Key (anon/public)</label>
-              <textarea
-                value={supabaseAnonKey}
-                onChange={(e) => setSupabaseAnonKey(e.target.value)}
-                rows={3}
-                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white font-mono text-xs focus:border-[#00e5ff] focus:outline-none"
-                required
-              />
+              <div className="text-[11px] text-[#00e5ff] font-mono truncate">
+                {getSupabaseConfig().url}
+              </div>
             </div>
 
             {testResult && (
-              <div className={`p-2.5 rounded-xl border text-[11px] flex items-center gap-2 ${
+              <div className={`p-3 rounded-xl border text-[11px] flex items-center gap-2 ${
                 testResult.ok ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400'
               }`}>
                 {testResult.ok ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> : <X className="w-4 h-4 flex-shrink-0" />}
@@ -502,33 +481,16 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
               </div>
             )}
 
-            <div className="flex gap-2 pt-1">
-              <button
-                type="submit"
-                disabled={isTesting}
-                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-[#00e5ff] to-[#ff2d95] text-slate-900 font-orbitron font-bold text-xs shadow-md hover:scale-102 transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                <Zap className="w-4 h-4" />
-                <span>{isTesting ? 'TESTING...' : 'SAVE & CONNECT'}</span>
-              </button>
-
-              {isSupabaseConfigured() && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    clearSupabaseCredentials();
-                    setSupabaseUrl('');
-                    setSupabaseAnonKey('');
-                    setTestResult(null);
-                    toast.info('Supabase credentials cleared.');
-                  }}
-                  className="px-4 py-3 rounded-xl bg-white/10 hover:bg-red-500/20 text-white hover:text-red-400 font-bold"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </form>
+            <button
+              type="button"
+              onClick={handleTestDatabase}
+              disabled={isTesting}
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-[#00e5ff] to-[#ff2d95] text-slate-900 font-orbitron font-bold text-xs shadow-md hover:scale-102 transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              <Zap className="w-4 h-4" />
+              <span>{isTesting ? 'TESTING CONNECTION...' : 'TEST DATABASE CONNECTION'}</span>
+            </button>
+          </div>
         )}
 
         {/* TAB 3: SQL SCHEMA */}
@@ -537,14 +499,14 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
             <div className="flex items-center justify-between">
               <div className="text-white font-bold flex items-center gap-1.5">
                 <Code className="w-4 h-4 text-[#fbbf24]" />
-                Supabase SQL Script
+                Supabase SQL Schema
               </div>
               <button
                 onClick={handleCopySchema}
                 className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#fbbf24] text-slate-900 font-orbitron font-bold text-[11px] shadow hover:scale-105 transition-transform"
               >
                 {copiedSchema ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedSchema ? 'COPIED!' : 'COPY SQL'}</span>
+                <span>{copiedSchema ? 'COPIED!' : 'COPY SCHEMA'}</span>
               </button>
             </div>
 
