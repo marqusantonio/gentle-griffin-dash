@@ -12,8 +12,6 @@
     --accent2: #00e5ff;
     --accent3: #9333ea;
     --border: rgba(255, 255, 255, 0.18);
-    --liquid-glow: rgba(0, 229, 255, 0.35);
-    --liquid-pink: rgba(255, 45, 149, 0.35);
   }
 
   html,
@@ -59,11 +57,15 @@
   scroll-snap-type: y mandatory;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
 }
 
 .shorts-snap-item {
   scroll-snap-align: start;
   scroll-snap-stop: always;
+  height: 100%;
+  width: 100%;
 }
 
 /* Hide scrollbar for clean reel feel */
@@ -75,10 +77,7 @@
   scrollbar-width: none;
 }
 
-/* =========================================================
-   LIQUID GLASS CORE STYLES (FROSTED REFRACTION & GLOSS)
-   ========================================================= */
-
+/* Liquid Glass Core Styles */
 .liquid-glass {
   background: linear-gradient(
     135deg,
@@ -91,11 +90,9 @@
   -webkit-backdrop-filter: blur(28px) saturate(210%);
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-top: 1.5px solid rgba(255, 255, 255, 0.55);
-  border-left: 1.5px solid rgba(255, 255, 255, 0.4);
   box-shadow: 
     0 20px 60px rgba(0, 0, 0, 0.75),
-    inset 0 1.5px 2px rgba(255, 255, 255, 0.45),
-    inset 0 -1.5px 2px rgba(0, 229, 255, 0.2);
+    inset 0 1.5px 2px rgba(255, 255, 255, 0.45);
 }
 
 .liquid-glass-card {
@@ -110,19 +107,6 @@
   -webkit-backdrop-filter: blur(22px) saturate(200%);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-top: 1.2px solid rgba(255, 255, 255, 0.5);
-  box-shadow: 
-    0 15px 40px rgba(0, 0, 0, 0.6),
-    inset 0 1px 1px rgba(255, 255, 255, 0.35);
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, box-shadow 0.25s ease;
-}
-
-.liquid-glass-card:hover {
-  transform: translateY(-4px) scale(1.01);
-  border-color: rgba(0, 229, 255, 0.8);
-  box-shadow: 
-    0 20px 50px rgba(0, 229, 255, 0.25),
-    0 0 25px rgba(255, 45, 149, 0.2),
-    inset 0 1.5px 2px rgba(255, 255, 255, 0.55);
 }
 
 .liquid-glass-pill {
@@ -134,82 +118,21 @@
   backdrop-filter: blur(16px) saturate(180%);
   -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.25);
-  border-top: 1px solid rgba(255, 255, 255, 0.5);
 }
 
-/* =========================================================
-   PERFORMANCE MODES
-   ========================================================= */
-
-body.perf-entry .liquid-glass {
-  background: rgba(14, 14, 36, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65);
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
+/* Performance Modes */
+body.perf-entry .liquid-glass,
 body.perf-entry .liquid-glass-card {
-  background: rgba(18, 18, 46, 0.94);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  background: rgba(18, 18, 46, 0.95);
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
 
-body.perf-highend .liquid-glass {
-  backdrop-filter: blur(32px) saturate(220%);
-  -webkit-backdrop-filter: blur(32px) saturate(220%);
-}
-
-/* Neon Text & Gradient Utilities */
 .neon-gradient-text {
   background: linear-gradient(115deg, #ffffff 0%, #ff2d95 38%, #00e5ff 82%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-}
-
-.neon-gradient-text-gold {
-  background: linear-gradient(115deg, #ffffff 0%, #fbbf24 45%, #ff2d95 90%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-/* =========================================================
-   ANIMATION KEYFRAMES FOR LIQUID AMBIENT GLOWS
-   ========================================================= */
-@keyframes morphingBlob1 {
-  0%, 100% { transform: translate(0, 0) scale(1) rotate(0deg); }
-  33% { transform: translate(60px, -45px) scale(1.15) rotate(120deg); }
-  66% { transform: translate(-35px, 35px) scale(0.9) rotate(240deg); }
-}
-
-@keyframes morphingBlob2 {
-  0%, 100% { transform: translate(0, 0) scale(1) rotate(0deg); }
-  50% { transform: translate(-50px, 50px) scale(1.2) rotate(180deg); }
-}
-
-@keyframes neonGlowPulse {
-  0%, 100% {
-    box-shadow: 0 0 20px rgba(255, 45, 149, 0.45), inset 0 0 12px rgba(0, 229, 255, 0.25);
-  }
-  50% {
-    box-shadow: 0 0 40px rgba(0, 229, 255, 0.7), inset 0 0 24px rgba(255, 45, 149, 0.5);
-  }
-}
-
-.animate-liquid-blob-1 {
-  animation: morphingBlob1 18s ease-in-out infinite;
-}
-
-.animate-liquid-blob-2 {
-  animation: morphingBlob2 22s ease-in-out infinite;
-}
-
-.animate-neon-glow {
-  animation: neonGlowPulse 4s ease-in-out infinite;
 }
 
 .font-orbitron {
