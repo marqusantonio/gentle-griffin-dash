@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useWevids } from '../../context/WevidsContext';
 import { ViewName, UserProfile } from '../../types/wevids';
 import { 
@@ -18,10 +18,11 @@ import {
   UserPlus,
   Check,
   ShieldCheck,
-  X,
-  Flame
+  X
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
+import { GubbyEasterEggModal } from '../modals/GubbyEasterEggModal';
+import { toast } from 'sonner';
 
 interface NavItem {
   id: ViewName;
@@ -115,7 +116,28 @@ export const Sidebar: React.FC = () => {
     setIsMobileSidebarOpen
   } = useWevids();
 
+  // Easter Egg Click Counter State
+  const [logoClicks, setLogoClicks] = useState(0);
+  const [showGubbyModal, setShowGubbyModal] = useState(false);
+
   const onlineProfiles = Object.values(allUsers || {}).filter(u => u && u.id && u.id !== currentUser?.id);
+
+  const handleLogoClick = () => {
+    sounds.click();
+    const nextClicks = logoClicks + 1;
+
+    if (nextClicks >= 5) {
+      sounds.success();
+      setShowGubbyModal(true);
+      setLogoClicks(0);
+      toast.success('🎉 You unlocked the secret Gubby Easter Egg!');
+    } else {
+      setLogoClicks(nextClicks);
+    }
+
+    setActiveView('feed');
+    setIsMobileSidebarOpen(false);
+  };
 
   return (
     <>
@@ -133,12 +155,9 @@ export const Sidebar: React.FC = () => {
         {/* Brand Header with Liquid Droplet Lens */}
         <div className="flex items-center justify-between px-2 mb-3">
           <div 
-            onClick={() => {
-              sounds.click();
-              setActiveView('feed');
-              setIsMobileSidebarOpen(false);
-            }}
+            onClick={handleLogoClick}
             className="flex items-center gap-3 py-2 rounded-2xl cursor-pointer group transition-all"
+            title="WEVIDS Logo (Click 5 times for a secret easter egg!)"
           >
             <div 
               className="relative w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#ff2d95] via-[#9333ea] to-[#00e5ff] flex items-center justify-center shadow-[0_0_25px_rgba(255,45,149,0.6)] group-hover:scale-110 transition-transform duration-300 border border-white/40"
@@ -312,6 +331,12 @@ export const Sidebar: React.FC = () => {
           </div>
         </div>
       </aside>
+
+      {/* Gubby Easter Egg Modal */}
+      <GubbyEasterEggModal
+        isOpen={showGubbyModal}
+        onClose={() => setShowGubbyModal(false)}
+      />
     </>
   );
 };
