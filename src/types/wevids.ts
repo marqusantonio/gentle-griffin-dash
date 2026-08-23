@@ -21,7 +21,12 @@ export interface UserProfile {
   avatar: string;
   avatarImage?: string;
   frame?: string;
+  coverImage?: string;
+  coverBanner?: string;
   color: string;
+  accentColor?: string;
+  statusMessage?: string;
+  statusEmoji?: string;
   location: string;
   bio: string;
   pronouns?: string;
@@ -45,6 +50,16 @@ export interface UserProfile {
   isCreator?: boolean;
   isGuest?: boolean;
   email?: string;
+  badges?: string[];
+  socialLinks?: {
+    twitter?: string;
+    github?: string;
+    youtube?: string;
+    discord?: string;
+    website?: string;
+  };
+  pinnedPostId?: string;
+  profileTheme?: 'neon' | 'cyberpunk' | 'matrix' | 'sunset' | 'midnight';
 }
 
 export interface FollowRecord {
