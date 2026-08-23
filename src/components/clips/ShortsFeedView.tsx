@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useWevids } from '../../context/WevidsContext';
 import { 
   Heart, 
@@ -17,7 +17,6 @@ import {
   Trash2, 
   Play, 
   Pause, 
-  RefreshCw, 
   Sparkles, 
   Gauge, 
   RotateCcw,
@@ -30,13 +29,13 @@ import { ShortClipItem, CommentItem } from '../../types/wevids';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { toast } from 'sonner';
 
-// High-speed, CORS-friendly MP4 vertical and high-compatibility streams
+// High-speed, high-uptime CDN MP4 streams
 const RELIABLE_BACKUP_STREAMS = [
+  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
   'https://assets.mixkit.co/videos/preview/mixkit-vertical-view-of-a-neon-city-at-night-42861-large.mp4',
-  'https://assets.mixkit.co/videos/preview/mixkit-cyberpunk-look-of-a-man-in-a-futuristic-city-43187-large.mp4',
-  'https://assets.mixkit.co/videos/preview/mixkit-gamer-playing-with-neon-lights-in-a-dark-room-43098-large.mp4',
-  'https://assets.mixkit.co/videos/preview/mixkit-hands-of-a-man-playing-a-video-game-in-a-dark-room-43100-large.mp4',
-  'https://assets.mixkit.co/videos/preview/mixkit-dj-mixing-music-at-a-club-party-43285-large.mp4'
+  'https://assets.mixkit.co/videos/preview/mixkit-cyberpunk-look-of-a-man-in-a-futuristic-city-43187-large.mp4'
 ];
 
 const SPEED_OPTIONS = [1, 1.25, 1.5, 2];
@@ -46,7 +45,6 @@ interface ShortCardProps {
   index: number;
   totalClips: number;
   isActive: boolean;
-  isAdjacent: boolean;
   isMuted: boolean;
   playbackSpeed: number;
   onToggleMute: () => void;
@@ -71,7 +69,6 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   index,
   totalClips,
   isActive,
-  isAdjacent,
   isMuted,
   playbackSpeed,
   onToggleMute,
@@ -101,9 +98,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   const [showHeartOverlay, setShowHeartOverlay] = useState(false);
   const [videoError, setVideoError] = useState(false);
   const [fallbackIndex, setFallbackIndex] = useState<number | null>(null);
-  const [isSeeking, setIsSeeking] = useState(false);
 
-  // Compute playable source URL
   const baseSrc = clip.videoUrl || (clip as any).video_url;
   const rawVideoSrc = (fallbackIndex !== null)
     ? RELIABLE_BACKUP_STREAMS[fallbackIndex % RELIABLE_BACKUP_STREAMS.length]
@@ -111,7 +106,6 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
       ? baseSrc
       : RELIABLE_BACKUP_STREAMS[index % RELIABLE_BACKUP_STREAMS.length];
 
-  // Dynamic Autoplay / Pause based on active viewport state
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -128,7 +122,6 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
             setIsLoadingVideo(false);
           })
           .catch(() => {
-            // Autoplay policy fallback: mute and retry
             video.muted = true;
             video.play()
               .then(() => {
@@ -147,14 +140,12 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     }
   }, [isActive, playbackSpeed, rawVideoSrc, isMuted]);
 
-  // Sync mute state
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.muted = isMuted;
     }
   }, [isMuted]);
 
-  // Sync speed multiplier
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.playbackRate = playbackSpeed;
@@ -162,7 +153,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   }, [playbackSpeed]);
 
   const handleTimeUpdate = () => {
-    if (!videoRef.current || isSeeking) return;
+    if (!videoRef.current) return;
     const cur = videoRef.current.currentTime;
     const dur = videoRef.current.duration || 1;
     setCurrentTime(cur);
@@ -210,7 +201,6 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   };
 
   const handleVideoError = () => {
-    // If original fails, fallback to highly resilient CDN stream
     if (fallbackIndex === null) {
       setFallbackIndex(index);
       setVideoError(false);
@@ -229,27 +219,24 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
       onDoubleClick={handleDoubleTapLike}
       className="shorts-snap-item relative w-full h-[calc(100vh-6.5rem)] max-h-[820px] rounded-3xl overflow-hidden liquid-glass border border-white/20 shadow-[0_20px_70px_rgba(0,0,0,0.85)] flex items-center justify-center bg-black video-hardware-accelerated select-none group"
     >
-      {/* Heart Burst Animation */}
       {showHeartOverlay && (
         <div className="absolute z-40 inset-0 flex items-center justify-center pointer-events-none animate-spring-pop">
           <Heart className="w-28 h-28 text-[#ff2d95] fill-current drop-shadow-[0_0_35px_#ff2d95] animate-ping" />
         </div>
       )}
 
-      {/* Loading Spinner */}
       {isLoadingVideo && !videoError && (
         <div className="absolute z-10 inset-0 flex items-center justify-center bg-black/40 pointer-events-none">
           <Loader2 className="w-10 h-10 text-[#00e5ff] animate-spin drop-shadow" />
         </div>
       )}
 
-      {/* Video Element with Preload Optimization */}
       {videoError ? (
         <div className="p-8 text-center space-y-3 z-10 text-xs text-[#8a8aa8]">
           <div className="w-14 h-14 rounded-2xl bg-[#ff2d95]/20 border border-[#ff2d95]/40 flex items-center justify-center mx-auto text-[#ff2d95] animate-pulse">
             <RotateCcw className="w-7 h-7" />
           </div>
-          <div className="font-orbitron font-bold text-white text-sm">Media Stream Reloading</div>
+          <div className="font-orbitron font-bold text-white text-sm">Stream Reloading</div>
           <button
             onClick={() => {
               setFallbackIndex((prev) => ((prev ?? 0) + 1) % RELIABLE_BACKUP_STREAMS.length);
@@ -272,7 +259,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
           loop
           muted={isMuted}
           playsInline
-          preload={isActive ? 'auto' : isAdjacent ? 'auto' : 'metadata'}
+          preload="auto"
           onWaiting={() => setIsLoadingVideo(true)}
           onPlaying={() => setIsLoadingVideo(false)}
           onLoadedData={() => setIsLoadingVideo(false)}
@@ -283,7 +270,6 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         />
       )}
 
-      {/* Play/Pause Overlay Toggle */}
       {!isPlaying && !videoError && (
         <div 
           onClick={handleTogglePlayPause}
@@ -295,28 +281,27 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         </div>
       )}
 
-      {/* Top Header Information & Speed Controller */}
+      {/* Top Header & Speed */}
       <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
         <span className="px-3 py-1 rounded-full bg-black/70 backdrop-blur-md text-[10px] font-bold text-[#00e5ff] border border-[#00e5ff]/30 font-orbitron flex items-center gap-1 shadow-md">
           <Sparkles className="w-3 h-3 text-[#ff2d95]" />
           CLIP {index + 1}/{totalClips}
         </span>
 
-        {/* Speed Multiplier Button */}
         <button
           onClick={(e) => {
             e.stopPropagation();
             onCycleSpeed();
           }}
           className="px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md text-[10px] font-bold text-[#fbbf24] border border-[#fbbf24]/40 font-orbitron flex items-center gap-1 hover:scale-105 transition-transform"
-          title="Change playback speed"
+          title="Change speed"
         >
           <Gauge className="w-3 h-3" />
           <span>{playbackSpeed}x</span>
         </button>
       </div>
 
-      {/* Top Right Action Tools */}
+      {/* Top Right Controls */}
       <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
         {isMyClip && (
           <button
@@ -354,7 +339,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         </button>
       </div>
 
-      {/* Bottom Content Metadata Overlay */}
+      {/* Bottom Metadata */}
       <div className="absolute bottom-4 left-0 right-16 p-5 z-20 bg-gradient-to-t from-black/95 via-black/50 to-transparent space-y-2 pointer-events-none">
         <div className="flex items-center gap-2.5 pointer-events-auto">
           <div 
@@ -405,7 +390,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         </div>
       </div>
 
-      {/* Floating Action Column (Right Side) */}
+      {/* Right Side Bar Controls */}
       <div className="absolute right-3 bottom-8 z-20 flex flex-col items-center gap-3.5">
         <button 
           onClick={(e) => {
@@ -479,7 +464,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         </button>
       </div>
 
-      {/* Interactive Seek Bar & Time Display */}
+      {/* Progress Bar */}
       <div 
         ref={progressBarRef}
         onClick={handleSeek}
@@ -491,7 +476,6 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         />
       </div>
 
-      {/* Seek Time Tooltip during playback */}
       {duration > 0 && (
         <span className="absolute bottom-3 right-4 text-[9px] font-mono text-white/70 bg-black/50 px-2 py-0.5 rounded backdrop-blur z-20 pointer-events-none">
           {formatTime(currentTime)} / {formatTime(duration)}
@@ -528,7 +512,6 @@ export const ShortsFeedView: React.FC = () => {
 
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // Sync with Supabase on mount and subscribe to realtime clips updates
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
 
@@ -548,13 +531,11 @@ export const ShortsFeedView: React.FC = () => {
     };
   }, [syncWithSupabase]);
 
-  // Filter valid clips
   const validClips = (clips || []).filter(c => {
     const src = c?.videoUrl || (c as any)?.video_url;
     return Boolean(src && typeof src === 'string' && src.length > 5 && !isBlocked(c.userId));
   });
 
-  // Handle keyboard Up/Down arrow navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['ArrowDown', 'j', 'J'].includes(e.key)) {
@@ -573,7 +554,6 @@ export const ShortsFeedView: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeIndex, validClips.length]);
 
-  // Scroll to index helper with smooth snap
   const scrollToIndex = (idx: number) => {
     if (!containerRef.current) return;
     const items = containerRef.current.querySelectorAll('.shorts-snap-item');
@@ -583,7 +563,6 @@ export const ShortsFeedView: React.FC = () => {
     }
   };
 
-  // IntersectionObserver to auto-detect centered visible video
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -619,7 +598,6 @@ export const ShortsFeedView: React.FC = () => {
     });
   };
 
-  // Synchronized clip like with Supabase
   const handleToggleLikeWithCloudSync = async (clipId: string) => {
     toggleClipLike(clipId);
     if (!isSupabaseConfigured()) return;
@@ -630,9 +608,7 @@ export const ShortsFeedView: React.FC = () => {
         .from('clips')
         .update({ likes: newLikes })
         .eq('id', clipId);
-    } catch {
-      // Handled in local state
-    }
+    } catch {}
   };
 
   if (validClips.length === 0) {
@@ -670,7 +646,6 @@ export const ShortsFeedView: React.FC = () => {
 
   return (
     <div className="relative flex justify-center items-center pb-12 max-w-5xl mx-auto">
-      {/* Navigation Buttons for Large Screens */}
       <div className="hidden lg:flex flex-col gap-3 fixed right-12 top-1/2 -translate-y-1/2 z-30">
         <button
           onClick={() => scrollToIndex(Math.max(0, activeIndex - 1))}
@@ -690,7 +665,6 @@ export const ShortsFeedView: React.FC = () => {
         </button>
       </div>
 
-      {/* Snap Scroll Vertical Viewport */}
       <div 
         ref={containerRef}
         className="shorts-snap-container no-scrollbar w-full max-w-[440px] h-[calc(100vh-6.5rem)] max-h-[820px] overflow-y-auto space-y-6"
@@ -708,7 +682,6 @@ export const ShortsFeedView: React.FC = () => {
               index={index}
               totalClips={validClips.length}
               isActive={index === activeIndex}
-              isAdjacent={Math.abs(index - activeIndex) === 1}
               isMuted={isMuted}
               playbackSpeed={playbackSpeed}
               onToggleMute={() => {
@@ -734,7 +707,6 @@ export const ShortsFeedView: React.FC = () => {
         })}
       </div>
 
-      {/* Side Slide-out Comments Drawer */}
       {commentingClip && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-2 sm:p-4">
           <div className="w-full max-w-md liquid-glass rounded-3xl p-5 border border-white/20 shadow-2xl flex flex-col h-[520px] animate-spring-pop">
@@ -794,7 +766,6 @@ export const ShortsFeedView: React.FC = () => {
         </div>
       )}
 
-      {/* Upload Modal */}
       <CreatePostModal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
