@@ -19,7 +19,7 @@ import {
   CommentReply
 } from '../types/wevids';
 import { supabase, isSupabaseConfigured, getStoredSession, checkContentModeration } from '../lib/supabase';
-import { insertPostWithAutoFallback } from '../lib/schemaAdapter';
+import { insertPostWithAutoFallback, syncPostCommentsToCloud, syncClipCommentsToCloud } from '../lib/schemaAdapter';
 import { sounds } from '../lib/soundFx';
 import { toast } from 'sonner';
 
@@ -344,9 +344,29 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   }, [state.currentUser.id]);
 
+  // Real-time Supabase Channel Subscriptions for instant live updates
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+
+    const channel = supabase.channel('global-database-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => syncWithSupabase(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clips' }, () => syncWithSupabase(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'direct_messages' }, () => syncWithSupabase(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'follows' }, () => syncWithSupabase(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profile_likes' }, () => syncWithSupabase(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => syncWithSupabase(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'audio_tracks' }, () => syncWithSupabase(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'roms' }, () => syncWithSupabase(true))
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [syncWithSupabase]);
+
   useEffect(() => {
     syncWithSupabase(true);
-    const interval = setInterval(() => syncWithSupabase(true), 30000);
+    const interval = setInterval(() => syncWithSupabase(true), 25000);
     return () => clearInterval(interval);
   }, [syncWithSupabase]);
 
@@ -465,10 +485,8 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     dispatch({ type: 'ADD_POST_COMMENT', payload: { postId, comment: newComment } });
 
     if (post && isSupabaseConfigured()) {
-      try {
-        const updatedComments = [newComment, ...(post.comments || [])];
-        await supabase.from('posts').update({ comments: updatedComments }).eq('id', postId);
-      } catch {}
+      const updatedComments = [newComment, ...(post.comments || [])];
+      syncPostCommentsToCloud(postId, updatedComments);
     }
   };
 
@@ -487,9 +505,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           likes: newLiked ? (Number(c.likes) || 0) + 1 : Math.max(0, (Number(c.likes) || 1) - 1)
         };
       });
-      try {
-        await supabase.from('posts').update({ comments: updatedComments }).eq('id', postId);
-      } catch {}
+      syncPostCommentsToCloud(postId, updatedComments);
     }
   };
 
@@ -514,9 +530,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           })
         };
       });
-      try {
-        await supabase.from('posts').update({ comments: updatedComments }).eq('id', postId);
-      } catch {}
+      syncPostCommentsToCloud(postId, updatedComments);
     }
   };
 
@@ -552,9 +566,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           replies: [...(c.replies || []), newReply]
         };
       });
-      try {
-        await supabase.from('posts').update({ comments: updatedComments }).eq('id', postId);
-      } catch {}
+      syncPostCommentsToCloud(postId, updatedComments);
     }
   };
 
@@ -614,10 +626,10 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const clip = state.clips.find(c => c.id === clipId);
     const newComment: CommentItem = {
       id: `comm-${Date.now()}`,
-      user: comment.user,
-      userName: comment.userName,
-      userAvatar: comment.userAvatar,
-      userColor: comment.userColor,
+      user: comment.user || state.currentUser.id,
+      userName: comment.userName || state.currentUser.name,
+      userAvatar: comment.userAvatar || state.currentUser.avatar,
+      userColor: comment.userColor || state.currentUser.color,
       text: comment.text,
       media: comment.media,
       mediaType: comment.mediaType,
@@ -630,10 +642,8 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     dispatch({ type: 'ADD_CLIP_COMMENT', payload: { clipId, comment: newComment } });
 
     if (clip && isSupabaseConfigured()) {
-      try {
-        const updatedComments = [newComment, ...(clip.comments || [])];
-        await supabase.from('clips').update({ comments: updatedComments }).eq('id', clipId);
-      } catch {}
+      const updatedComments = [newComment, ...(clip.comments || [])];
+      syncClipCommentsToCloud(clipId, updatedComments);
     }
   };
 

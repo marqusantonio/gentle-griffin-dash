@@ -5,8 +5,8 @@ export const isUuid = (str: string): boolean => {
 };
 
 /**
- * Clean post serializer for Supabase that matches the existing table schema.
- * Prevents invalid UUID syntax errors and satisfies the non-null video_url constraint.
+ * Clean post and video serializer for Supabase that matches the existing table schema.
+ * Prevents invalid UUID syntax errors and satisfies all PostgreSQL column constraints.
  */
 export const insertPostWithAutoFallback = async (post: Record<string, any>): Promise<{ data: any; error: any }> => {
   const isVideo = post.mediaType === 'video' || Boolean(post.video_url || (post.mediaUrl && (post.mediaUrl.endsWith('.mp4') || post.mediaUrl.startsWith('data:video'))));
@@ -40,12 +40,31 @@ export const insertPostWithAutoFallback = async (post: Record<string, any>): Pro
     payload.id = post.id;
   }
 
-  const { data, error } = await supabase.from('posts').insert([payload]).select();
+  const { data, error } = await supabase.from('posts').upsert([payload]).select();
 
   return { data, error };
 };
 
-export const sanitizePostForSchema = async (post: Record<string, any>): Promise<Record<string, any>> => {
-  const { dislikes, likes, shares, ...rest } = post;
-  return rest;
+export const syncPostCommentsToCloud = async (postId: string, comments: any[]): Promise<boolean> => {
+  try {
+    const { error } = await supabase
+      .from('posts')
+      .update({ comments: comments || [] })
+      .eq('id', postId);
+    return !error;
+  } catch {
+    return false;
+  }
+};
+
+export const syncClipCommentsToCloud = async (clipId: string, comments: any[]): Promise<boolean> => {
+  try {
+    const { error } = await supabase
+      .from('clips')
+      .update({ comments: comments || [] })
+      .eq('id', clipId);
+    return !error;
+  } catch {
+    return false;
+  }
 };
