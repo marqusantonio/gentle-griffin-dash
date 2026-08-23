@@ -6,20 +6,14 @@ import {
   FileText, 
   Film, 
   CheckCircle2, 
-  XCircle, 
   Trash2, 
-  Award, 
   Search, 
-  UserCheck, 
-  UserX, 
   Activity, 
-  Radio, 
-  AlertTriangle,
   Lock,
-  Unlock,
-  Sparkles,
-  BarChart3,
-  Server
+  Server,
+  Key,
+  ShieldBan,
+  UserCheck
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
 import { toast } from 'sonner';
@@ -27,27 +21,79 @@ import { toast } from 'sonner';
 export const AdminConsole: React.FC = () => {
   const { 
     currentUser, 
+    updateCurrentUser,
     allUsers, 
     posts, 
     clips, 
     deletePost, 
-    deleteClip, 
-    blockUser, 
-    unblockUser,
-    updateCurrentUser
+    deleteClip
   } = useWevids();
 
   const [activeTab, setActiveTab] = useState<'users' | 'posts' | 'clips' | 'logs'>('users');
   const [searchQuery, setSearchQuery] = useState('');
   const [userList, setUserList] = useState(Object.values(allUsers || {}));
 
-  // Toggle user verification in local state + toast
+  // Clearance Check: Only allow @guest_7550 or users with explicit admin privileges
+  const isAuthorizedMod = Boolean(
+    currentUser?.handle?.toLowerCase().includes('7550') || 
+    currentUser?.name?.toLowerCase().includes('7550') || 
+    currentUser?.id?.includes('7550') ||
+    currentUser?.isAdmin
+  );
+
+  const handleSwitchToGuest7550 = () => {
+    sounds.success();
+    updateCurrentUser({
+      id: 'guest-7550',
+      name: 'Guest_7550',
+      handle: '@guest_7550',
+      avatar: 'G',
+      color: 'linear-gradient(135deg, #ff2d95, #00e5ff)',
+      verified: true,
+      isAdmin: true
+    });
+    toast.success('Switched profile to Guest_7550 (Platform Moderator)! Access Granted.');
+  };
+
+  if (!isAuthorizedMod) {
+    return (
+      <div className="max-w-xl mx-auto my-12 p-8 rounded-3xl liquid-glass border border-red-500/40 shadow-[0_0_50px_rgba(239,68,68,0.25)] text-center space-y-5 animate-fade-in relative overflow-hidden">
+        <div className="w-16 h-16 rounded-3xl bg-red-500/20 border border-red-500/40 text-red-400 flex items-center justify-center mx-auto shadow-lg animate-pulse">
+          <Lock className="w-8 h-8 text-red-400" />
+        </div>
+
+        <div className="space-y-2">
+          <span className="px-3 py-1 rounded-full bg-red-500/10 text-red-400 font-orbitron font-bold text-[10px] border border-red-500/30 uppercase tracking-widest">
+            CLEARANCE LEVEL 4 REQUIRED
+          </span>
+          <h2 className="text-2xl font-bold font-orbitron text-white">
+            Access Restricted to Guest_7550
+          </h2>
+          <p className="text-xs text-[#8a8aa8] max-w-md mx-auto leading-relaxed">
+            The Moderator Console is protected by security protocol. Only <strong className="text-[#00e5ff]">@guest_7550</strong> or authorized platform administrators can access user verification, post deletion, and system audit tools.
+          </p>
+        </div>
+
+        <div className="pt-2">
+          <button
+            onClick={handleSwitchToGuest7550}
+            className="px-6 py-3 rounded-2xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold text-xs shadow-lg hover:scale-105 transition-transform inline-flex items-center gap-2"
+          >
+            <Key className="w-4 h-4" />
+            <span>SWITCH TO GUEST_7550 MODE</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Toggle user verification
   const handleToggleVerification = (userId: string) => {
     sounds.click();
     setUserList(prev => prev.map(u => {
       if (u.id === userId) {
         const nextState = !u.verified;
-        toast.success(`${u.name} verification status set to ${nextState ? 'VERIFIED' : 'UNVERIFIED'}`);
+        toast.success(`${u.name} verification set to ${nextState ? 'VERIFIED' : 'UNVERIFIED'}`);
         return { ...u, verified: nextState };
       }
       return u;
@@ -94,20 +140,20 @@ export const AdminConsole: React.FC = () => {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-orbitron font-bold text-white">MODERATOR ADMIN CONSOLE</h1>
-                <span className="px-2.5 py-0.5 rounded-full bg-red-500/20 text-red-400 font-bold text-[10px] border border-red-500/30 font-mono">
-                  LEVEL 4 ACCESS
+                <h1 className="text-2xl font-orbitron font-bold text-white">GUEST_7550 MODERATOR CONSOLE</h1>
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold text-[10px] border border-emerald-500/30 font-mono">
+                  ACTIVE MODERATOR
                 </span>
               </div>
               <p className="text-xs text-[#8a8aa8]">
-                Real-time platform metrics, account moderation, verification badges, and content governance.
+                Logged in as <strong className="text-[#00e5ff]">{currentUser.name}</strong> ({currentUser.handle}). Full administrative access granted.
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 text-xs font-mono font-bold text-[#00e5ff] bg-black/40 px-3.5 py-2 rounded-2xl border border-white/10">
             <Server className="w-4 h-4 text-[#10b981] animate-pulse" />
-            <span>NODE_STATUS: ONLINE</span>
+            <span>GUEST_7550_CLEARANCE: ACTIVE</span>
           </div>
         </div>
 
@@ -370,7 +416,7 @@ export const AdminConsole: React.FC = () => {
           </div>
           <div className="space-y-2 text-[#8a8aa8]">
             <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-center justify-between">
-              <span>[LOG_001] Security token generated for Guest User Node</span>
+              <span>[LOG_001] Security token generated for Guest_7550 Node</span>
               <span className="text-[10px]">Just now</span>
             </div>
             <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-center justify-between">

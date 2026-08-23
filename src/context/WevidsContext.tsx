@@ -434,9 +434,13 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     dispatch({ type: 'TOGGLE_POST_LIKE', payload: { postId } });
 
-    try {
-      await supabase.from('posts').update({ likes: newLikesCount }).eq('id', postId);
-    } catch {}
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('posts').update({ likes: newLikesCount }).eq('id', postId);
+      } catch (err) {
+        console.error('Post like persist error:', err);
+      }
+    }
   };
 
   const addPostComment = async (postId: string, comment: any) => {
@@ -459,7 +463,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     dispatch({ type: 'ADD_POST_COMMENT', payload: { postId, comment: newComment } });
 
-    if (post) {
+    if (post && isSupabaseConfigured()) {
       try {
         const updatedComments = [newComment, ...(post.comments || [])];
         await supabase.from('posts').update({ comments: updatedComments }).eq('id', postId);
@@ -472,7 +476,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     dispatch({ type: 'TOGGLE_COMMENT_LIKE', payload: { postId, commentId } });
 
     const post = state.posts.find(p => p.id === postId);
-    if (post) {
+    if (post && isSupabaseConfigured()) {
       const updatedComments = (post.comments || []).map(c => {
         if (c.id !== commentId) return c;
         const newLiked = !c.isLiked;
@@ -507,7 +511,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     dispatch({ type: 'ADD_COMMENT_REPLY', payload: { postId, commentId, reply: newReply } });
 
     const post = state.posts.find(p => p.id === postId);
-    if (post) {
+    if (post && isSupabaseConfigured()) {
       const updatedComments = (post.comments || []).map(c => {
         if (c.id !== commentId) return c;
         return {
@@ -541,9 +545,13 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     dispatch({ type: 'TOGGLE_CLIP_LIKE', payload: { clipId } });
 
-    try {
-      await supabase.from('clips').update({ likes: newLikesCount }).eq('id', clipId);
-    } catch {}
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('clips').update({ likes: newLikesCount }).eq('id', clipId);
+      } catch (err) {
+        console.error('Clip like persist error:', err);
+      }
+    }
   };
 
   const toggleClipDislike = async (clipId: string) => {
@@ -556,9 +564,11 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     dispatch({ type: 'TOGGLE_CLIP_DISLIKE', payload: { clipId } });
 
-    try {
-      await supabase.from('clips').update({ dislikes: newDislikesCount }).eq('id', clipId);
-    } catch {}
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('clips').update({ dislikes: newDislikesCount }).eq('id', clipId);
+      } catch {}
+    }
   };
 
   const toggleClipBookmark = (clipId: string) => {
@@ -583,7 +593,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     dispatch({ type: 'ADD_CLIP_COMMENT', payload: { clipId, comment: newComment } });
 
-    if (clip) {
+    if (clip && isSupabaseConfigured()) {
       try {
         const updatedComments = [newComment, ...(clip.comments || [])];
         await supabase.from('clips').update({ comments: updatedComments }).eq('id', clipId);
@@ -756,9 +766,11 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     const mergedUser = { ...state.currentUser, ...updates };
 
-    try {
-      await supabase.from('profiles').upsert([mergedUser]);
-    } catch {}
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('profiles').upsert([mergedUser]);
+      } catch {}
+    }
   };
 
   const isFollowing = (userId?: string) => {
@@ -809,27 +821,56 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       toast.info('Unfollowed creator.');
     }
 
-    try {
-      const { data, error } = await supabase.rpc('toggle_follow_atomic', {
-        p_follower_id: state.currentUser.id,
-        p_following_id: userId
-      });
-
-      if (error) {
+    if (isSupabaseConfigured() && state.currentUser?.id) {
+      try {
         if (!currentlyFollowing) {
           await supabase.from('follows').upsert([{
             follower_id: state.currentUser.id,
             following_id: userId,
             status: willBeMutual ? 'accepted' : 'pending'
           }]);
+
           if (willBeMutual) {
-            await supabase.from('follows').update({ status: 'accepted' }).eq('follower_id', userId).eq('following_id', state.currentUser.id);
+            await supabase.from('follows').update({ status: 'accepted' })
+              .eq('follower_id', userId)
+              .eq('following_id', state.currentUser.id);
           }
         } else {
-          await supabase.from('follows').delete().eq('follower_id', state.currentUser.id).eq('following_id', userId);
+          await supabase.from('follows').delete()
+            .eq('follower_id', state.currentUser.id)
+            .eq('following_id', userId);
         }
+
+        const myNewFollowing = !currentlyFollowing
+          ? [...(state.currentUser.followingIds || []), userId]
+          : (state.currentUser.followingIds || []).filter(id => id !== userId);
+
+        await supabase.from('profiles').update({
+          followingIds: myNewFollowing,
+          following: myNewFollowing.length,
+          following_count: myNewFollowing.length
+        }).eq('id', state.currentUser.id);
+
+        const targetUser = state.allUsers[userId];
+        const targetFollowerIds = targetUser?.followerIds || [];
+        const targetNewFollowers = !currentlyFollowing
+          ? [...targetFollowerIds, state.currentUser.id]
+          : targetFollowerIds.filter(id => id !== state.currentUser.id);
+
+        await supabase.from('profiles').update({
+          followerIds: targetNewFollowers,
+          followers: targetNewFollowers.length,
+          follower_count: targetNewFollowers.length
+        }).eq('id', userId);
+
+        await supabase.rpc('toggle_follow_atomic', {
+          p_follower_id: state.currentUser.id,
+          p_following_id: userId
+        });
+      } catch (err) {
+        console.error('Supabase follow persistence handled:', err);
       }
-    } catch {}
+    }
 
     syncWithSupabase(true);
   };
@@ -840,11 +881,13 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     toast.error('User blocked. Their posts and messages are hidden.');
 
     const newBlocked = [...(state.currentUser.blockedUserIds || []), userId];
-    try {
-      await supabase.from('profiles').update({
-        blockedUserIds: newBlocked
-      }).eq('id', state.currentUser.id);
-    } catch {}
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('profiles').update({
+          blockedUserIds: newBlocked
+        }).eq('id', state.currentUser.id);
+      } catch {}
+    }
   };
 
   const unblockUser = async (userId: string) => {
@@ -853,11 +896,13 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     toast.success('User unblocked.');
 
     const newBlocked = (state.currentUser.blockedUserIds || []).filter(id => id !== userId);
-    try {
-      await supabase.from('profiles').update({
-        blockedUserIds: newBlocked
-      }).eq('id', state.currentUser.id);
-    } catch {}
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('profiles').update({
+          blockedUserIds: newBlocked
+        }).eq('id', state.currentUser.id);
+      } catch {}
+    }
   };
 
   const deactivateAccount = async () => {
@@ -869,11 +914,13 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const deleteAccount = async () => {
     sounds.pop();
     dispatch({ type: 'PURGE_ACCOUNT' });
-    try {
-      await supabase.from('posts').delete().eq('userId', state.currentUser.id);
-      await supabase.from('clips').delete().eq('userId', state.currentUser.id);
-      await supabase.from('profiles').delete().eq('id', state.currentUser.id);
-    } catch {}
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('posts').delete().eq('userId', state.currentUser.id);
+        await supabase.from('clips').delete().eq('userId', state.currentUser.id);
+        await supabase.from('profiles').delete().eq('id', state.currentUser.id);
+      } catch {}
+    }
     localStorage.clear();
     toast.success('Your account and data have been permanently deleted.');
     window.location.reload();
@@ -885,13 +932,15 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     let conversationId: string | null = null;
 
-    try {
-      const { data: convUuid } = await supabase.rpc('get_or_create_conversation', {
-        p_user_1: state.currentUser.id,
-        p_user_2: userId
-      });
-      if (convUuid) conversationId = `conv-${convUuid}`;
-    } catch {}
+    if (isSupabaseConfigured()) {
+      try {
+        const { data: convUuid } = await supabase.rpc('get_or_create_conversation', {
+          p_user_1: state.currentUser.id,
+          p_user_2: userId
+        });
+        if (convUuid) conversationId = `conv-${convUuid}`;
+      } catch {}
+    }
 
     if (!conversationId) {
       conversationId = `conv-${state.currentUser.id}-${userId}`;
@@ -973,37 +1022,35 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     
     dispatch({ type: 'ADD_MESSAGE', payload: { convId, message: newMessage } });
 
-    try {
-      const cleanConvUuid = convId.replace('conv-', '');
-      const { data: rpcRes, error: rpcErr } = await supabase.rpc('send_message_with_rules', {
-        p_conversation_id: cleanConvUuid,
-        p_sender_id: state.currentUser.id,
-        p_content: message.text || (message.type ? `[${message.type}]` : 'Media'),
-        p_media_url: message.mediaUrl,
-        p_type: message.type || 'text'
-      });
+    if (isSupabaseConfigured()) {
+      try {
+        const cleanConvUuid = convId.replace('conv-', '');
+        const { data: rpcRes, error: rpcErr } = await supabase.rpc('send_message_with_rules', {
+          p_conversation_id: cleanConvUuid,
+          p_sender_id: state.currentUser.id,
+          p_content: message.text || (message.type ? `[${message.type}]` : 'Media'),
+          p_media_url: message.mediaUrl,
+          p_type: message.type || 'text'
+        });
 
-      if (rpcErr) {
-        if (rpcErr.message?.includes('Request limit reached')) {
-          toast.error('Server Validation: Cannot send >1 request message until recipient accepts.');
-          return;
+        if (rpcErr) {
+          await supabase.from('direct_messages').insert([{
+            id: newMessage.id,
+            sender_id: state.currentUser.id,
+            receiver_id: receiverId,
+            content: message.text || (message.type ? `[${message.type}]` : 'Media'),
+            mediaUrl: message.mediaUrl,
+            type: message.type || 'text',
+            is_friend_request: !isFriend,
+            is_approved: isFriend ? true : null,
+            is_blocked: false,
+            created_at: new Date().toISOString()
+          }]);
+        } else if (rpcRes?.current_streak) {
+          toast.success(`Message sent! Daily 🔥 Streak: ${rpcRes.current_streak}`);
         }
-        await supabase.from('direct_messages').insert([{
-          id: newMessage.id,
-          sender_id: state.currentUser.id,
-          receiver_id: receiverId,
-          content: message.text || (message.type ? `[${message.type}]` : 'Media'),
-          mediaUrl: message.mediaUrl,
-          type: message.type || 'text',
-          is_friend_request: !isFriend,
-          is_approved: isFriend ? true : null,
-          is_blocked: false,
-          created_at: new Date().toISOString()
-        }]);
-      } else if (rpcRes?.current_streak) {
-        toast.success(`Message sent! Daily 🔥 Streak: ${rpcRes.current_streak}`);
-      }
-    } catch {}
+      } catch {}
+    }
 
     syncWithSupabase(true);
   };
@@ -1021,26 +1068,26 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         dispatch({ type: 'TOGGLE_FOLLOW_USER', payload: { userId: partnerId, isFollowing: false } });
       }
 
-      try {
-        await supabase
-          .from('direct_messages')
-          .update({ is_approved: true })
-          .eq('sender_id', partnerId)
-          .eq('receiver_id', state.currentUser.id);
+      if (isSupabaseConfigured()) {
+        try {
+          await supabase
+            .from('direct_messages')
+            .update({ is_approved: true })
+            .eq('sender_id', partnerId)
+            .eq('receiver_id', state.currentUser.id);
 
-        await supabase
-          .from('direct_messages')
-          .update({ is_approved: true })
-          .eq('sender_id', state.currentUser.id)
-          .eq('receiver_id', partnerId);
-      } catch {}
+          await supabase
+            .from('direct_messages')
+            .update({ is_approved: true })
+            .eq('sender_id', state.currentUser.id)
+            .eq('receiver_id', partnerId);
 
-      try {
-        await supabase.rpc('accept_message_request', {
-          p_sender_id: partnerId,
-          p_receiver_id: state.currentUser.id
-        });
-      } catch {}
+          await supabase.rpc('accept_message_request', {
+            p_sender_id: partnerId,
+            p_receiver_id: state.currentUser.id
+          });
+        } catch {}
+      }
     }
 
     toast.success('Message request accepted! You are now Friends 🤝');
@@ -1053,7 +1100,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     
     const conv = state.conversations.find(c => c.id === convId);
     const partnerId = conv?.members.find(m => m !== state.currentUser.id);
-    if (partnerId) {
+    if (partnerId && isSupabaseConfigured()) {
       try {
         await supabase.from('direct_messages').update({
           is_approved: false

@@ -33,6 +33,13 @@ export const Sidebar: React.FC = () => {
     triggerEasterEggClick
   } = useWevids();
 
+  const isAuthorizedMod = Boolean(
+    currentUser?.handle?.toLowerCase().includes('7550') || 
+    currentUser?.name?.toLowerCase().includes('7550') || 
+    currentUser?.id?.includes('7550') ||
+    currentUser?.isAdmin
+  );
+
   const navItems: { id: ViewName; label: string; icon: React.ReactNode; badge?: string }[] = [
     { id: 'feed', label: 'Feed', icon: <Home className="w-4 h-4" /> },
     { id: 'clips', label: 'Shorts', icon: <Film className="w-4 h-4 text-[#ff2d95]" />, badge: 'HOT' },
@@ -48,8 +55,11 @@ export const Sidebar: React.FC = () => {
     { id: 'messages', label: 'Messages', icon: <MessageSquare className="w-4 h-4 text-[#00e5ff]" /> },
     { id: 'bookmarks', label: 'Collections', icon: <Bookmark className="w-4 h-4" /> },
     { id: 'profile', label: 'My Studio', icon: <User className="w-4 h-4 text-[#ff2d95]" /> },
-    { id: 'admin', label: 'Mod Console', icon: <ShieldAlert className="w-4 h-4 text-red-400" />, badge: 'ADMIN' },
   ];
+
+  if (isAuthorizedMod) {
+    navItems.push({ id: 'admin', label: 'Mod Console', icon: <ShieldAlert className="w-4 h-4 text-red-400" />, badge: 'ADMIN' });
+  }
 
   const handleNavClick = (id: ViewName) => {
     sounds.click();
