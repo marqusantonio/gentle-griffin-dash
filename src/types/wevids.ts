@@ -44,22 +44,31 @@ export interface UserProfile {
   email?: string;
 }
 
+export interface FollowRecord {
+  follower_id: string;
+  following_id: string;
+  status: 'pending' | 'accepted';
+  created_at?: string;
+}
+
+export interface StreakRecord {
+  id?: string;
+  user_1: string;
+  user_2: string;
+  current_streak: number;
+  last_message_date?: string;
+}
+
 export interface DirectMessageItem {
   id: string;
   sender_id: string;
   receiver_id: string;
   content: string;
-  is_friend_request: boolean;
-  is_approved: boolean | null; // null = pending, true = accepted, false = declined
-  is_blocked: boolean;
+  is_friend_request?: boolean;
+  is_approved?: boolean | null; // null = pending, true = accepted, false = declined
+  is_blocked?: boolean;
   mediaUrl?: string;
   type?: 'text' | 'image' | 'gif' | 'audio' | 'file';
-  created_at: string;
-}
-
-export interface FollowRecord {
-  follower_id: string;
-  following_id: string;
   created_at: string;
 }
 
@@ -246,6 +255,7 @@ export interface Conversation {
   messages: ChatMessage[];
   status: 'active' | 'pending_request' | 'declined' | 'blocked';
   requestedBy?: string;
+  streakCount?: number;
 }
 
 export interface ProductItem {

@@ -17,7 +17,7 @@ import {
   ShieldBan,
   Clock,
   Radio,
-  UserPlus
+  Flame
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
@@ -44,8 +44,6 @@ export const MessagesView: React.FC = () => {
     startOrOpenChatWithUser,
     openUserProfileModal,
     isMutualFriend,
-    isFollowing,
-    toggleFollowUser,
     acceptMessageRequest,
     declineMessageRequest,
     blockMessageUser,
@@ -53,7 +51,7 @@ export const MessagesView: React.FC = () => {
     syncWithSupabase
   } = useWevids();
 
-  const [activeTab, setActiveTab] = useState<'chats' | 'requests'>('chats');
+  const [activeTab, setActiveTab] = useState<'friends' | 'requests'>('friends');
   const [messageText, setMessageText] = useState('');
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [showGifPicker, setShowGifPicker] = useState(false);
@@ -70,14 +68,11 @@ export const MessagesView: React.FC = () => {
       .channel('direct_messages-realtime')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'direct_messages' },
+        { event: 'INSERT', schema: 'public', table: 'messages' },
         (payload: any) => {
-          if (payload?.new && (payload.new.receiver_id === currentUser.id || payload.new.sender_id === currentUser.id)) {
+          if (payload?.new) {
             sounds.pop();
             syncWithSupabase();
-            if (payload.new.receiver_id === currentUser.id) {
-              toast.info(`New message received!`);
-            }
           }
         }
       )
@@ -86,7 +81,7 @@ export const MessagesView: React.FC = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentUser.id]);
+  }, [currentUser.id, syncWithSupabase]);
 
   const activeConv = conversations.find(c => c.id === activeConvId) || conversations[0] || null;
   const otherMemberId = activeConv?.members?.find(id => id !== currentUser.id) || '';
@@ -110,20 +105,21 @@ export const MessagesView: React.FC = () => {
   }) : null;
 
   const isFriend = otherMemberId ? isMutualFriend(otherMemberId) : false;
-  const isTargetBlocked = otherMemberId ? isBlocked(otherMemberId) : false;
 
-  const pendingRequests = conversations.filter(c => 
-    c.status === 'pending_request' && c.requestedBy !== currentUser.id && !c.members.some(m => isBlocked(m))
+  const friendsChats = conversations.filter(c => 
+    (c.status === 'active' || isMutualFriend(c.members.find(m => m !== currentUser.id))) &&
+    !c.members.some(m => isBlocked(m))
   );
 
-  const activeChats = conversations.filter(c => 
-    (c.status === 'active' || (c.status === 'pending_request' && c.requestedBy === currentUser.id)) &&
+  const pendingRequests = conversations.filter(c => 
+    c.status === 'pending_request' && 
+    !isMutualFriend(c.members.find(m => m !== currentUser.id)) &&
     !c.members.some(m => isBlocked(m))
   );
 
   const availableCreators = Object.values(allUsers).filter(u => u.id !== currentUser.id && !isBlocked(u.id));
 
-  // Determine if further messaging is locked (non-friends who already sent 1 request message)
+  // Determine if messaging is locked (non-friends who sent 1 request message)
   const isMessageLocked = !isFriend && 
     activeConv?.status === 'pending_request' && 
     activeConv?.requestedBy === currentUser.id && 
@@ -141,12 +137,12 @@ export const MessagesView: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeConv || isMessageLocked) return;
     if (!messageText.trim() && !attachedImage) return;
 
-    sendMessage(activeConv.id, {
+    await sendMessage(activeConv.id, {
       text: messageText.trim() || undefined,
       mediaUrl: attachedImage || undefined,
       type: attachedImage ? 'image' : 'text',
@@ -179,8 +175,7 @@ export const MessagesView: React.FC = () => {
         text: '🎤 Voice note (0:08s)',
       });
       sounds.success();
-      toast.success('Voice note sent!');
-    }, 1500);
+    }, 1200);
   };
 
   const filteredGifs = GIF_REPOSITORIES.filter(g => {
@@ -190,15 +185,15 @@ export const MessagesView: React.FC = () => {
   });
 
   return (
-    <div className="space-y-6 pb-20">
-      <div className="liquid-glass rounded-3xl border border-white/10 h-[640px] flex overflow-hidden shadow-2xl relative">
-        {/* Left Sidebar */}
+    <div className="space-y-6 pb-20 max-w-6xl mx-auto">
+      <div className="liquid-glass rounded-3xl border border-white/10 h-[660px] flex overflow-hidden shadow-2xl relative">
+        {/* Left Inbox Navigation Panel */}
         <div className="w-80 border-r border-white/10 flex flex-col liquid-glass-card">
           <div className="p-4 border-b border-white/10 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="font-orbitron font-bold text-sm text-white flex items-center gap-2">
                 <MessageSquareText className="w-4 h-4 text-[#ff2d95]" />
-                Direct Messages
+                Inbox & Messaging
               </h2>
               {isSupabaseConfigured() && (
                 <span className="flex items-center gap-1 text-[10px] text-[#10b981] font-mono">
@@ -207,19 +202,19 @@ export const MessagesView: React.FC = () => {
               )}
             </div>
 
-            {/* Tab switch: Active Chats vs Requests */}
+            {/* Friends vs Requests Filter Tabs */}
             <div className="flex rounded-xl bg-white/5 p-1 border border-white/10 text-xs font-semibold">
               <button
                 type="button"
                 onClick={() => {
                   sounds.click();
-                  setActiveTab('chats');
+                  setActiveTab('friends');
                 }}
-                className={`flex-1 py-1.5 rounded-lg transition-all ${
-                  activeTab === 'chats' ? 'bg-[#00e5ff] text-slate-900 font-bold shadow-md' : 'text-[#8a8aa8] hover:text-white'
+                className={`flex-1 py-2 rounded-lg transition-all flex items-center justify-center gap-1 ${
+                  activeTab === 'friends' ? 'bg-gradient-to-r from-[#10b981] to-[#00e5ff] text-slate-900 font-bold shadow-md' : 'text-[#8a8aa8] hover:text-white'
                 }`}
               >
-                Chats ({activeChats.length})
+                <span>Friends ({friendsChats.length})</span>
               </button>
               <button
                 type="button"
@@ -227,32 +222,34 @@ export const MessagesView: React.FC = () => {
                   sounds.click();
                   setActiveTab('requests');
                 }}
-                className={`flex-1 py-1.5 rounded-lg transition-all relative ${
+                className={`flex-1 py-2 rounded-lg transition-all relative flex items-center justify-center gap-1 ${
                   activeTab === 'requests' ? 'bg-[#ff2d95] text-slate-900 font-bold shadow-md' : 'text-[#8a8aa8] hover:text-white'
                 }`}
               >
-                Requests {pendingRequests.length > 0 && `(${pendingRequests.length})`}
+                <span>Requests</span>
                 {pendingRequests.length > 0 && (
-                  <span className="w-2 h-2 rounded-full bg-red-400 absolute top-1 right-2 animate-ping" />
+                  <span className="px-1.5 py-0.2 rounded-full bg-red-500 text-white text-[9px] font-bold">
+                    {pendingRequests.length}
+                  </span>
                 )}
               </button>
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-4 p-2">
-            {activeTab === 'chats' ? (
+            {activeTab === 'friends' ? (
               <div className="space-y-1">
-                {activeChats.length === 0 ? (
-                  <div className="p-4 text-center text-xs text-[#8a8aa8]">
-                    No active chats. Start one below!
+                {friendsChats.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-[#8a8aa8]">
+                    No mutual friends yet. Follow creators back to unlock unrestricted friend chat!
                   </div>
                 ) : (
-                  activeChats.map((conv) => {
+                  friendsChats.map((conv) => {
                     const isActive = conv.id === activeConvId;
                     const partnerId = conv.members.find(m => m !== currentUser.id) || '';
                     const partner = allUsers[partnerId];
-                    const isMutual = isMutualFriend(partnerId);
                     const partnerName = partner?.name || (partnerId.startsWith('guest-') ? `Guest_${partnerId.replace('guest-', '')}` : 'Creator');
+                    const streak = conv.streakCount || 0;
 
                     return (
                       <div
@@ -282,14 +279,10 @@ export const MessagesView: React.FC = () => {
                           </div>
                           <div className="flex items-center justify-between text-[11px]">
                             <p className="text-[#8a8aa8] truncate flex-1">{conv.lastMsg}</p>
-                            {conv.status === 'pending_request' && (
-                              <span className="text-[9px] text-[#fbbf24] font-bold ml-1 bg-[#fbbf24]/15 px-1.5 py-0.5 rounded-full">
-                                Pending
-                              </span>
-                            )}
-                            {isMutual && (
-                              <span className="text-[9px] text-[#10b981] font-bold ml-1">
-                                🤝 Friend
+                            {streak > 0 && (
+                              <span className="text-[10px] font-bold text-[#fbbf24] ml-1 bg-[#fbbf24]/15 px-2 py-0.5 rounded-full flex items-center gap-0.5 border border-[#fbbf24]/30">
+                                <Flame className="w-3 h-3 fill-current text-[#ea580c]" />
+                                <span>{streak}</span>
                               </span>
                             )}
                           </div>
@@ -300,7 +293,7 @@ export const MessagesView: React.FC = () => {
                 )}
               </div>
             ) : (
-              /* Message Requests Tab */
+              /* Message Requests Stream */
               <div className="space-y-3 p-1">
                 <div className="text-[11px] text-[#8a8aa8]">
                   Creators who aren't mutual friends must request before chatting freely.
@@ -334,21 +327,21 @@ export const MessagesView: React.FC = () => {
                         <div className="flex items-center gap-1.5 pt-1">
                           <button
                             onClick={() => acceptMessageRequest(req.id)}
-                            className="flex-1 py-1.5 rounded-xl bg-gradient-to-r from-[#10b981] to-[#00e5ff] text-slate-900 font-bold text-[10px] flex items-center justify-center gap-1"
+                            className="flex-1 py-1.5 rounded-xl bg-gradient-to-r from-[#10b981] to-[#00e5ff] text-slate-900 font-bold text-[10px] flex items-center justify-center gap-1 shadow-md"
                           >
                             <UserCheck className="w-3 h-3" />
                             <span>Accept</span>
                           </button>
                           <button
                             onClick={() => declineMessageRequest(req.id)}
-                            className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-[#8a8aa8] text-[10px] flex items-center gap-1"
+                            className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-[#8a8aa8] text-[10px]"
                             title="Decline Request"
                           >
                             <UserX className="w-3 h-3" />
                           </button>
                           <button
                             onClick={() => blockMessageUser(req.id)}
-                            className="px-2.5 py-1.5 rounded-xl bg-red-500/20 text-red-400 text-[10px] flex items-center gap-1"
+                            className="px-2.5 py-1.5 rounded-xl bg-red-500/20 text-red-400 text-[10px]"
                             title="Block User"
                           >
                             <ShieldBan className="w-3 h-3" />
@@ -361,11 +354,11 @@ export const MessagesView: React.FC = () => {
               </div>
             )}
 
-            {/* Creators Available */}
+            {/* Creators Available List */}
             <div className="pt-2 border-t border-white/10 space-y-1">
               <div className="px-2 text-[10px] font-bold text-[#00e5ff] uppercase tracking-wider flex items-center gap-1.5 font-orbitron">
                 <Sparkles className="w-3.5 h-3.5 text-[#ff2d95]" />
-                Online Creators ({availableCreators.length})
+                Online Network ({availableCreators.length})
               </div>
 
               {availableCreators.map(creator => (
@@ -398,10 +391,10 @@ export const MessagesView: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Active Chat Pane */}
+        {/* Active Chat Conversation Area */}
         {activeConv && otherUser ? (
           <div className="flex-1 flex flex-col justify-between bg-black/40">
-            {/* Header */}
+            {/* Header with 🔥 Streak Badge */}
             <div className="p-4 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
               <div 
                 onClick={() => openUserProfileModal(otherUser)}
@@ -414,11 +407,22 @@ export const MessagesView: React.FC = () => {
                   {activeConv.avatar}
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-white flex items-center gap-1.5 group-hover:text-[#00e5ff]">
-                    {otherUser.name}
-                    {isFriend && (
+                  <div className="text-xs font-bold text-white flex items-center gap-2 group-hover:text-[#00e5ff]">
+                    <span>{otherUser.name}</span>
+                    {isFriend ? (
                       <span className="text-[9px] text-[#10b981] bg-[#10b981]/20 px-2 py-0.5 rounded-full border border-[#10b981]/30">
-                        🤝 Friends
+                        🤝 Mutual Friends
+                      </span>
+                    ) : (
+                      <span className="text-[9px] text-[#fbbf24] bg-[#fbbf24]/20 px-2 py-0.5 rounded-full border border-[#fbbf24]/30">
+                        Request Mode
+                      </span>
+                    )}
+
+                    {(activeConv.streakCount || 0) > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-orange-500 to-[#ff2d95] text-white font-orbitron font-bold text-[10px] flex items-center gap-1 shadow-md animate-pulse">
+                        <Flame className="w-3 h-3 fill-current text-yellow-300" />
+                        <span>{activeConv.streakCount} STREAK</span>
                       </span>
                     )}
                   </div>
@@ -432,7 +436,7 @@ export const MessagesView: React.FC = () => {
                 <button
                   onClick={() => openVideoCall(otherUser.name)}
                   className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white transition-colors"
-                  title="Launch Video Call"
+                  title="Launch HD Video Call"
                 >
                   <Video className="w-4 h-4 text-[#00e5ff]" />
                 </button>
@@ -447,7 +451,7 @@ export const MessagesView: React.FC = () => {
               </div>
             </div>
 
-            {/* Request banner if non-mutual and pending */}
+            {/* Request banner for Non-Mutual Friends */}
             {!isFriend && activeConv.status === 'pending_request' && (
               <div className="p-3 bg-[#fbbf24]/10 border-b border-[#fbbf24]/20 flex items-center justify-between text-xs text-[#fbbf24]">
                 <div className="flex items-center gap-2">
@@ -455,7 +459,7 @@ export const MessagesView: React.FC = () => {
                   <span>
                     {activeConv.requestedBy === currentUser.id 
                       ? isMessageLocked 
-                        ? '1 introduction message sent. Awaiting friend approval.' 
+                        ? '1 introductory message sent. Awaiting friend approval or follow back.' 
                         : 'Non-friend mode: You can send 1 introductory message.' 
                       : `${otherUser.name} sent you a message request.`}
                   </span>
@@ -479,13 +483,13 @@ export const MessagesView: React.FC = () => {
               </div>
             )}
 
-            {/* Chat Stream */}
+            {/* Messages Stream */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {activeConv.messages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center p-6 text-xs text-[#8a8aa8]">
-                  <Sparkles className="w-8 h-8 text-[#00e5ff] mb-2" />
+                  <Sparkles className="w-8 h-8 text-[#00e5ff] mb-2 animate-pulse" />
                   <p className="font-bold text-white">Direct Chat Initialized</p>
-                  <p>Send text, images, or GIFs to {otherUser.name}.</p>
+                  <p>Send text, images, or GIFs to {otherUser.name}. Communicating daily builds your 🔥 Streak!</p>
                 </div>
               ) : (
                 activeConv.messages.map((m) => {
@@ -547,7 +551,7 @@ export const MessagesView: React.FC = () => {
               </div>
             )}
 
-            {/* GIF Drawer */}
+            {/* GIF Picker */}
             {showGifPicker && (
               <div className="p-3 bg-slate-900/95 border-t border-[#00e5ff]/40 space-y-2 animate-slide-in">
                 <div className="flex items-center justify-between">
@@ -603,7 +607,7 @@ export const MessagesView: React.FC = () => {
               onChange={handleImageFile}
             />
 
-            {/* Message Input Box */}
+            {/* Message Form Input */}
             <form onSubmit={handleSendMessage} className="p-3 border-t border-white/10 flex items-center gap-2 bg-white/[0.02]">
               <button
                 type="button"
@@ -646,7 +650,7 @@ export const MessagesView: React.FC = () => {
                 onChange={(e) => setMessageText(e.target.value)}
                 placeholder={
                   isMessageLocked
-                    ? '1 message sent. Awaiting friend approval...'
+                    ? '1 message sent. Awaiting friend approval or follow back...'
                     : `Message ${otherUser.name}...`
                 }
                 className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:outline-none focus:border-[#00e5ff] disabled:opacity-50"
@@ -666,10 +670,387 @@ export const MessagesView: React.FC = () => {
             <MessageSquareText className="w-12 h-12 text-[#ff2d95] opacity-50" />
             <h3 className="font-orbitron font-bold text-white text-base">Select a Creator to Start Messaging</h3>
             <p className="max-w-sm">
-              Click on any online creator or view incoming message requests to chat, send media, and connect with mutual friends.
+              Click on any online creator to chat. Communicating daily builds your 🔥 Streak!
             </p>
           </div>
         )}
+      </div>
+    </div>
+  );
+};
+</dyad-file>
+
+---
+
+### Step 5: Updating User Profile Modal for Follow / Mutual Friends States
+
+<dyad-write path="src/components/modals/UserProfileModal.tsx" description="Updating user profile modal buttons for mutual follow and request states">
+import React, { useRef, useState } from 'react';
+import { useWevids } from '../../context/WevidsContext';
+import { 
+  CheckCircle2, 
+  MessageSquare, 
+  Music2, 
+  Play, 
+  Pause, 
+  Lock,
+  X,
+  Heart,
+  Film,
+  Video,
+  FileText,
+  UserPlus,
+  UserCheck,
+  Send,
+  ShieldAlert,
+  ShieldBan
+} from 'lucide-react';
+import { sounds } from '../../lib/soundFx';
+import { toast } from 'sonner';
+
+export const UserProfileModal: React.FC = () => {
+  const { 
+    viewingProfileUser, 
+    closeUserProfileModal, 
+    toggleFollowUser, 
+    isFollowing, 
+    isMutualFriend, 
+    blockUser,
+    unblockUser,
+    isBlocked,
+    startOrOpenChatWithUser,
+    currentUser,
+    clips,
+    posts,
+    conversations
+  } = useWevids();
+
+  const [activeTab, setActiveTab] = useState<'all' | 'clips'>('all');
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  if (!viewingProfileUser) return null;
+
+  const targetId = viewingProfileUser.id || 'unknown';
+  const currentUserId = currentUser?.id || 'guest';
+  const following = isFollowing(targetId);
+  const mutualFriend = isMutualFriend(targetId);
+  const blocked = isBlocked(targetId);
+  const isMe = targetId === currentUserId;
+
+  const userClips = (clips || []).filter(c => c && c.userId === targetId && Boolean(c.videoUrl));
+  const userPosts = (posts || []).filter(p => p && p.userId === targetId);
+
+  const dynamicLikes = userPosts.reduce((acc, p) => acc + (Number(p?.likes) || 0), 0) + 
+                       userClips.reduce((acc, c) => acc + (Number(c?.likes) || 0), 0);
+  const totalLikes = Math.max(Number(viewingProfileUser.likes) || 0, dynamicLikes);
+
+  const existingConv = (conversations || []).find(c =>
+    c &&
+    !c.isGroup &&
+    Array.isArray(c.members) &&
+    c.members.includes(targetId) &&
+    c.members.includes(currentUserId)
+  );
+  const isRequestPending = !mutualFriend && existingConv?.status === 'pending_request' && existingConv.requestedBy === currentUserId;
+
+  const toggleAudio = () => {
+    if (!audioRef.current) return;
+    if (isPlayingAudio) {
+      audioRef.current.pause();
+      setIsPlayingAudio(false);
+    } else {
+      audioRef.current.play().catch(() => {});
+      setIsPlayingAudio(true);
+      sounds.pop();
+    }
+  };
+
+  const handleMessageClick = () => {
+    sounds.click();
+    closeUserProfileModal();
+    startOrOpenChatWithUser(targetId);
+
+    if (mutualFriend) {
+      toast.success(`Friends mode unlocked with ${viewingProfileUser.name || 'creator'}! Chat freely 🤝`);
+    } else if (isRequestPending) {
+      toast.info('Message request already pending approval from this creator.');
+    } else {
+      toast.info(`Message request mode: You can send 1 message until ${viewingProfileUser.name || 'this creator'} accepts or follows back.`);
+    }
+  };
+
+  const handleBlockToggle = () => {
+    if (blocked) {
+      unblockUser(targetId);
+      setShowBlockConfirm(false);
+    } else {
+      blockUser(targetId);
+      setShowBlockConfirm(false);
+      closeUserProfileModal();
+    }
+  };
+
+  const avatarColor = viewingProfileUser.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)';
+  const displayName = viewingProfileUser.name || 'Creator';
+  const handleName = viewingProfileUser.handle || `@${displayName.toLowerCase().replace(/\s+/g, '_')}`;
+  const locationName = viewingProfileUser.location || 'Earth Node';
+  const followersCount = Number(viewingProfileUser.followers) || 0;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="liquid-glass rounded-3xl p-6 border border-white/20 max-w-lg w-full space-y-4 shadow-2xl relative max-h-[90vh] overflow-y-auto animate-slide-in">
+        <button
+          onClick={closeUserProfileModal}
+          className="absolute top-4 right-4 text-[#8a8aa8] hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors"
+          title="Close"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        {/* Profile Header */}
+        <div className="flex items-center gap-4">
+          <div
+            className="w-16 h-16 rounded-full flex items-center justify-center font-bold text-slate-900 text-xl shadow-lg flex-shrink-0"
+            style={{ background: avatarColor }}
+          >
+            {viewingProfileUser.avatarImage ? (
+              <img src={viewingProfileUser.avatarImage} alt="Avatar" className="w-full h-full object-cover rounded-full" />
+            ) : (
+              viewingProfileUser.avatar || displayName.charAt(0) || 'U'
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-base font-bold text-white flex items-center gap-1.5 truncate">
+              <span>{displayName}</span>
+              {viewingProfileUser.verified && <CheckCircle2 className="w-4 h-4 text-[#00e5ff] flex-shrink-0" />}
+            </h2>
+            <div className="text-xs text-[#8a8aa8] truncate">{handleName} · {locationName}</div>
+            
+            {/* Status Badges */}
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              {mutualFriend ? (
+                <span className="text-[10px] font-bold text-[#10b981] bg-[#10b981]/20 px-2.5 py-0.5 rounded-full border border-[#10b981]/40 flex items-center gap-1">
+                  🤝 Mutual Friends · Unrestricted Messaging
+                </span>
+              ) : following ? (
+                <span className="text-[10px] text-[#00e5ff] bg-[#00e5ff]/15 px-2.5 py-0.5 rounded-full border border-[#00e5ff]/30 font-semibold">
+                  Requested / Following (1 Msg Limit)
+                </span>
+              ) : isRequestPending ? (
+                <span className="text-[10px] text-[#fbbf24] bg-[#fbbf24]/15 px-2.5 py-0.5 rounded-full border border-[#fbbf24]/30 font-semibold">
+                  ⏳ 1 Message Request Sent
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        {/* Bio Audio Player */}
+        {viewingProfileUser.bioAudioUrl && (
+          <div className="p-3 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleAudio}
+                className="w-7 h-7 rounded-full bg-[#ff2d95] text-slate-900 flex items-center justify-center font-bold"
+              >
+                {isPlayingAudio ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current ml-0.5" />}
+              </button>
+              <div>
+                <div className="text-xs font-bold text-white flex items-center gap-1">
+                  <Music2 className="w-3 h-3 text-[#00e5ff]" />
+                  <span>{viewingProfileUser.bioAudioTitle || 'Bio Audio Clip'}</span>
+                </div>
+                <div className="text-[9px] text-[#8a8aa8]">Creator Voice Note / Music</div>
+              </div>
+            </div>
+            <audio ref={audioRef} src={viewingProfileUser.bioAudioUrl} onEnded={() => setIsPlayingAudio(false)} />
+          </div>
+        )}
+
+        <p className="text-xs text-[#e8e8f4] leading-relaxed">{viewingProfileUser.bio || 'WEVIDS creator and community member.'}</p>
+
+        {/* Stats Row */}
+        <div className="grid grid-cols-3 gap-2 text-center text-xs">
+          <div className="p-2.5 rounded-xl bg-white/5 border border-white/5">
+            <div className="font-bold font-orbitron text-[#00e5ff]">{followersCount.toLocaleString()}</div>
+            <div className="text-[10px] text-[#8a8aa8]">Followers</div>
+          </div>
+          <div className="p-2.5 rounded-xl bg-white/5 border border-white/5">
+            <div className="font-bold font-orbitron text-[#ff2d95] flex items-center justify-center gap-1">
+              <Heart className="w-3.5 h-3.5 fill-current" />
+              <span>{totalLikes.toLocaleString()}</span>
+            </div>
+            <div className="text-[10px] text-[#8a8aa8]">Total Likes</div>
+          </div>
+          <div className="p-2.5 rounded-xl bg-white/5 border border-white/5">
+            <div className="font-bold font-orbitron text-[#fbbf24]">{userPosts.length}</div>
+            <div className="text-[10px] text-[#8a8aa8]">Total Posts</div>
+          </div>
+        </div>
+
+        {/* Dynamic Action Buttons */}
+        {!isMe && (
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={() => toggleFollowUser(targetId)}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-orbitron font-bold flex items-center justify-center gap-1.5 transition-transform hover:scale-102 ${
+                mutualFriend
+                  ? 'bg-gradient-to-r from-[#10b981] to-[#00e5ff] text-slate-900 shadow-md'
+                  : following
+                  ? 'bg-white/10 text-[#00e5ff] border border-[#00e5ff]/40'
+                  : 'bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 shadow-md'
+              }`}
+            >
+              {mutualFriend ? <UserCheck className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />}
+              <span>{mutualFriend ? 'Friends 🤝' : following ? 'Requested / Following' : '+ Follow'}</span>
+            </button>
+
+            <button
+              onClick={handleMessageClick}
+              className={`flex-1 py-2.5 rounded-xl font-orbitron font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${
+                mutualFriend
+                  ? 'bg-gradient-to-r from-[#00e5ff] to-[#ff2d95] text-slate-900 shadow-md hover:scale-102'
+                  : isRequestPending
+                  ? 'bg-[#fbbf24]/20 border border-[#fbbf24]/40 text-[#fbbf24]'
+                  : 'bg-white/10 hover:bg-white/15 text-white border border-white/10'
+              }`}
+            >
+              {mutualFriend ? (
+                <>
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>Chat Freely</span>
+                </>
+              ) : isRequestPending ? (
+                <>
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Request Pending</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-3.5 h-3.5 text-[#00e5ff]" />
+                  <span>Send Request</span>
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={() => setShowBlockConfirm(true)}
+              className="p-2.5 rounded-xl bg-white/5 hover:bg-red-500/20 text-[#8a8aa8] hover:text-red-400 border border-white/10 transition-colors"
+              title="Block / Report Creator"
+            >
+              <ShieldBan className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Block Confirmation Drawer */}
+        {showBlockConfirm && (
+          <div className="p-4 rounded-2xl bg-red-500/15 border border-red-500/30 space-y-2.5 text-xs animate-fade-in">
+            <div className="flex items-center gap-2 text-red-400 font-bold">
+              <ShieldAlert className="w-4 h-4" />
+              <span>{blocked ? `Unblock ${displayName}?` : `Block ${displayName}?`}</span>
+            </div>
+            <p className="text-[#8a8aa8] leading-relaxed">
+              {blocked 
+                ? 'Unblocking will allow you to see their posts and receive messages.'
+                : 'Blocking will instantly hide all posts, comments, and direct messages from this user.'}
+            </p>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={() => setShowBlockConfirm(false)}
+                className="px-3 py-1.5 rounded-lg bg-white/10 text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBlockToggle}
+                className="px-3.5 py-1.5 rounded-lg bg-red-500 text-white font-bold"
+              >
+                {blocked ? 'Confirm Unblock' : 'Confirm Block'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Content Tabs */}
+        <div className="pt-2 border-t border-white/10">
+          <div className="flex items-center gap-2 mb-3">
+            <button
+              onClick={() => { sounds.click(); setActiveTab('all'); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-orbitron font-bold transition-all ${
+                activeTab === 'all'
+                  ? 'bg-[#00e5ff] text-slate-900 shadow-md'
+                  : 'bg-white/5 text-[#8a8aa8] hover:text-white'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>All Posts ({userPosts.length})</span>
+            </button>
+
+            <button
+              onClick={() => { sounds.click(); setActiveTab('clips'); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-orbitron font-bold transition-all ${
+                activeTab === 'clips'
+                  ? 'bg-[#ff2d95] text-slate-900 shadow-md'
+                  : 'bg-white/5 text-[#8a8aa8] hover:text-white'
+              }`}
+            >
+              <Film className="w-3.5 h-3.5" />
+              <span>Video Clips ({userClips.length})</span>
+            </button>
+          </div>
+
+          {activeTab === 'all' && (
+            <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+              {userPosts.length === 0 ? (
+                <div className="p-6 text-center text-xs text-[#8a8aa8] bg-white/[0.02] rounded-2xl border border-white/5">
+                  No posts published yet.
+                </div>
+              ) : (
+                userPosts.map((post) => (
+                  <div key={post.id} className="p-3 rounded-2xl bg-white/5 border border-white/5 space-y-1.5 text-xs">
+                    <p className="text-white/90 whitespace-pre-wrap">{post.content}</p>
+                    <div className="flex items-center justify-between text-[10px] text-[#8a8aa8] pt-1">
+                      <span>{post.time}</span>
+                      <span className="text-[#ff2d95] flex items-center gap-1 font-bold">
+                        <Heart className="w-3 h-3 fill-current" />
+                        {post.likes || 0}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {activeTab === 'clips' && (
+            <div className="grid grid-cols-2 gap-2.5 max-h-60 overflow-y-auto pr-1">
+              {userClips.length === 0 ? (
+                <div className="col-span-2 p-6 text-center text-xs text-[#8a8aa8] bg-white/[0.02] rounded-2xl border border-white/5 space-y-1">
+                  <Video className="w-6 h-6 text-[#00e5ff] mx-auto opacity-50" />
+                  <p>No video clips uploaded yet.</p>
+                </div>
+              ) : (
+                userClips.map((clip) => (
+                  <div
+                    key={clip.id}
+                    onClick={() => closeUserProfileModal()}
+                    className="relative aspect-[9/14] rounded-2xl overflow-hidden bg-black border border-white/10 cursor-pointer group shadow-md"
+                  >
+                    <video src={clip.videoUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent flex flex-col justify-end p-2.5 space-y-1">
+                      <div className="text-[11px] font-bold text-white line-clamp-1 group-hover:text-[#00e5ff]">
+                        {clip.title}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
