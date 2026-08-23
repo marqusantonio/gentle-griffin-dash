@@ -17,7 +17,7 @@ import {
   Send,
   ShieldAlert,
   ShieldBan,
-  Trash2
+  Users
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
 import { toast } from 'sonner';
@@ -37,11 +37,11 @@ export const UserProfileModal: React.FC = () => {
     clips,
     posts,
     conversations,
-    setActiveView,
-    deletePost
+    allUsers,
+    setActiveView
   } = useWevids();
 
-  const [activeTab, setActiveTab] = useState<'all' | 'clips' | 'posts'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'clips' | 'followers'>('all');
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [showBlockConfirm, setShowBlockConfirm] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -55,17 +55,13 @@ export const UserProfileModal: React.FC = () => {
   const blocked = isBlocked(targetId);
   const isMe = targetId === currentUserId;
 
-  // Filter creator's items dynamically
   const userClips = (clips || []).filter(c => c && c.userId === targetId && Boolean(c.videoUrl));
   const userPosts = (posts || []).filter(p => p && p.userId === targetId);
-  const userMediaPosts = userPosts.filter(p => Boolean(p.mediaUrl));
 
-  // Dynamic likes count
   const dynamicLikes = userPosts.reduce((acc, p) => acc + (Number(p?.likes) || 0), 0) + 
                        userClips.reduce((acc, c) => acc + (Number(c?.likes) || 0), 0);
   const totalLikes = Math.max(Number(viewingProfileUser.likes) || 0, dynamicLikes);
 
-  // Check if a request is already pending
   const existingConv = (conversations || []).find(c =>
     c &&
     !c.isGroup &&
@@ -74,6 +70,11 @@ export const UserProfileModal: React.FC = () => {
     c.members.includes(currentUserId)
   );
   const isRequestPending = !mutualFriend && existingConv?.status === 'pending_request' && existingConv.requestedBy === currentUserId;
+
+  // List followers
+  const followersList = Object.values(allUsers).filter(u => 
+    (u.followingIds || []).includes(targetId)
+  );
 
   const toggleAudio = () => {
     if (!audioRef.current) return;
@@ -93,11 +94,11 @@ export const UserProfileModal: React.FC = () => {
     startOrOpenChatWithUser(targetId);
 
     if (mutualFriend) {
-      toast.success(`Connected with ${viewingProfileUser.name || 'creator'}! You are mutual friends and can chat freely. 🤝`);
+      toast.success(`Friends mode unlocked with ${viewingProfileUser.name || 'creator'}! Chat freely 🤝`);
     } else if (isRequestPending) {
       toast.info('Message request already pending approval from this creator.');
     } else {
-      toast.info(`Message request mode: You can send 1 message until ${viewingProfileUser.name || 'this creator'} accepts your request.`);
+      toast.info(`Message request mode: You can send 1 message until ${viewingProfileUser.name || 'this creator'} accepts or follows back.`);
     }
   };
 
@@ -116,7 +117,7 @@ export const UserProfileModal: React.FC = () => {
   const displayName = viewingProfileUser.name || 'Creator';
   const handleName = viewingProfileUser.handle || `@${displayName.toLowerCase().replace(/\s+/g, '_')}`;
   const locationName = viewingProfileUser.location || 'Earth Node';
-  const followersCount = Number(viewingProfileUser.followers) || 0;
+  const followersCount = Number(viewingProfileUser.followers) || followersList.length;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
@@ -152,11 +153,11 @@ export const UserProfileModal: React.FC = () => {
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
               {mutualFriend ? (
                 <span className="text-[10px] font-bold text-[#10b981] bg-[#10b981]/20 px-2.5 py-0.5 rounded-full border border-[#10b981]/40 flex items-center gap-1">
-                  🤝 Mutual Friends · Chat Freely
+                  🤝 Mutual Friends · Unrestricted Messaging
                 </span>
               ) : following ? (
                 <span className="text-[10px] text-[#00e5ff] bg-[#00e5ff]/15 px-2.5 py-0.5 rounded-full border border-[#00e5ff]/30 font-semibold">
-                  Following (Awaiting follow back)
+                  Requested / Following (1 Msg Limit)
                 </span>
               ) : isRequestPending ? (
                 <span className="text-[10px] text-[#fbbf24] bg-[#fbbf24]/15 px-2.5 py-0.5 rounded-full border border-[#fbbf24]/30 font-semibold">
@@ -191,9 +192,9 @@ export const UserProfileModal: React.FC = () => {
 
         <p className="text-xs text-[#e8e8f4] leading-relaxed">{viewingProfileUser.bio || 'WEVIDS creator and community member.'}</p>
 
-        {/* Dynamic Stats Row */}
+        {/* Stats Row */}
         <div className="grid grid-cols-3 gap-2 text-center text-xs">
-          <div className="p-2.5 rounded-xl bg-white/5 border border-white/5">
+          <div className="p-2.5 rounded-xl bg-white/5 border border-white/5 cursor-pointer hover:bg-white/10" onClick={() => setActiveTab('followers')}>
             <div className="font-bold font-orbitron text-[#00e5ff]">{followersCount.toLocaleString()}</div>
             <div className="text-[10px] text-[#8a8aa8]">Followers</div>
           </div>
@@ -210,7 +211,7 @@ export const UserProfileModal: React.FC = () => {
           </div>
         </div>
 
-        {/* Action Buttons: Follow, Message, & Anti-Bullying Block */}
+        {/* Dynamic Action Buttons */}
         {!isMe && (
           <div className="flex gap-2 pt-1">
             <button
@@ -224,7 +225,7 @@ export const UserProfileModal: React.FC = () => {
               }`}
             >
               {mutualFriend ? <UserCheck className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />}
-              <span>{mutualFriend ? 'Friends 🤝' : following ? 'Following' : '+ Follow'}</span>
+              <span>{mutualFriend ? 'Friends 🤝' : following ? 'Requested / Following' : '+ Follow'}</span>
             </button>
 
             <button
@@ -250,7 +251,7 @@ export const UserProfileModal: React.FC = () => {
               ) : (
                 <>
                   <Send className="w-3.5 h-3.5 text-[#00e5ff]" />
-                  <span>Request Chat</span>
+                  <span>Send Request</span>
                 </>
               )}
             </button>
@@ -294,7 +295,7 @@ export const UserProfileModal: React.FC = () => {
           </div>
         )}
 
-        {/* User Content Tabs: All Posts vs Media Clips */}
+        {/* Content Tabs */}
         <div className="pt-2 border-t border-white/10">
           <div className="flex items-center gap-2 mb-3">
             <button
@@ -318,11 +319,22 @@ export const UserProfileModal: React.FC = () => {
               }`}
             >
               <Film className="w-3.5 h-3.5" />
-              <span>Media & Clips ({userMediaPosts.length + userClips.length})</span>
+              <span>Video Clips ({userClips.length})</span>
+            </button>
+
+            <button
+              onClick={() => { sounds.click(); setActiveTab('followers'); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-orbitron font-bold transition-all ${
+                activeTab === 'followers'
+                  ? 'bg-[#fbbf24] text-slate-900 shadow-md'
+                  : 'bg-white/5 text-[#8a8aa8] hover:text-white'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Followers</span>
             </button>
           </div>
 
-          {/* All Posts Stream */}
           {activeTab === 'all' && (
             <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
               {userPosts.length === 0 ? (
@@ -333,15 +345,6 @@ export const UserProfileModal: React.FC = () => {
                 userPosts.map((post) => (
                   <div key={post.id} className="p-3 rounded-2xl bg-white/5 border border-white/5 space-y-1.5 text-xs">
                     <p className="text-white/90 whitespace-pre-wrap">{post.content}</p>
-
-                    {post.mediaUrl && post.mediaType === 'image' && (
-                      <img src={post.mediaUrl} alt="Post attachment" className="rounded-xl max-h-40 object-cover mt-1" />
-                    )}
-
-                    {post.mediaUrl && post.mediaType === 'video' && (
-                      <video src={post.mediaUrl} controls className="rounded-xl max-h-40 object-cover mt-1 bg-black w-full" />
-                    )}
-
                     <div className="flex items-center justify-between text-[10px] text-[#8a8aa8] pt-1">
                       <span>{post.time}</span>
                       <span className="text-[#ff2d95] flex items-center gap-1 font-bold">
@@ -355,57 +358,58 @@ export const UserProfileModal: React.FC = () => {
             </div>
           )}
 
-          {/* Media Clips Stream */}
           {activeTab === 'clips' && (
             <div className="grid grid-cols-2 gap-2.5 max-h-60 overflow-y-auto pr-1">
-              {userClips.length === 0 && userMediaPosts.length === 0 ? (
+              {userClips.length === 0 ? (
                 <div className="col-span-2 p-6 text-center text-xs text-[#8a8aa8] bg-white/[0.02] rounded-2xl border border-white/5 space-y-1">
                   <Video className="w-6 h-6 text-[#00e5ff] mx-auto opacity-50" />
-                  <p>No video clips or photos uploaded yet.</p>
+                  <p>No video clips uploaded yet.</p>
                 </div>
               ) : (
-                <>
-                  {userClips.map((clip) => (
-                    <div
-                      key={clip.id}
-                      onClick={() => {
-                        closeUserProfileModal();
-                        setActiveView('clips');
-                      }}
-                      className="relative aspect-[9/14] rounded-2xl overflow-hidden bg-black border border-white/10 cursor-pointer group shadow-md"
-                    >
-                      <video src={clip.videoUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent flex flex-col justify-end p-2.5 space-y-1">
-                        <div className="text-[11px] font-bold text-white line-clamp-1 group-hover:text-[#00e5ff]">
-                          {clip.title}
-                        </div>
-                        <div className="flex items-center justify-between text-[10px] text-[#ff2d95]">
-                          <span className="flex items-center gap-1">
-                            <Heart className="w-3 h-3 fill-current" />
-                            {clip.likes || 0}
-                          </span>
-                          <span className="text-[#8a8aa8]">▶ View Clip</span>
-                        </div>
+                userClips.map((clip) => (
+                  <div
+                    key={clip.id}
+                    onClick={() => closeUserProfileModal()}
+                    className="relative aspect-[9/14] rounded-2xl overflow-hidden bg-black border border-white/10 cursor-pointer group shadow-md"
+                  >
+                    <video src={clip.videoUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent flex flex-col justify-end p-2.5 space-y-1">
+                      <div className="text-[11px] font-bold text-white line-clamp-1 group-hover:text-[#00e5ff]">
+                        {clip.title}
                       </div>
                     </div>
-                  ))}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
 
-                  {userMediaPosts.map((mediaPost) => (
-                    <div
-                      key={mediaPost.id}
-                      className="relative aspect-[9/14] rounded-2xl overflow-hidden bg-black border border-white/10 group shadow-md"
-                    >
-                      {mediaPost.mediaType === 'video' ? (
-                        <video src={mediaPost.mediaUrl} controls className="w-full h-full object-cover" />
-                      ) : (
-                        <img src={mediaPost.mediaUrl} alt="Photo" className="w-full h-full object-cover" />
-                      )}
-                      <div className="absolute inset-x-0 bottom-0 bg-black/70 backdrop-blur-md p-2 text-[10px] text-white truncate">
-                        {mediaPost.content || 'Photo Post'}
+          {activeTab === 'followers' && (
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {followersList.length === 0 ? (
+                <div className="p-6 text-center text-xs text-[#8a8aa8] bg-white/[0.02] rounded-2xl border border-white/5">
+                  No followers recorded yet. Follow creators to build your community network!
+                </div>
+              ) : (
+                followersList.map((f) => (
+                  <div key={f.id} className="flex items-center justify-between p-2.5 rounded-2xl bg-white/5 border border-white/5 text-xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-slate-900 text-xs" style={{ background: f.color }}>
+                        {f.avatar || f.name.charAt(0)}
+                      </div>
+                      <div className="truncate">
+                        <div className="font-bold text-white truncate">{f.name}</div>
+                        <div className="text-[10px] text-[#8a8aa8]">{f.handle}</div>
                       </div>
                     </div>
-                  ))}
-                </>
+                    <button
+                      onClick={() => toggleFollowUser(f.id)}
+                      className="px-3 py-1 rounded-xl bg-[#00e5ff]/20 text-[#00e5ff] text-[10px] font-bold font-orbitron hover:bg-[#00e5ff] hover:text-slate-900 transition-colors"
+                    >
+                      {isFollowing(f.id) ? 'Following' : '+ Follow'}
+                    </button>
+                  </div>
+                ))
               )}
             </div>
           )}
