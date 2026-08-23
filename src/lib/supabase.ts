@@ -54,10 +54,10 @@ export const checkContentModeration = (text: string): { flagged: boolean; reason
   return { flagged: false };
 };
 
-export const SUPABASE_SQL_SCHEMA = `-- 100x Ultra-Futuristic Cyberpunk Social Engine Migration
--- Execute this script in your Supabase SQL Editor (supabase.com -> SQL Editor)
+export const SUPABASE_SQL_SCHEMA = `-- WEVIDS OS v3.1 Complete Database Schema Script
+-- Execute this script in your Supabase SQL Editor (https://supabase.com -> SQL Editor -> New Query)
 
--- 1. PROFILES TABLE WITH LIVE COUNTERS
+-- 1. PROFILES TABLE WITH LIVE COUNTERS & JSONB ARRAYS
 CREATE TABLE IF NOT EXISTS public.profiles (
   id TEXT PRIMARY KEY,
   name TEXT,
@@ -77,15 +77,21 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   followingIds JSONB DEFAULT '[]'::jsonb,
   followerIds JSONB DEFAULT '[]'::jsonb,
   blockedUserIds JSONB DEFAULT '[]'::jsonb,
+  walletBalance NUMERIC DEFAULT 50,
+  verified BOOLEAN DEFAULT false,
+  isAdmin BOOLEAN DEFAULT false,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Ensure count columns exist if table was already created
+-- Ensure count columns exist
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS follower_count INTEGER DEFAULT 0;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS following_count INTEGER DEFAULT 0;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS likes_count INTEGER DEFAULT 0;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS followingIds JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS followerIds JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS blockedUserIds JSONB DEFAULT '[]'::jsonb;
 
--- 2. FOLLOWS TABLE (Mutual / Pending / Accepted)
+-- 2. FOLLOWS TABLE
 CREATE TABLE IF NOT EXISTS public.follows (
   follower_id TEXT REFERENCES public.profiles(id) ON DELETE CASCADE,
   following_id TEXT REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -94,36 +100,67 @@ CREATE TABLE IF NOT EXISTS public.follows (
   PRIMARY KEY (follower_id, following_id)
 );
 
--- 3. PROFILE LIKES TABLE
+-- 3. POSTS TABLE
+CREATE TABLE IF NOT EXISTS public.posts (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id TEXT,
+  userId TEXT,
+  authorName TEXT,
+  authorHandle TEXT,
+  authorAvatar TEXT,
+  authorColor TEXT,
+  location TEXT,
+  time TEXT,
+  title TEXT,
+  content TEXT,
+  caption TEXT,
+  video_url TEXT DEFAULT 'none',
+  mediaUrl TEXT,
+  mediaType TEXT,
+  likes INTEGER DEFAULT 0,
+  dislikes INTEGER DEFAULT 0,
+  shares INTEGER DEFAULT 0,
+  tags JSONB DEFAULT '[]'::jsonb,
+  comments JSONB DEFAULT '[]'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 4. CLIPS TABLE
+CREATE TABLE IF NOT EXISTS public.clips (
+  id TEXT PRIMARY KEY,
+  userId TEXT,
+  title TEXT,
+  description TEXT,
+  videoUrl TEXT,
+  video_url TEXT,
+  audioTrack TEXT DEFAULT 'Original Audio Track',
+  likes INTEGER DEFAULT 0,
+  dislikes INTEGER DEFAULT 0,
+  shares INTEGER DEFAULT 0,
+  comments JSONB DEFAULT '[]'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 5. DIRECT MESSAGES TABLE
+CREATE TABLE IF NOT EXISTS public.direct_messages (
+  id TEXT PRIMARY KEY,
+  sender_id TEXT NOT NULL,
+  receiver_id TEXT NOT NULL,
+  content TEXT,
+  mediaUrl TEXT,
+  type TEXT DEFAULT 'text',
+  is_friend_request BOOLEAN DEFAULT false,
+  is_approved BOOLEAN DEFAULT NULL,
+  is_blocked BOOLEAN DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 6. PROFILE LIKES TABLE
 CREATE TABLE IF NOT EXISTS public.profile_likes (
   liker_id TEXT REFERENCES public.profiles(id) ON DELETE CASCADE,
   target_id TEXT REFERENCES public.profiles(id) ON DELETE CASCADE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   PRIMARY KEY (liker_id, target_id)
-);
-
--- 4. CONVERSATIONS TABLE
-CREATE TABLE IF NOT EXISTS public.conversations (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 5. CONVERSATION PARTICIPANTS
-CREATE TABLE IF NOT EXISTS public.conversation_participants (
-  conversation_id UUID REFERENCES public.conversations(id) ON DELETE CASCADE,
-  user_id TEXT REFERENCES public.profiles(id) ON DELETE CASCADE,
-  PRIMARY KEY (conversation_id, user_id)
-);
-
--- 6. MESSAGES TABLE
-CREATE TABLE IF NOT EXISTS public.messages (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  conversation_id UUID REFERENCES public.conversations(id) ON DELETE CASCADE,
-  sender_id TEXT REFERENCES public.profiles(id) ON DELETE CASCADE,
-  content TEXT NOT NULL,
-  media_url TEXT,
-  type TEXT DEFAULT 'text',
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- 7. STREAKS TABLE (Daily 🔥 Counter)
@@ -173,134 +210,7 @@ CREATE TRIGGER trg_update_follow_counts
 AFTER INSERT OR DELETE ON public.follows
 FOR EACH ROW EXECUTE FUNCTION public.update_follow_counts();
 
--- AUTOMATIC COUNTER TRIGGERS FOR PROFILE LIKES
-CREATE OR REPLACE FUNCTION public.update_profile_like_counts()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-BEGIN
-  IF (TG_OP = 'INSERT') THEN
-    UPDATE public.profiles 
-    SET likes_count = COALESCE(likes_count, 0) + 1,
-        likes = COALESCE(likes, 0) + 1 
-    WHERE id = NEW.target_id;
-  ELSIF (TG_OP = 'DELETE') THEN
-    UPDATE public.profiles 
-    SET likes_count = GREATEST(0, COALESCE(likes_count, 1) - 1),
-        likes = GREATEST(0, COALESCE(likes, 1) - 1) 
-    WHERE id = OLD.target_id;
-  END IF;
-  RETURN NULL;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS trg_update_profile_like_counts ON public.profile_likes;
-CREATE TRIGGER trg_update_profile_like_counts
-AFTER INSERT OR DELETE ON public.profile_likes
-FOR EACH ROW EXECUTE FUNCTION public.update_profile_like_counts();
-
--- AUTO MUTUAL FOLLOW TRIGGER
-CREATE OR REPLACE FUNCTION public.handle_auto_mutual_follow()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-DECLARE
-  v_reciprocal_exists BOOLEAN;
-BEGIN
-  SELECT EXISTS (
-    SELECT 1 FROM public.follows
-    WHERE follower_id = NEW.following_id AND following_id = NEW.follower_id
-  ) INTO v_reciprocal_exists;
-
-  IF v_reciprocal_exists THEN
-    NEW.status := 'accepted';
-    UPDATE public.follows
-    SET status = 'accepted'
-    WHERE follower_id = NEW.following_id AND following_id = NEW.follower_id;
-  END IF;
-
-  RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS trg_auto_mutual_follow ON public.follows;
-CREATE TRIGGER trg_auto_mutual_follow
-BEFORE INSERT OR UPDATE ON public.follows
-FOR EACH ROW EXECUTE FUNCTION public.handle_auto_mutual_follow();
-
--- RPC 1: GET RELATIONSHIP STATUS
-CREATE OR REPLACE FUNCTION public.get_relationship_status(
-  p_current_user_id TEXT,
-  p_target_user_id TEXT
-) RETURNS TEXT
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-DECLARE
-  v_i_follow_them BOOLEAN := false;
-  v_they_follow_me BOOLEAN := false;
-BEGIN
-  IF p_current_user_id = p_target_user_id THEN
-    RETURN 'FRIENDS';
-  END IF;
-
-  SELECT EXISTS(
-    SELECT 1 FROM public.follows
-    WHERE follower_id = p_current_user_id AND following_id = p_target_user_id
-  ) INTO v_i_follow_them;
-
-  SELECT EXISTS(
-    SELECT 1 FROM public.follows
-    WHERE follower_id = p_target_user_id AND following_id = p_current_user_id
-  ) INTO v_they_follow_me;
-
-  IF v_i_follow_them AND v_they_follow_me THEN
-    RETURN 'FRIENDS';
-  ELSIF v_i_follow_them THEN
-    RETURN 'FOLLOWING';
-  ELSIF v_they_follow_me THEN
-    RETURN 'FOLLOW_BACK';
-  ELSE
-    RETURN 'NONE';
-  END IF;
-END;
-$$;
-
--- RPC 2: ACCEPT MESSAGE REQUEST
-CREATE OR REPLACE FUNCTION public.accept_message_request(
-  p_sender_id TEXT,
-  p_receiver_id TEXT
-) RETURNS JSONB
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-BEGIN
-  -- 1. Ensure mutual follow relationship is set to accepted
-  INSERT INTO public.follows (follower_id, following_id, status)
-  VALUES (p_sender_id, p_receiver_id, 'accepted')
-  ON CONFLICT (follower_id, following_id) DO UPDATE SET status = 'accepted';
-
-  INSERT INTO public.follows (follower_id, following_id, status)
-  VALUES (p_receiver_id, p_sender_id, 'accepted')
-  ON CONFLICT (follower_id, following_id) DO UPDATE SET status = 'accepted';
-
-  -- 2. Approve direct messages
-  UPDATE public.direct_messages
-  SET is_approved = true
-  WHERE (sender_id = p_sender_id AND receiver_id = p_receiver_id)
-     OR (sender_id = p_receiver_id AND receiver_id = p_sender_id);
-
-  RETURN jsonb_build_object(
-    'success', true,
-    'relationship_status', 'FRIENDS',
-    'message', 'Mutual transmission link established. Unrestricted chat enabled.'
-  );
-END;
-$$;
-
--- RPC 3: ATOMIC FOLLOW TOGGLE
+-- ATOMIC FOLLOW TOGGLE RPC
 CREATE OR REPLACE FUNCTION public.toggle_follow_atomic(
   p_follower_id TEXT,
   p_following_id TEXT
@@ -310,7 +220,8 @@ SECURITY DEFINER
 AS $$
 DECLARE
   v_already_following BOOLEAN;
-  v_relationship TEXT;
+  v_reciprocal_exists BOOLEAN;
+  v_status TEXT := 'pending';
 BEGIN
   SELECT EXISTS(
     SELECT 1 FROM public.follows 
@@ -319,29 +230,37 @@ BEGIN
 
   IF v_already_following THEN
     DELETE FROM public.follows WHERE follower_id = p_follower_id AND following_id = p_following_id;
+    RETURN jsonb_build_object('status', 'NONE', 'is_mutual', false);
   ELSE
+    SELECT EXISTS(
+      SELECT 1 FROM public.follows
+      WHERE follower_id = p_following_id AND following_id = p_follower_id
+    ) INTO v_reciprocal_exists;
+
+    IF v_reciprocal_exists THEN
+      v_status := 'accepted';
+      UPDATE public.follows SET status = 'accepted'
+      WHERE follower_id = p_following_id AND following_id = p_follower_id;
+    END IF;
+
     INSERT INTO public.follows (follower_id, following_id, status)
-    VALUES (p_follower_id, p_following_id, 'pending');
+    VALUES (p_follower_id, p_following_id, v_status)
+    ON CONFLICT (follower_id, following_id) DO UPDATE SET status = v_status;
+
+    RETURN jsonb_build_object('status', v_status, 'is_mutual', v_reciprocal_exists);
   END IF;
-
-  v_relationship := public.get_relationship_status(p_follower_id, p_following_id);
-
-  RETURN jsonb_build_object(
-    'status', v_relationship,
-    'is_mutual', (v_relationship = 'FRIENDS')
-  );
 END;
 $$;
 
 -- DATA API GRANTS
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.profiles TO service_role, authenticated, anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.follows TO service_role, authenticated, anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.posts TO service_role, authenticated, anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.clips TO service_role, authenticated, anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.direct_messages TO service_role, authenticated, anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.profile_likes TO service_role, authenticated, anon;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.conversations TO service_role, authenticated, anon;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.conversation_participants TO service_role, authenticated, anon;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.messages TO service_role, authenticated, anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.streaks TO service_role, authenticated, anon;
 
 -- ENABLE REALTIME PUBLICATION
-ALTER PUBLICATION supabase_realtime ADD TABLE profiles, follows, messages, conversations, profile_likes, direct_messages;
+ALTER PUBLICATION supabase_realtime ADD TABLE profiles, follows, posts, clips, direct_messages;
 `;
