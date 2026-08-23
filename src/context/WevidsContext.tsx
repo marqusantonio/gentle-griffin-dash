@@ -15,7 +15,6 @@ import {
   DirectMessageItem, 
   ChatMessage,
   FollowRecord,
-  StreakRecord,
   CommentItem,
   CommentReply
 } from '../types/wevids';
@@ -137,10 +136,9 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     dms: DirectMessageItem[],
     profilesMap: Record<string, UserProfile>,
     currentUserId: string,
-    followsList: FollowRecord[] = [],
-    streaksList: StreakRecord[] = []
+    followsList: FollowRecord[] = []
   ): Conversation[] => {
-    const map = new Map<string, { partnerId: string; messages: ChatMessage[]; lastMsg: string; time: string; status: 'active' | 'pending_request' | 'declined' | 'blocked'; requestedBy?: string; streakCount?: number }>();
+    const map = new Map<string, { partnerId: string; messages: ChatMessage[]; lastMsg: string; time: string; status: 'active' | 'pending_request' | 'declined' | 'blocked'; requestedBy?: string }>();
 
     const approvedPartners = new Set<string>();
     const declinedPartners = new Set<string>();
@@ -201,11 +199,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         ? 'pending_request'
         : 'active';
 
-      const streakRec = streaksList.find(s => 
-        (s.user_1 === currentUserId && s.user_2 === partnerId) ||
-        (s.user_1 === partnerId && s.user_2 === currentUserId)
-      );
-
       if (!map.has(partnerId)) {
         map.set(partnerId, {
           partnerId,
@@ -213,8 +206,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           lastMsg: dm.content || 'Media',
           time: new Date(dm.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           status: computedStatus,
-          requestedBy: dm.sender_id,
-          streakCount: streakRec?.current_streak || 0
+          requestedBy: dm.sender_id
         });
       } else {
         const item = map.get(partnerId)!;
@@ -223,7 +215,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         item.time = new Date(dm.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         if (dm.is_blocked) item.status = 'blocked';
         if (computedStatus === 'active') item.status = 'active';
-        item.streakCount = streakRec?.current_streak || item.streakCount || 0;
       }
     });
 
@@ -242,7 +233,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         messages: val.messages,
         status: val.status,
         requestedBy: val.requestedBy,
-        streakCount: val.streakCount
+        streakCount: 0
       });
     });
 
@@ -259,7 +250,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         clipsRes, 
         profilesRes, 
         followsRes,
-        streaksRes,
         dmsRes,
         audioRes,
         filmsRes,
@@ -271,7 +261,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         supabase.from('clips').select('*').order('created_at', { ascending: false }),
         supabase.from('profiles').select('*'),
         supabase.from('follows').select('*'),
-        supabase.from('streaks').select('*'),
         supabase.from('direct_messages').select('*').order('created_at', { ascending: true }),
         supabase.from('audio_tracks').select('*').order('created_at', { ascending: false }),
         supabase.from('films').select('*').order('created_at', { ascending: false }),
@@ -332,7 +321,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       }
 
       const followsList: FollowRecord[] = followsRes.data || [];
-      const streaksList: StreakRecord[] = streaksRes.data || [];
 
       if (dmsRes.data && Array.isArray(dmsRes.data)) {
         dispatch({ type: 'SET_DIRECT_MESSAGES', payload: dmsRes.data });
@@ -340,8 +328,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           dmsRes.data, 
           profileMap, 
           state.currentUser.id, 
-          followsList, 
-          streaksList
+          followsList
         );
         if (userConversations.length > 0) {
           dispatch({ type: 'SET_CONVERSATIONS', payload: userConversations });
@@ -359,7 +346,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   useEffect(() => {
     syncWithSupabase(true);
 
-    const interval = setInterval(() => syncWithSupabase(true), 5000);
+    const interval = setInterval(() => syncWithSupabase(true), 8000);
     return () => clearInterval(interval);
   }, [syncWithSupabase]);
 
@@ -862,11 +849,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           followers: targetNewFollowers.length,
           follower_count: targetNewFollowers.length
         }).eq('id', userId);
-
-        await supabase.rpc('toggle_follow_atomic', {
-          p_follower_id: state.currentUser.id,
-          p_following_id: userId
-        });
       } catch (err) {
         console.error('Supabase follow persistence handled:', err);
       }
@@ -930,21 +912,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     sounds.click();
     const isFriend = isMutualFriend(userId);
 
-    let conversationId: string | null = null;
-
-    if (isSupabaseConfigured()) {
-      try {
-        const { data: convUuid } = await supabase.rpc('get_or_create_conversation', {
-          p_user_1: state.currentUser.id,
-          p_user_2: userId
-        });
-        if (convUuid) conversationId = `conv-${convUuid}`;
-      } catch {}
-    }
-
-    if (!conversationId) {
-      conversationId = `conv-${state.currentUser.id}-${userId}`;
-    }
+    const conversationId = `conv-${state.currentUser.id}-${userId}`;
 
     const existingConv = state.conversations.find(c => 
       c.id === conversationId || (!c.isGroup && c.members.includes(userId) && c.members.includes(state.currentUser.id))
@@ -1024,31 +992,18 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     if (isSupabaseConfigured()) {
       try {
-        const cleanConvUuid = convId.replace('conv-', '');
-        const { data: rpcRes, error: rpcErr } = await supabase.rpc('send_message_with_rules', {
-          p_conversation_id: cleanConvUuid,
-          p_sender_id: state.currentUser.id,
-          p_content: message.text || (message.type ? `[${message.type}]` : 'Media'),
-          p_media_url: message.mediaUrl,
-          p_type: message.type || 'text'
-        });
-
-        if (rpcErr) {
-          await supabase.from('direct_messages').insert([{
-            id: newMessage.id,
-            sender_id: state.currentUser.id,
-            receiver_id: receiverId,
-            content: message.text || (message.type ? `[${message.type}]` : 'Media'),
-            mediaUrl: message.mediaUrl,
-            type: message.type || 'text',
-            is_friend_request: !isFriend,
-            is_approved: isFriend ? true : null,
-            is_blocked: false,
-            created_at: new Date().toISOString()
-          }]);
-        } else if (rpcRes?.current_streak) {
-          toast.success(`Message sent! Daily 🔥 Streak: ${rpcRes.current_streak}`);
-        }
+        await supabase.from('direct_messages').insert([{
+          id: newMessage.id,
+          sender_id: state.currentUser.id,
+          receiver_id: receiverId,
+          content: message.text || (message.type ? `[${message.type}]` : 'Media'),
+          mediaUrl: message.mediaUrl,
+          type: message.type || 'text',
+          is_friend_request: !isFriend,
+          is_approved: isFriend ? true : null,
+          is_blocked: false,
+          created_at: new Date().toISOString()
+        }]);
       } catch {}
     }
 
@@ -1081,11 +1036,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             .update({ is_approved: true })
             .eq('sender_id', state.currentUser.id)
             .eq('receiver_id', partnerId);
-
-          await supabase.rpc('accept_message_request', {
-            p_sender_id: partnerId,
-            p_receiver_id: state.currentUser.id
-          });
         } catch {}
       }
     }

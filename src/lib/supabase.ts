@@ -163,95 +163,6 @@ CREATE TABLE IF NOT EXISTS public.profile_likes (
   PRIMARY KEY (liker_id, target_id)
 );
 
--- 7. STREAKS TABLE (Daily 🔥 Counter)
-CREATE TABLE IF NOT EXISTS public.streaks (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_1 TEXT REFERENCES public.profiles(id) ON DELETE CASCADE,
-  user_2 TEXT REFERENCES public.profiles(id) ON DELETE CASCADE,
-  current_streak INTEGER DEFAULT 0,
-  last_message_date DATE,
-  CONSTRAINT unique_streak_pair UNIQUE(user_1, user_2)
-);
-
--- AUTOMATIC COUNTER TRIGGERS FOR FOLLOWS
-CREATE OR REPLACE FUNCTION public.update_follow_counts()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-BEGIN
-  IF (TG_OP = 'INSERT') THEN
-    UPDATE public.profiles 
-    SET following_count = COALESCE(following_count, 0) + 1,
-        following = COALESCE(following, 0) + 1 
-    WHERE id = NEW.follower_id;
-
-    UPDATE public.profiles 
-    SET follower_count = COALESCE(follower_count, 0) + 1,
-        followers = COALESCE(followers, 0) + 1 
-    WHERE id = NEW.following_id;
-  ELSIF (TG_OP = 'DELETE') THEN
-    UPDATE public.profiles 
-    SET following_count = GREATEST(0, COALESCE(following_count, 1) - 1),
-        following = GREATEST(0, COALESCE(following, 1) - 1) 
-    WHERE id = OLD.follower_id;
-
-    UPDATE public.profiles 
-    SET follower_count = GREATEST(0, COALESCE(follower_count, 1) - 1),
-        followers = GREATEST(0, COALESCE(followers, 1) - 1) 
-    WHERE id = OLD.following_id;
-  END IF;
-  RETURN NULL;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS trg_update_follow_counts ON public.follows;
-CREATE TRIGGER trg_update_follow_counts
-AFTER INSERT OR DELETE ON public.follows
-FOR EACH ROW EXECUTE FUNCTION public.update_follow_counts();
-
--- ATOMIC FOLLOW TOGGLE RPC
-CREATE OR REPLACE FUNCTION public.toggle_follow_atomic(
-  p_follower_id TEXT,
-  p_following_id TEXT
-) RETURNS JSONB
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-DECLARE
-  v_already_following BOOLEAN;
-  v_reciprocal_exists BOOLEAN;
-  v_status TEXT := 'pending';
-BEGIN
-  SELECT EXISTS(
-    SELECT 1 FROM public.follows 
-    WHERE follower_id = p_follower_id AND following_id = p_following_id
-  ) INTO v_already_following;
-
-  IF v_already_following THEN
-    DELETE FROM public.follows WHERE follower_id = p_follower_id AND following_id = p_following_id;
-    RETURN jsonb_build_object('status', 'NONE', 'is_mutual', false);
-  ELSE
-    SELECT EXISTS(
-      SELECT 1 FROM public.follows
-      WHERE follower_id = p_following_id AND following_id = p_follower_id
-    ) INTO v_reciprocal_exists;
-
-    IF v_reciprocal_exists THEN
-      v_status := 'accepted';
-      UPDATE public.follows SET status = 'accepted'
-      WHERE follower_id = p_following_id AND following_id = p_follower_id;
-    END IF;
-
-    INSERT INTO public.follows (follower_id, following_id, status)
-    VALUES (p_follower_id, p_following_id, v_status)
-    ON CONFLICT (follower_id, following_id) DO UPDATE SET status = v_status;
-
-    RETURN jsonb_build_object('status', v_status, 'is_mutual', v_reciprocal_exists);
-  END IF;
-END;
-$$;
-
 -- DATA API GRANTS
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.profiles TO service_role, authenticated, anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.follows TO service_role, authenticated, anon;
@@ -259,7 +170,6 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.posts TO service_role, auth
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.clips TO service_role, authenticated, anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.direct_messages TO service_role, authenticated, anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.profile_likes TO service_role, authenticated, anon;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.streaks TO service_role, authenticated, anon;
 
 -- ENABLE REALTIME PUBLICATION
 ALTER PUBLICATION supabase_realtime ADD TABLE profiles, follows, posts, clips, direct_messages;

@@ -122,7 +122,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             <>
               <span className="w-2 h-2 rounded-full bg-[#10b981] animate-ping" />
               <RefreshCw className={`w-3.5 h-3.5 ${isCloudSyncing ? 'animate-spin' : ''}`} />
-              <span className="hidden md:inline text-[11px]">Auto-Sync Live</span>
+              <span className="hidden md:inline text-[11px]">Database Live</span>
             </>
           ) : (
             <>
