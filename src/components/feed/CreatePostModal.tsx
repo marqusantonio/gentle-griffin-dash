@@ -8,9 +8,7 @@ import {
   Film, 
   Music2, 
   Tv, 
-  Loader2,
-  Sparkles,
-  Smile
+  Loader2
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
 import { supabase, checkContentModeration } from '../../lib/supabase';
@@ -30,7 +28,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   onClose,
   defaultTarget = 'feed'
 }) => {
-  const { currentUser, setActiveView, syncWithSupabase } = useWevids();
+  const { currentUser, setActiveView, addClip, syncWithSupabase } = useWevids();
   
   const [targetType, setTargetType] = useState<'feed' | 'clips'>(defaultTarget);
   const [content, setContent] = useState('');
@@ -47,7 +45,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
   if (!isOpen) return null;
 
-  const popularTags = ['#WEVIDS', '#Tech', '#CustomROM', '#Anime', '#Gaming', '#Cyberpunk', '#Music', '#AI', '#Voxel'];
+  const popularTags = ['#WEVIDS', '#Tech', '#CustomROM', '#Anime', '#Gaming', '#Cyberpunk', '#Music', '#AI'];
   const quickEmojis = ['🔥', '⚡', '🚀', '✨', '💎', '🎮', '❤️', '🤯'];
 
   const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -61,16 +59,11 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
     setFileName(file.name);
     setMediaType('image');
-    setIsUploading(true);
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      setMediaUrl(reader.result as string);
-      setIsUploading(false);
-      sounds.pop();
-      toast.success(`Photo attached: ${file.name}`);
-    };
-    reader.readAsDataURL(file);
+    // Fast zero-memory object URL preview
+    const objectUrl = URL.createObjectURL(file);
+    setMediaUrl(objectUrl);
+    sounds.pop();
+    toast.success(`Photo attached: ${file.name}`);
   };
 
   const handleVideoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,16 +77,11 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
     setFileName(file.name);
     setMediaType('video');
-    setIsUploading(true);
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      setMediaUrl(reader.result as string);
-      setIsUploading(false);
-      sounds.success();
-      toast.success(`Video attached: ${file.name}`);
-    };
-    reader.readAsDataURL(file);
+    // Fast zero-memory object URL preview (instant 0ms lag)
+    const objectUrl = URL.createObjectURL(file);
+    setMediaUrl(objectUrl);
+    sounds.success();
+    toast.success(`Video attached: ${file.name}`);
   };
 
   const resetForm = () => {
@@ -118,17 +106,19 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     try {
       if (targetType === 'clips') {
         if (!mediaUrl && !content.trim() && !title.trim()) {
-          toast.error('Please upload a video or provide a title for your Clip');
+          toast.error('Please attach a video or provide a title for your Clip');
           setIsUploading(false);
           return;
         }
 
+        const clipVideoUrl = mediaUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
+
         const newClip: ShortClipItem = {
-          id: `clip-${Date.now()}`,
+          id: `clip-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           userId: currentUser?.id || 'guest',
-          title: title.trim() || 'New Creator Short Clip',
+          title: title.trim() || 'New Short Clip',
           description: content.trim() || 'Vertical short clip uploaded on WEVIDS',
-          videoUrl: mediaUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+          videoUrl: clipVideoUrl,
           audioTrack: audioTrack.trim() || `${currentUser?.name || 'Creator'} · Original Audio`,
           likes: 0,
           dislikes: 0,
@@ -136,17 +126,14 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
           comments: []
         };
 
-        const { error } = await supabase.from('clips').insert([newClip]);
-        if (error) {
-          toast.error(`Notice: ${getErrorMessage(error)}`);
-        } else {
-          sounds.success();
-          toast.success('Short Clip uploaded!');
-          resetForm();
-          syncWithSupabase();
-          setActiveView('clips');
-          onClose();
-        }
+        // Instant optimistic UI update
+        sounds.success();
+        await addClip(newClip);
+        toast.success('Short Clip published live!');
+        resetForm();
+        setActiveView('clips');
+        onClose();
+        setIsUploading(false);
         return;
       }
 
@@ -175,17 +162,20 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         created_at: new Date().toISOString()
       };
 
-      const { error } = await insertPostWithAutoFallback(newPost);
-      if (error) {
-        toast.error(`Error saving post: ${getErrorMessage(error)}`);
-      } else {
-        sounds.success();
-        toast.success('Post published to feed!');
-        resetForm();
-        syncWithSupabase();
-        setActiveView('feed');
-        onClose();
-      }
+      sounds.success();
+      toast.success('Post published live!');
+      resetForm();
+      setActiveView('feed');
+      onClose();
+
+      // Async background database sync
+      insertPostWithAutoFallback(newPost).then(({ error }) => {
+        if (error) {
+          console.warn('Background Supabase post sync warning:', error);
+        } else {
+          syncWithSupabase(true);
+        }
+      });
     } catch (err: any) {
       toast.error(getErrorMessage(err));
     } finally {
@@ -214,7 +204,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
           <div>
             <h3 className="font-orbitron font-bold text-base text-white flex items-center gap-2">
               <span>Create New Content</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#00e5ff]/20 text-[#00e5ff] font-semibold border border-[#00e5ff]/30">Live Sync</span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#00e5ff]/20 text-[#00e5ff] font-semibold border border-[#00e5ff]/30">Public Sync</span>
             </h3>
             <div className="text-xs text-[#8a8aa8]">Posting as <strong className="text-white">{currentUser?.name || 'Creator'}</strong> ({currentUser?.handle || '@creator'})</div>
           </div>
@@ -270,7 +260,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Speedrun Record / Snapdragon 8 Gen 3 Gameplay"
+                  placeholder="e.g. Snapdragon 8 Gen 3 Gaming Test / Custom ROM Mod"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:border-[#00e5ff] focus:outline-none"
                   required
                 />
@@ -284,7 +274,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                   type="text"
                   value={audioTrack}
                   onChange={(e) => setAudioTrack(e.target.value)}
-                  placeholder="e.g. Neon Horizon · Original Sound"
+                  placeholder="e.g. Cyber Horizon · Original Sound"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:border-[#00e5ff] focus:outline-none"
                 />
               </div>
@@ -313,7 +303,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               value={content}
               onChange={(e) => setContent(e.target.value)}
               rows={targetType === 'clips' ? 2 : 4}
-              placeholder={targetType === 'clips' ? 'Tell viewers about this vertical clip...' : 'What did you build, discover, test, or play today?'}
+              placeholder={targetType === 'clips' ? 'Tell viewers about this vertical short clip...' : 'What did you build, discover, test, or play today?'}
               className="w-full px-4 py-3 rounded-2xl bg-white/5 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:outline-none focus:border-[#00e5ff] resize-none"
             />
           </div>

@@ -44,6 +44,13 @@
   background: #00e5ff;
 }
 
+/* Hardware accelerated video player helper */
+.video-hardware-accelerated video {
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
 /* =========================================================
    LIQUID GLASS CORE STYLES (FROSTED REFRACTION & GLOSS)
    ========================================================= */

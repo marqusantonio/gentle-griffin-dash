@@ -346,7 +346,8 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   useEffect(() => {
     syncWithSupabase(true);
 
-    const interval = setInterval(() => syncWithSupabase(true), 8000);
+    // Optimized sync frequency (30s) to prevent main-thread lag during video playback
+    const interval = setInterval(() => syncWithSupabase(true), 30000);
     return () => clearInterval(interval);
   }, [syncWithSupabase]);
 
@@ -359,7 +360,8 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
     sounds.success();
 
-    const { data, error } = await insertPostWithAutoFallback({
+    const newPostItem: PostItem = {
+      id: post.id || `post-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       userId: post.userId || state.currentUser.id,
       authorName: post.authorName || state.currentUser.name,
       authorHandle: post.authorHandle || state.currentUser.handle,
@@ -370,20 +372,37 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       content: post.content || '',
       mediaUrl: post.mediaUrl,
       mediaType: post.mediaType || (post.mediaUrl ? 'image' : undefined),
-      video_url: post.mediaType === 'video' ? post.mediaUrl : 'none',
-      tags: post.tags || ['#WEVIDS']
+      likes: 0,
+      shares: 0,
+      comments: [],
+      tags: post.tags || ['#WEVIDS'],
+      created_at: new Date().toISOString()
+    };
+
+    // Instant optimistic UI state update
+    dispatch({ type: 'ADD_POST', payload: newPostItem });
+
+    // Background database sync
+    insertPostWithAutoFallback({
+      id: newPostItem.id,
+      userId: newPostItem.userId,
+      authorName: newPostItem.authorName,
+      authorHandle: newPostItem.authorHandle,
+      authorAvatar: newPostItem.authorAvatar,
+      authorColor: newPostItem.authorColor,
+      location: newPostItem.location,
+      time: 'Just now',
+      content: newPostItem.content,
+      mediaUrl: newPostItem.mediaUrl,
+      mediaType: newPostItem.mediaType,
+      video_url: newPostItem.mediaType === 'video' ? newPostItem.mediaUrl : 'none',
+      tags: newPostItem.tags
+    }).then(({ error }) => {
+      if (error) {
+        console.warn('Post background sync issue:', error);
+      }
     });
 
-    if (error) {
-      toast.error('Supabase: ' + (error.message || error));
-      return false;
-    }
-
-    if (data && data[0]) {
-      dispatch({ type: 'ADD_POST', payload: data[0] });
-    }
-    toast.success('Post published to Supabase!');
-    syncWithSupabase(true);
     return true;
   };
 
@@ -514,12 +533,15 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const addClip = async (clip: ShortClipItem) => {
     sounds.success();
+    // Instant UI state update
     dispatch({ type: 'ADD_CLIP', payload: clip });
 
-    try {
-      await supabase.from('clips').upsert([clip]);
-      toast.success('Clip saved to Supabase!');
-    } catch {}
+    // Background Async Persistence
+    supabase.from('clips').upsert([clip]).then(({ error }) => {
+      if (error) {
+        console.warn('Clip background insert warning:', error);
+      }
+    });
   };
 
   const toggleClipLike = async (clipId: string) => {
@@ -803,7 +825,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     if (willBeMutual) {
       toast.success('Mutual Friends Unlocked! 🤝 Unrestricted Direct Messaging enabled.');
     } else if (!currentlyFollowing) {
-      toast.info('Followed creator! (1 message request allowed until they follow back)');
+      toast.info('Followed creator!');
     } else {
       toast.info('Unfollowed creator.');
     }
@@ -853,8 +875,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         console.error('Supabase follow persistence handled:', err);
       }
     }
-
-    syncWithSupabase(true);
   };
 
   const blockUser = async (userId: string) => {
@@ -1006,8 +1026,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         }]);
       } catch {}
     }
-
-    syncWithSupabase(true);
   };
 
   const acceptMessageRequest = async (convId: string) => {
@@ -1041,7 +1059,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
 
     toast.success('Message request accepted! You are now Friends 🤝');
-    syncWithSupabase(true);
   };
 
   const declineMessageRequest = async (convId: string) => {

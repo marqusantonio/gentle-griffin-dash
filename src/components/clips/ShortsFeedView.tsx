@@ -46,7 +46,7 @@ export const ShortsFeedView: React.FC = () => {
   const [showComments, setShowComments] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
-  // STRICT VIDEO FILTER: Exclude any items that do not possess a genuine videoUrl
+  // STRICT VIDEO FILTER: Exclude any items that do not possess a valid videoUrl
   const validClips = (clips || []).filter(c => 
     Boolean(c?.videoUrl && c.videoUrl.length > 5 && !isBlocked(c.userId))
   );
@@ -83,7 +83,7 @@ export const ShortsFeedView: React.FC = () => {
         <div className="space-y-2">
           <h2 className="font-orbitron font-bold text-2xl text-white">No Video Clips Uploaded Yet</h2>
           <p className="text-xs text-[#8a8aa8]">
-            Vertical short videos appear here in full 60FPS. Pure text posts are strictly routed to the Community Feed.
+            Vertical short videos appear here in smooth 60FPS. Upload your first clip to start!
           </p>
         </div>
 
@@ -125,7 +125,7 @@ export const ShortsFeedView: React.FC = () => {
 
   return (
     <div className="flex flex-col lg:flex-row gap-6 justify-center items-start pb-20 max-w-5xl mx-auto">
-      <div className="relative w-full max-w-[440px] mx-auto h-[680px] rounded-3xl overflow-hidden liquid-glass border border-white/20 shadow-[0_25px_80px_rgba(0,0,0,0.85)] flex items-center justify-center bg-black">
+      <div className="relative w-full max-w-[440px] mx-auto h-[680px] rounded-3xl overflow-hidden liquid-glass border border-white/20 shadow-[0_25px_80px_rgba(0,0,0,0.85)] flex items-center justify-center bg-black video-hardware-accelerated">
         <video
           key={activeClip.id}
           src={activeClip.videoUrl}
@@ -133,7 +133,8 @@ export const ShortsFeedView: React.FC = () => {
           loop
           muted={isMuted}
           playsInline
-          className="w-full h-full object-cover"
+          preload="metadata"
+          className="w-full h-full object-cover rounded-3xl"
         />
 
         <div className="absolute top-4 left-4 z-20 flex items-center gap-2">

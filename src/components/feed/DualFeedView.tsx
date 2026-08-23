@@ -4,7 +4,6 @@ import {
   Heart, 
   MessageCircle, 
   Share2, 
-  Plus, 
   Film, 
   RefreshCw, 
   Loader2, 
@@ -335,40 +334,32 @@ export const DualFeedView: React.FC = () => {
     setInlineText('');
     setInlineMediaUrl(null);
     setInlineMediaType(null);
+    setIsInlinePosting(false);
 
-    try {
-      await insertPostWithAutoFallback(newPost);
-    } catch (err: any) {
-      toast.error(getErrorMessage(err));
-    } finally {
-      setIsInlinePosting(false);
-    }
+    // Async background insertion
+    insertPostWithAutoFallback(newPost).catch(err => {
+      console.warn('Background insert issue:', err);
+    });
   };
 
   const handleInlineImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setInlineMediaUrl(reader.result as string);
-      setInlineMediaType('image');
-      sounds.pop();
-      toast.success('Photo attached');
-    };
-    reader.readAsDataURL(file);
+    const objectUrl = URL.createObjectURL(file);
+    setInlineMediaUrl(objectUrl);
+    setInlineMediaType('image');
+    sounds.pop();
+    toast.success('Photo attached');
   };
 
   const handleInlineVideoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setInlineMediaUrl(reader.result as string);
-      setInlineMediaType('video');
-      sounds.success();
-      toast.success('Video attached');
-    };
-    reader.readAsDataURL(file);
+    const objectUrl = URL.createObjectURL(file);
+    setInlineMediaUrl(objectUrl);
+    setInlineMediaType('video');
+    sounds.success();
+    toast.success('Video attached');
   };
 
   const isOwnPost = (post: PostItem) => {
@@ -659,6 +650,7 @@ export const DualFeedView: React.FC = () => {
                         src={post.mediaUrl}
                         controls
                         playsInline
+                        preload="metadata"
                         className="w-full max-h-96 object-cover bg-black"
                       />
                     </div>
@@ -839,6 +831,7 @@ export const DualFeedView: React.FC = () => {
                     loop
                     muted
                     playsInline
+                    preload="metadata"
                     onClick={() => setPlayingClipId(playingClipId === clip.id ? null : clip.id)}
                     className="w-full h-full object-cover"
                   />
@@ -856,7 +849,7 @@ export const DualFeedView: React.FC = () => {
 
                   <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md border border-[#ff2d95]/30">
                     <Film className="w-3 h-3 text-[#ff2d95]" />
-                    <span className="text-[10px] font-bold text-white">CLIP</span>
+                    <span className="text-[10px] font-bold text-[#00e5ff]">CLIP</span>
                   </div>
                 </div>
 
