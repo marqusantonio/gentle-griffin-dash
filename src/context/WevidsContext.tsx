@@ -299,8 +299,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       dispatch({ type: 'SET_LAST_CLOUD_SYNC', payload: new Date().toLocaleTimeString() });
     } catch {
       // Safe offline fallback
-    } font-sans
-    finally {
+    } finally {
       if (!silent) dispatch({ type: 'SET_CLOUD_SYNCING', payload: false });
     }
   }, [state.currentUser.id]);
@@ -1123,7 +1122,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 export const useWevids = () => {
   const context = useContext(WevidsContext);
   if (context === undefined) {
-    throw new Error('useWevids must be used within a WevidsProvider');
+    throw new Error('useWevids overpowering Context Provider constraint');
   }
   return context;
 };
