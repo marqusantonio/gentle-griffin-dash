@@ -27,13 +27,14 @@ import { ShortClipItem, CommentItem } from '../../types/wevids';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { toast } from 'sonner';
 
-// Verified, high-uptime direct MP4 streams for immediate playback
+// Tested, high-availability direct video streams
 const GUARANTEED_STREAMS = [
   'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
   'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
   'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
   'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4'
+  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
 ];
 
 const SPEED_OPTIONS = [1, 1.25, 1.5, 2];
@@ -97,13 +98,13 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   
   const [streamUrl, setStreamUrl] = useState<string>(() => {
     const raw = clip.videoUrl || (clip as any).video_url;
-    if (raw && typeof raw === 'string' && (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('blob:') || raw.startsWith('data:'))) {
+    if (raw && typeof raw === 'string' && raw.length > 5 && (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('blob:') || raw.startsWith('data:'))) {
       return raw;
     }
     return GUARANTEED_STREAMS[index % GUARANTEED_STREAMS.length];
   });
 
-  // Autoplay / Pause controller
+  // Handle active autoplay / pause mechanics
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -113,27 +114,27 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
 
     if (isActive) {
       setIsLoading(true);
-      const playPromise = video.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
+
+      const startPlay = async () => {
+        try {
+          await video.play();
+          setIsPlaying(true);
+          setIsLoading(false);
+        } catch {
+          // Fallback: Mute to guarantee autoplay compliance
+          video.muted = true;
+          try {
+            await video.play();
             setIsPlaying(true);
+          } catch {
+            setIsPlaying(false);
+          } finally {
             setIsLoading(false);
-          })
-          .catch(() => {
-            // Autoplay fallback: muted play
-            video.muted = true;
-            video.play()
-              .then(() => {
-                setIsPlaying(true);
-                setIsLoading(false);
-              })
-              .catch(() => {
-                setIsPlaying(false);
-                setIsLoading(false);
-              });
-          });
-      }
+          }
+        }
+      };
+
+      startPlay();
     } else {
       video.pause();
       try {
@@ -204,9 +205,9 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   return (
     <div 
       onDoubleClick={handleDoubleTapLike}
-      className="shorts-snap-item relative w-full h-[calc(100vh-6.5rem)] max-h-[820px] rounded-3xl overflow-hidden liquid-glass border border-white/20 shadow-2xl flex items-center justify-center bg-black select-none group"
+      className="shorts-snap-item relative w-full h-[calc(100vh-8rem)] max-h-[750px] min-h-[480px] rounded-3xl overflow-hidden liquid-glass border border-white/20 shadow-2xl flex items-center justify-center bg-black select-none group shrink-0"
     >
-      {/* Heart Double-Tap Overlay */}
+      {/* Heart Tap Overlay */}
       {showHeartOverlay && (
         <div className="absolute z-40 inset-0 flex items-center justify-center pointer-events-none animate-spring-pop">
           <Heart className="w-28 h-28 text-[#ff2d95] fill-current drop-shadow-[0_0_35px_#ff2d95] animate-ping" />
@@ -216,14 +217,13 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
       {/* Loading Spinner */}
       {isLoading && (
         <div className="absolute z-10 inset-0 flex items-center justify-center bg-black/40 pointer-events-none">
-          <Loader2 className="w-10 h-10 text-[#00e5ff] animate-spin drop-shadow" />
+          <Loader2 className="w-9 h-9 text-[#00e5ff] animate-spin drop-shadow" />
         </div>
       )}
 
       <video
         ref={videoRef}
         src={streamUrl}
-        autoPlay={isActive}
         loop
         muted={isMuted}
         playsInline
@@ -237,13 +237,14 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
           setIsLoading(false);
           setIsPlaying(true);
         }}
+        onPause={() => setIsPlaying(false)}
         onTimeUpdate={handleTimeUpdate}
         onError={handleVideoError}
         onClick={handleTogglePlayPause}
         className="w-full h-full object-cover rounded-3xl cursor-pointer"
       />
 
-      {/* Play Tap Overlay Button */}
+      {/* Play Overlay Button */}
       {!isPlaying && !isLoading && (
         <div 
           onClick={handleTogglePlayPause}
@@ -276,7 +277,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         </button>
       </div>
 
-      {/* Top Right Action Controls */}
+      {/* Top Right Controls */}
       <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
         {isMyClip && (
           <button
@@ -524,13 +525,13 @@ export const ShortsFeedView: React.FC = () => {
     const container = containerRef.current;
     if (!container) return;
     const items = container.querySelectorAll('.shorts-snap-item');
+    const target = items[idx] as HTMLElement;
     
-    if (items[idx]) {
-      items[idx].scrollIntoView({ behavior: 'smooth', block: 'start' });
-      setActiveIndex(idx);
-    } else {
-      const targetY = idx * container.clientHeight;
-      container.scrollTo({ top: targetY, behavior: 'smooth' });
+    if (target) {
+      container.scrollTo({
+        top: target.offsetTop,
+        behavior: 'smooth'
+      });
       setActiveIndex(idx);
     }
   }, []);
@@ -655,14 +656,14 @@ export const ShortsFeedView: React.FC = () => {
 
   return (
     <div className="relative flex justify-center items-center pb-12 max-w-5xl mx-auto">
-      {/* Up / Down Navigation Controls (Visible on all viewports) */}
-      <div className="flex flex-col gap-3 absolute -right-1 sm:-right-12 top-1/2 -translate-y-1/2 z-30">
+      {/* Scroll Navigation Buttons */}
+      <div className="flex flex-col gap-3.5 absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 z-30">
         <button
           type="button"
           onClick={() => scrollToIndex(Math.max(0, activeIndex - 1))}
           disabled={activeIndex === 0}
-          className="p-2.5 sm:p-3 rounded-2xl liquid-glass hover:bg-[#00e5ff] text-white hover:text-slate-900 transition-all disabled:opacity-30 border border-white/20 shadow-2xl"
-          title="Previous Short (Arrow Up)"
+          className="p-3 rounded-2xl bg-black/80 hover:bg-[#00e5ff] text-white hover:text-slate-900 transition-all disabled:opacity-30 border border-white/20 shadow-2xl backdrop-blur-md"
+          title="Previous Short"
         >
           <ChevronUp className="w-5 h-5" />
         </button>
@@ -670,8 +671,8 @@ export const ShortsFeedView: React.FC = () => {
           type="button"
           onClick={() => scrollToIndex(Math.min(validClips.length - 1, activeIndex + 1))}
           disabled={activeIndex === validClips.length - 1}
-          className="p-2.5 sm:p-3 rounded-2xl liquid-glass hover:bg-[#ff2d95] text-white hover:text-slate-900 transition-all disabled:opacity-30 border border-white/20 shadow-2xl"
-          title="Next Short (Arrow Down)"
+          className="p-3 rounded-2xl bg-black/80 hover:bg-[#ff2d95] text-white hover:text-slate-900 transition-all disabled:opacity-30 border border-white/20 shadow-2xl backdrop-blur-md"
+          title="Next Short"
         >
           <ChevronDown className="w-5 h-5" />
         </button>
@@ -681,7 +682,7 @@ export const ShortsFeedView: React.FC = () => {
       <div 
         ref={containerRef}
         onWheel={handleWheelScroll}
-        className="shorts-snap-container no-scrollbar w-full max-w-[440px] h-[calc(100vh-6.5rem)] max-h-[820px] overflow-y-auto"
+        className="shorts-snap-container no-scrollbar w-full max-w-[420px] h-[calc(100vh-8rem)] max-h-[750px] min-h-[480px] overflow-y-auto relative rounded-3xl"
       >
         {validClips.map((clip, index) => {
           const authorUser = allUsers[clip.userId] || currentUser;
