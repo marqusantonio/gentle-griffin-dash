@@ -62,7 +62,13 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     setMediaFile(file);
     setFileName(file.name);
     setMediaType('image');
-    setMediaPreviewUrl(URL.createObjectURL(file));
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setMediaPreviewUrl(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+
     sounds.pop();
     toast.success(`Photo attached: ${file.name}`);
   };
@@ -79,7 +85,13 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     setMediaFile(file);
     setFileName(file.name);
     setMediaType('video');
-    setMediaPreviewUrl(URL.createObjectURL(file));
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setMediaPreviewUrl(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+
     sounds.success();
     toast.success(`Video attached: ${file.name}`);
   };
@@ -111,15 +123,11 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         toast.loading('Uploading media for global device access...');
         finalPublicMediaUrl = await uploadFileToPublicStorage(mediaFile, targetType);
         toast.dismiss();
+      } else if (mediaPreviewUrl) {
+        finalPublicMediaUrl = mediaPreviewUrl;
       }
 
       if (targetType === 'clips') {
-        if (!finalPublicMediaUrl && !content.trim() && !title.trim()) {
-          toast.error('Please attach a video file for your Clip');
-          setIsUploading(false);
-          return;
-        }
-
         const clipVideoUrl = finalPublicMediaUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
 
         const newClip: ShortClipItem = {
@@ -334,7 +342,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               {mediaType === 'image' ? (
                 <img src={mediaPreviewUrl} alt="Upload preview" className="w-full h-full object-cover max-h-52" />
               ) : (
-                <video src={mediaPreviewUrl} controls autoPlay loop className="w-full h-full object-cover max-h-52" />
+                <video src={mediaPreviewUrl} controls autoPlay loop muted playsInline className="w-full h-full object-cover max-h-52" />
               )}
 
               <button

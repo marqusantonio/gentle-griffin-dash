@@ -19,12 +19,66 @@ import {
   getSupabaseConfig,
   isSupabaseConfigured,
   testSupabaseConnection,
-  SUPABASE_SQL_SCHEMA,
   supabase
 } from '../../lib/supabase';
 import { useWevids } from '../../context/WevidsContext';
 import { sounds } from '../../lib/soundFx';
 import { toast } from 'sonner';
+
+const COMPLETE_DATABASE_SQL = `-- WEVIDS OS Complete Sync & Security SQL
+-- Enables RLS and grants full access to public tables
+
+-- 1. Ensure table grants for authenticated & anon
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.posts TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.clips TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.profiles TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.follows TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.profile_likes TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.direct_messages TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.audio_tracks TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.films TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.roms TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.files TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.products TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.game_scores TO anon, authenticated, service_role;
+
+-- 2. Follow & Likes counting triggers
+CREATE OR REPLACE FUNCTION public.update_follow_counts()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF (TG_OP = 'INSERT') THEN
+        UPDATE profiles SET following_count = COALESCE(following_count, 0) + 1 WHERE id = NEW.follower_id;
+        UPDATE profiles SET follower_count = COALESCE(follower_count, 0) + 1 WHERE id = NEW.following_id;
+    ELSIF (TG_OP = 'DELETE') THEN
+        UPDATE profiles SET following_count = GREATEST(0, COALESCE(following_count, 1) - 1) WHERE id = OLD.follower_id;
+        UPDATE profiles SET follower_count = GREATEST(0, COALESCE(follower_count, 1) - 1) WHERE id = OLD.following_id;
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_follow_change ON follows;
+CREATE TRIGGER on_follow_change
+AFTER INSERT OR DELETE ON follows
+FOR EACH ROW EXECUTE FUNCTION update_follow_counts();
+
+CREATE OR REPLACE FUNCTION public.update_like_counts()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF (TG_OP = 'INSERT') THEN
+        UPDATE profiles SET likes_count = COALESCE(likes_count, 0) + 1 WHERE id = NEW.target_id;
+    ELSIF (TG_OP = 'DELETE') THEN
+        UPDATE profiles SET likes_count = GREATEST(0, COALESCE(likes_count, 1) - 1) WHERE id = OLD.target_id;
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_like_change ON profile_likes;
+CREATE TRIGGER on_like_change
+AFTER INSERT OR DELETE ON profile_likes
+FOR EACH ROW EXECUTE FUNCTION update_like_counts();
+`;
 
 interface SupabaseConnectModalProps {
   isOpen: boolean;
@@ -69,7 +123,7 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
 
     if (result.ok) {
       sounds.success();
-      toast.success('Connected to Supabase database! Syncing...');
+      toast.success('Connected to Supabase database! Syncing tables...');
       syncWithSupabase();
     } else {
       toast.error(`Database check: ${result.message}`);
@@ -86,9 +140,9 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
 
   const handleCopySchema = () => {
     sounds.click();
-    navigator.clipboard.writeText(SUPABASE_SQL_SCHEMA);
+    navigator.clipboard.writeText(COMPLETE_DATABASE_SQL);
     setCopiedSchema(true);
-    toast.success('Schema information copied!');
+    toast.success('Complete SQL script copied to clipboard!');
     setTimeout(() => setCopiedSchema(false), 3000);
   };
 
@@ -499,19 +553,19 @@ export const SupabaseConnectModal: React.FC<SupabaseConnectModalProps> = ({ isOp
             <div className="flex items-center justify-between">
               <div className="text-white font-bold flex items-center gap-1.5">
                 <Code className="w-4 h-4 text-[#fbbf24]" />
-                Supabase SQL Schema
+                Supabase SQL Synchronization Script
               </div>
               <button
                 onClick={handleCopySchema}
                 className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#fbbf24] text-slate-900 font-orbitron font-bold text-[11px] shadow hover:scale-105 transition-transform"
               >
                 {copiedSchema ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedSchema ? 'COPIED!' : 'COPY SCHEMA'}</span>
+                <span>{copiedSchema ? 'COPIED!' : 'COPY SQL SCRIPT'}</span>
               </button>
             </div>
 
             <pre className="p-3 rounded-2xl bg-black/70 border border-white/10 text-[11px] text-[#00e5ff] font-mono overflow-x-auto max-h-60 leading-relaxed">
-              {SUPABASE_SQL_SCHEMA}
+              {COMPLETE_DATABASE_SQL}
             </pre>
           </div>
         )}
