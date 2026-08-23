@@ -193,17 +193,20 @@ class SupabaseRestClient {
     }
   }
 
-  channel(name: string) {
-    return {
-      on: (_event: string, _filter: any, _callback: Function) => ({
-        subscribe: () => ({
-          unsubscribe: () => {}
-        })
-      }),
-      subscribe: () => ({
-        unsubscribe: () => {}
-      })
+  channel(_name: string, _config?: any) {
+    const channelObj = {
+      on: (_event: string, _filter: any, _callback?: Function) => channelObj,
+      subscribe: (callback?: Function) => {
+        if (typeof callback === 'function') {
+          setTimeout(() => callback('SUBSCRIBED'), 0);
+        }
+        return channelObj;
+      },
+      unsubscribe: () => {},
+      track: async (_payload: any) => {},
+      presenceState: () => ({})
     };
+    return channelObj;
   }
 
   removeChannel(_channel: any) {}
