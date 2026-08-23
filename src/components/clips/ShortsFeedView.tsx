@@ -10,29 +10,33 @@ import {
   ChevronDown, 
   ThumbsDown, 
   CheckCircle2, 
-  Music2,
-  Plus,
-  Film,
-  Bookmark,
-  Trash2,
-  Play,
-  Pause,
-  RefreshCw,
-  Sparkles,
-  Gauge,
-  RotateCcw
+  Music2, 
+  Plus, 
+  Film, 
+  Bookmark, 
+  Trash2, 
+  Play, 
+  Pause, 
+  RefreshCw, 
+  Sparkles, 
+  Gauge, 
+  RotateCcw,
+  Loader2
 } from 'lucide-react';
 import { RichCommentInput } from '../comments/RichCommentInput';
 import { CreatePostModal } from '../feed/CreatePostModal';
 import { sounds } from '../../lib/soundFx';
 import { ShortClipItem, CommentItem } from '../../types/wevids';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { toast } from 'sonner';
 
-const RESILIENT_FALLBACK_STREAMS = [
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4'
+// High-speed, CORS-friendly MP4 vertical and high-compatibility streams
+const RELIABLE_BACKUP_STREAMS = [
+  'https://assets.mixkit.co/videos/preview/mixkit-vertical-view-of-a-neon-city-at-night-42861-large.mp4',
+  'https://assets.mixkit.co/videos/preview/mixkit-cyberpunk-look-of-a-man-in-a-futuristic-city-43187-large.mp4',
+  'https://assets.mixkit.co/videos/preview/mixkit-gamer-playing-with-neon-lights-in-a-dark-room-43098-large.mp4',
+  'https://assets.mixkit.co/videos/preview/mixkit-hands-of-a-man-playing-a-video-game-in-a-dark-room-43100-large.mp4',
+  'https://assets.mixkit.co/videos/preview/mixkit-dj-mixing-music-at-a-club-party-43285-large.mp4'
 ];
 
 const SPEED_OPTIONS = [1, 1.25, 1.5, 2];
@@ -88,17 +92,24 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   const progressBarRef = useRef<HTMLDivElement | null>(null);
   
   const [isPlaying, setIsPlaying] = useState(true);
+  const [isLoadingVideo, setIsLoadingVideo] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [progressPercent, setProgressPercent] = useState(0);
   const [showHeartOverlay, setShowHeartOverlay] = useState(false);
   const [videoError, setVideoError] = useState(false);
-  const [fallbackSrc, setFallbackSrc] = useState<string | null>(null);
+  const [fallbackIndex, setFallbackIndex] = useState<number | null>(null);
   const [isSeeking, setIsSeeking] = useState(false);
 
-  const rawVideoSrc = fallbackSrc || clip.videoUrl || (clip as any).video_url || RESILIENT_FALLBACK_STREAMS[index % RESILIENT_FALLBACK_STREAMS.length];
+  // Compute playable source URL
+  const baseSrc = clip.videoUrl || (clip as any).video_url;
+  const rawVideoSrc = (fallbackIndex !== null)
+    ? RELIABLE_BACKUP_STREAMS[fallbackIndex % RELIABLE_BACKUP_STREAMS.length]
+    : (baseSrc && typeof baseSrc === 'string' && baseSrc.length > 8)
+      ? baseSrc
+      : RELIABLE_BACKUP_STREAMS[index % RELIABLE_BACKUP_STREAMS.length];
 
-  // Dynamic Autoplay / Pause based on viewport visibility
+  // Dynamic Autoplay / Pause based on active viewport state
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -106,14 +117,34 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     if (isActive) {
       video.currentTime = 0;
       video.playbackRate = playbackSpeed;
-      video.play().then(() => setIsPlaying(true)).catch(() => {
-        setIsPlaying(false);
-      });
+      video.muted = isMuted;
+
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setIsPlaying(true);
+            setIsLoadingVideo(false);
+          })
+          .catch(() => {
+            // Autoplay policy fallback: mute and retry
+            video.muted = true;
+            video.play()
+              .then(() => {
+                setIsPlaying(true);
+                setIsLoadingVideo(false);
+              })
+              .catch(() => {
+                setIsPlaying(false);
+                setIsLoadingVideo(false);
+              });
+          });
+      }
     } else {
       video.pause();
       setIsPlaying(false);
     }
-  }, [isActive, playbackSpeed, rawVideoSrc]);
+  }, [isActive, playbackSpeed, rawVideoSrc, isMuted]);
 
   // Sync mute state
   useEffect(() => {
@@ -178,16 +209,17 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   };
 
   const handleVideoError = () => {
-    const backup = RESILIENT_FALLBACK_STREAMS[index % RESILIENT_FALLBACK_STREAMS.length];
-    if (fallbackSrc !== backup) {
-      setFallbackSrc(backup);
+    // If original fails, fallback to highly resilient CDN stream
+    if (fallbackIndex === null) {
+      setFallbackIndex(index);
       setVideoError(false);
-      if (videoRef.current) {
-        videoRef.current.load();
-        videoRef.current.play().catch(() => {});
-      }
+      setIsLoadingVideo(false);
+    } else if (fallbackIndex < RELIABLE_BACKUP_STREAMS.length - 1) {
+      setFallbackIndex(prev => (prev !== null ? prev + 1 : 0));
+      setVideoError(false);
     } else {
       setVideoError(true);
+      setIsLoadingVideo(false);
     }
   };
 
@@ -203,21 +235,32 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         </div>
       )}
 
+      {/* Loading Spinner */}
+      {isLoadingVideo && !videoError && (
+        <div className="absolute z-10 inset-0 flex items-center justify-center bg-black/40 pointer-events-none">
+          <Loader2 className="w-10 h-10 text-[#00e5ff] animate-spin drop-shadow" />
+        </div>
+      )}
+
       {/* Video Element */}
       {videoError ? (
         <div className="p-8 text-center space-y-3 z-10 text-xs text-[#8a8aa8]">
           <div className="w-14 h-14 rounded-2xl bg-[#ff2d95]/20 border border-[#ff2d95]/40 flex items-center justify-center mx-auto text-[#ff2d95] animate-pulse">
             <RotateCcw className="w-7 h-7" />
           </div>
-          <div className="font-orbitron font-bold text-white text-sm">Restoring Stream...</div>
+          <div className="font-orbitron font-bold text-white text-sm">Media Stream Reloading</div>
           <button
             onClick={() => {
-              setFallbackSrc(RESILIENT_FALLBACK_STREAMS[(index + 1) % RESILIENT_FALLBACK_STREAMS.length]);
+              setFallbackIndex((prev) => ((prev ?? 0) + 1) % RELIABLE_BACKUP_STREAMS.length);
               setVideoError(false);
+              if (videoRef.current) {
+                videoRef.current.load();
+                videoRef.current.play().catch(() => {});
+              }
             }}
-            className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold text-xs"
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold text-xs hover:scale-105 transition-transform"
           >
-            Switch CDN Buffer
+            Switch Stream Mirror
           </button>
         </div>
       ) : (
@@ -228,7 +271,311 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
           loop
           muted={isMuted}
           playsInline
-          preload={isActive ? 'auto' : 'metadata'}
+          webkit-playsinline="true"
+          preload="auto"
+          crossOrigin="anonymous"
+          onWaiting={() => setIsLoadingVideo(true)}
+          onPlaying={() => setIsLoadingVideo(false)}
+          onLoadedData={() => setIsLoadingVideo(false)}
+          onTimeUpdate={handleTimeUpdate}
+          onError={handleVideoError}
+          onClick={handleTogglePlayPause}
+          className="w-full h-full object-cover rounded-3xl cursor-pointer"
+        />
+      )}
+
+      {/* Play/Pause Overlay Toggle */}
+      {!isPlaying && !videoError && (
+        <div 
+          onClick={handleTogglePlayPause}
+          className="absolute z-30 inset-0 flex items-center justify-center bg-black/40 cursor-pointer backdrop-blur-[2px] transition-all"
+        >
+          <div className="w-16 h-16 rounded-full bg-black/70 border border-white/30 backdrop-blur-md flex items-center justify-center text-white shadow-2xl hover:scale-110 transition-transform">
+            <Play className="w-8 h-8 fill-current text-[#00e5ff] ml-1" />
+          </div>
+        </div>
+      )}
+
+      {/* Top Header Information & Speed Controller */}
+      <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
+        <span className="px-3 py-1 rounded-full bg-black/70 backdrop-blur-md text-[10px] font-bold text-[#00e5ff] border border-[#00e5ff]/30 font-orbitron flex items-center gap-1 shadow-md<dyad-write path="src/components/clips/ShortsFeedView.tsx" description="Complete, robust short video player with resilient CDN streaming, auto-fallback, gesture controls, and live Supabase sync">
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useWevids } from '../../context/WevidsContext';
+import { 
+  Heart, 
+  MessageCircle, 
+  Share2, 
+  Volume2, 
+  VolumeX, 
+  ChevronUp, 
+  ChevronDown, 
+  ThumbsDown, 
+  CheckCircle2, 
+  Music2, 
+  Plus, 
+  Film, 
+  Bookmark, 
+  Trash2, 
+  Play, 
+  Pause, 
+  RefreshCw, 
+  Sparkles, 
+  Gauge, 
+  RotateCcw,
+  Loader2
+} from 'lucide-react';
+import { RichCommentInput } from '../comments/RichCommentInput';
+import { CreatePostModal } from '../feed/CreatePostModal';
+import { sounds } from '../../lib/soundFx';
+import { ShortClipItem, CommentItem } from '../../types/wevids';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { toast } from 'sonner';
+
+// High-speed, CORS-friendly MP4 vertical and high-compatibility streams
+const RELIABLE_BACKUP_STREAMS = [
+  'https://assets.mixkit.co/videos/preview/mixkit-vertical-view-of-a-neon-city-at-night-42861-large.mp4',
+  'https://assets.mixkit.co/videos/preview/mixkit-cyberpunk-look-of-a-man-in-a-futuristic-city-43187-large.mp4',
+  'https://assets.mixkit.co/videos/preview/mixkit-gamer-playing-with-neon-lights-in-a-dark-room-43098-large.mp4',
+  'https://assets.mixkit.co/videos/preview/mixkit-hands-of-a-man-playing-a-video-game-in-a-dark-room-43100-large.mp4',
+  'https://assets.mixkit.co/videos/preview/mixkit-dj-mixing-music-at-a-club-party-43285-large.mp4'
+];
+
+const SPEED_OPTIONS = [1, 1.25, 1.5, 2];
+
+interface ShortCardProps {
+  clip: ShortClipItem;
+  index: number;
+  totalClips: number;
+  isActive: boolean;
+  isMuted: boolean;
+  playbackSpeed: number;
+  onToggleMute: () => void;
+  onToggleLike: (id: string) => void;
+  onToggleDislike: (id: string) => void;
+  onToggleBookmark: (id: string) => void;
+  onShare: (title: string, id: string) => void;
+  onOpenComments: (clip: ShortClipItem) => void;
+  onDeleteClip: (id: string) => void;
+  onUploadClick: () => void;
+  onFollowToggle: (userId: string) => void;
+  onProfileClick: (user: any) => void;
+  onCycleSpeed: () => void;
+  isFollowingUser: boolean;
+  isMutualFriendUser: boolean;
+  isMyClip: boolean;
+  authorUser: any;
+}
+
+const SingleShortCard: React.FC<ShortCardProps> = ({
+  clip,
+  index,
+  totalClips,
+  isActive,
+  isMuted,
+  playbackSpeed,
+  onToggleMute,
+  onToggleLike,
+  onToggleDislike,
+  onToggleBookmark,
+  onShare,
+  onOpenComments,
+  onDeleteClip,
+  onUploadClick,
+  onFollowToggle,
+  onProfileClick,
+  onCycleSpeed,
+  isFollowingUser,
+  isMutualFriendUser,
+  isMyClip,
+  authorUser
+}) => {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const progressBarRef = useRef<HTMLDivElement | null>(null);
+  
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [isLoadingVideo, setIsLoadingVideo] = useState(true);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [showHeartOverlay, setShowHeartOverlay] = useState(false);
+  const [videoError, setVideoError] = useState(false);
+  const [fallbackIndex, setFallbackIndex] = useState<number | null>(null);
+  const [isSeeking, setIsSeeking] = useState(false);
+
+  // Compute playable source URL
+  const baseSrc = clip.videoUrl || (clip as any).video_url;
+  const rawVideoSrc = (fallbackIndex !== null)
+    ? RELIABLE_BACKUP_STREAMS[fallbackIndex % RELIABLE_BACKUP_STREAMS.length]
+    : (baseSrc && typeof baseSrc === 'string' && baseSrc.length > 8)
+      ? baseSrc
+      : RELIABLE_BACKUP_STREAMS[index % RELIABLE_BACKUP_STREAMS.length];
+
+  // Dynamic Autoplay / Pause based on active viewport state
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (isActive) {
+      video.currentTime = 0;
+      video.playbackRate = playbackSpeed;
+      video.muted = isMuted;
+
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setIsPlaying(true);
+            setIsLoadingVideo(false);
+          })
+          .catch(() => {
+            // Autoplay policy fallback: mute and retry
+            video.muted = true;
+            video.play()
+              .then(() => {
+                setIsPlaying(true);
+                setIsLoadingVideo(false);
+              })
+              .catch(() => {
+                setIsPlaying(false);
+                setIsLoadingVideo(false);
+              });
+          });
+      }
+    } else {
+      video.pause();
+      setIsPlaying(false);
+    }
+  }, [isActive, playbackSpeed, rawVideoSrc, isMuted]);
+
+  // Sync mute state
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.muted = isMuted;
+    }
+  }, [isMuted]);
+
+  // Sync speed multiplier
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.playbackRate = playbackSpeed;
+    }
+  }, [playbackSpeed]);
+
+  const handleTimeUpdate = () => {
+    if (!videoRef.current || isSeeking) return;
+    const cur = videoRef.current.currentTime;
+    const dur = videoRef.current.duration || 1;
+    setCurrentTime(cur);
+    setDuration(dur);
+    setProgressPercent((cur / dur) * 100);
+  };
+
+  const handleTogglePlayPause = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (video.paused) {
+      video.play().then(() => setIsPlaying(true)).catch(() => {});
+    } else {
+      video.pause();
+      setIsPlaying(false);
+    }
+  };
+
+  const handleDoubleTapLike = () => {
+    sounds.like();
+    setShowHeartOverlay(true);
+    if (!clip.isLiked) {
+      onToggleLike(clip.id);
+    }
+    setTimeout(() => setShowHeartOverlay(false), 800);
+  };
+
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!progressBarRef.current || !videoRef.current) return;
+    const rect = progressBarRef.current.getBoundingClientRect();
+    const clickX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    const newPercent = (clickX / rect.width);
+    const newTime = newPercent * (videoRef.current.duration || 1);
+    videoRef.current.currentTime = newTime;
+    setProgressPercent(newPercent * 100);
+    setCurrentTime(newTime);
+  };
+
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  const handleVideoError = () => {
+    // If original fails, fallback to highly resilient CDN stream
+    if (fallbackIndex === null) {
+      setFallbackIndex(index);
+      setVideoError(false);
+      setIsLoadingVideo(false);
+    } else if (fallbackIndex < RELIABLE_BACKUP_STREAMS.length - 1) {
+      setFallbackIndex(prev => (prev !== null ? prev + 1 : 0));
+      setVideoError(false);
+    } else {
+      setVideoError(true);
+      setIsLoadingVideo(false);
+    }
+  };
+
+  return (
+    <div 
+      onDoubleClick={handleDoubleTapLike}
+      className="shorts-snap-item relative w-full h-[calc(100vh-6.5rem)] max-h-[820px] rounded-3xl overflow-hidden liquid-glass border border-white/20 shadow-[0_20px_70px_rgba(0,0,0,0.85)] flex items-center justify-center bg-black video-hardware-accelerated select-none group"
+    >
+      {/* Heart Burst Animation */}
+      {showHeartOverlay && (
+        <div className="absolute z-40 inset-0 flex items-center justify-center pointer-events-none animate-spring-pop">
+          <Heart className="w-28 h-28 text-[#ff2d95] fill-current drop-shadow-[0_0_35px_#ff2d95] animate-ping" />
+        </div>
+      )}
+
+      {/* Loading Spinner */}
+      {isLoadingVideo && !videoError && (
+        <div className="absolute z-10 inset-0 flex items-center justify-center bg-black/40 pointer-events-none">
+          <Loader2 className="w-10 h-10 text-[#00e5ff] animate-spin drop-shadow" />
+        </div>
+      )}
+
+      {/* Video Element */}
+      {videoError ? (
+        <div className="p-8 text-center space-y-3 z-10 text-xs text-[#8a8aa8]">
+          <div className="w-14 h-14 rounded-2xl bg-[#ff2d95]/20 border border-[#ff2d95]/40 flex items-center justify-center mx-auto text-[#ff2d95] animate-pulse">
+            <RotateCcw className="w-7 h-7" />
+          </div>
+          <div className="font-orbitron font-bold text-white text-sm">Media Stream Reloading</div>
+          <button
+            onClick={() => {
+              setFallbackIndex((prev) => ((prev ?? 0) + 1) % RELIABLE_BACKUP_STREAMS.length);
+              setVideoError(false);
+              if (videoRef.current) {
+                videoRef.current.load();
+                videoRef.current.play().catch(() => {});
+              }
+            }}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold text-xs hover:scale-105 transition-transform"
+          >
+            Switch Stream Mirror
+          </button>
+        </div>
+      ) : (
+        <video
+          ref={videoRef}
+          src={rawVideoSrc}
+          autoPlay={isActive}
+          loop
+          muted={isMuted}
+          playsInline
+          preload="auto"
+          onWaiting={() => setIsLoadingVideo(true)}
+          onPlaying={() => setIsLoadingVideo(false)}
+          onLoadedData={() => setIsLoadingVideo(false)}
           onTimeUpdate={handleTimeUpdate}
           onError={handleVideoError}
           onClick={handleTogglePlayPause}
@@ -469,7 +816,8 @@ export const ShortsFeedView: React.FC = () => {
     isFollowing,
     isMutualFriend,
     openUserProfileModal,
-    isBlocked
+    isBlocked,
+    syncWithSupabase
   } = useWevids();
 
   const [activeIndex, setActiveIndex] = useState(0);
@@ -479,6 +827,26 @@ export const ShortsFeedView: React.FC = () => {
   const [commentingClip, setCommentingClip] = useState<ShortClipItem | null>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Sync with Supabase on mount and subscribe to realtime clips updates
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+
+    const channel = supabase
+      .channel('realtime_clips_feed')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'clips' },
+        () => {
+          syncWithSupabase(false);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [syncWithSupabase]);
 
   // Filter valid clips
   const validClips = (clips || []).filter(c => {
@@ -549,6 +917,22 @@ export const ShortsFeedView: React.FC = () => {
       const idx = SPEED_OPTIONS.indexOf(prev);
       return SPEED_OPTIONS[(idx + 1) % SPEED_OPTIONS.length];
     });
+  };
+
+  // Synchronized clip like with Supabase
+  const handleToggleLikeWithCloudSync = async (clipId: string) => {
+    toggleClipLike(clipId);
+    if (!isSupabaseConfigured()) return;
+    try {
+      const targetClip = clips.find(c => c.id === clipId);
+      const newLikes = targetClip?.isLiked ? Math.max(0, (targetClip.likes || 1) - 1) : ((targetClip?.likes || 0) + 1);
+      await supabase
+        .from('clips')
+        .update({ likes: newLikes })
+        .eq('id', clipId);
+    } catch {
+      // Handled in local state
+    }
   };
 
   if (validClips.length === 0) {
@@ -630,7 +1014,7 @@ export const ShortsFeedView: React.FC = () => {
                 sounds.pop();
                 setIsMuted(m => !m);
               }}
-              onToggleLike={toggleClipLike}
+              onToggleLike={handleToggleLikeWithCloudSync}
               onToggleDislike={toggleClipDislike}
               onToggleBookmark={toggleClipBookmark}
               onShare={(title, id) => openShareModal(title, `https://wevids.app/clip/${id}`)}
