@@ -52,6 +52,30 @@
 }
 
 /* =========================================================
+   VERTICAL SHORTS SNAP-SCROLL CONTAINER
+   ========================================================= */
+
+.shorts-snap-container {
+  scroll-snap-type: y mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+.shorts-snap-item {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+/* Hide scrollbar for clean reel feel */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* =========================================================
    LIQUID GLASS CORE STYLES (FROSTED REFRACTION & GLOSS)
    ========================================================= */
 

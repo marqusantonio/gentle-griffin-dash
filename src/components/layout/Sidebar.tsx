@@ -72,7 +72,7 @@ export const Sidebar: React.FC = () => {
       {/* DESKTOP STICKY SIDEBAR */}
       <aside className="hidden md:flex flex-col w-60 shrink-0 sticky top-20 h-[calc(100vh-6rem)] rounded-3xl liquid-glass p-3 space-y-1.5 overflow-y-auto scrollbar-none border border-white/20 shadow-[0_20px_60px_rgba(0,0,0,0.7)] backdrop-blur-2xl">
         
-        {/* WEVIDS BRAND LOGO HEADER + 5-CLICK GUBBY EASTER EGG */}
+        {/* WEVIDS BRAND LOGO HEADER */}
         <div 
           onClick={triggerEasterEggClick}
           className="px-3 py-2.5 mb-1.5 rounded-2xl bg-white/[0.04] border border-white/15 flex items-center justify-between cursor-pointer hover:border-[#ff2d95]/60 hover:bg-white/[0.08] transition-all group select-none shadow-md"
@@ -135,7 +135,7 @@ export const Sidebar: React.FC = () => {
           })}
         </div>
 
-        {/* Footer Profile Mini-Card in Liquid Glass */}
+        {/* Footer Profile Mini-Card */}
         <div className="pt-2 border-t border-white/10">
           <div 
             onClick={() => handleNavClick('profile')}
@@ -171,7 +171,6 @@ export const Sidebar: React.FC = () => {
             </button>
 
             <div className="space-y-4 overflow-y-auto pr-1">
-              {/* MOBILE BRAND LOGO */}
               <div 
                 onClick={triggerEasterEggClick}
                 className="flex items-center gap-2.5 pb-3 border-b border-white/10 cursor-pointer"
