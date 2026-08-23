@@ -16,7 +16,6 @@ import {
   Bookmark, 
   Trash2, 
   Play, 
-  Pause, 
   Sparkles, 
   Gauge, 
   Loader2
@@ -28,7 +27,7 @@ import { ShortClipItem, CommentItem } from '../../types/wevids';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { toast } from 'sonner';
 
-// High-speed, 100% working CORS video streams
+// Verified, high-uptime direct MP4 streams for immediate playback
 const GUARANTEED_STREAMS = [
   'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
   'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
@@ -90,20 +89,21 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   const progressBarRef = useRef<HTMLDivElement | null>(null);
   
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [progressPercent, setProgressPercent] = useState(0);
   const [showHeartOverlay, setShowHeartOverlay] = useState(false);
+  
   const [streamUrl, setStreamUrl] = useState<string>(() => {
     const raw = clip.videoUrl || (clip as any).video_url;
-    if (raw && typeof raw === 'string' && raw.startsWith('http')) {
+    if (raw && typeof raw === 'string' && (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('blob:') || raw.startsWith('data:'))) {
       return raw;
     }
     return GUARANTEED_STREAMS[index % GUARANTEED_STREAMS.length];
   });
 
-  // Autoplay and pause based on active visibility
+  // Autoplay / Pause controller
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -136,7 +136,9 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
       }
     } else {
       video.pause();
-      video.currentTime = 0;
+      try {
+        video.currentTime = 0;
+      } catch {}
       setIsPlaying(false);
       setIsLoading(false);
     }
@@ -151,8 +153,8 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     setProgressPercent((cur / dur) * 100);
   };
 
-  const handleTogglePlayPause = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleTogglePlayPause = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     const video = videoRef.current;
     if (!video) return;
 
@@ -192,10 +194,9 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   };
 
   const handleVideoError = () => {
-    // Switch to fallback guaranteed stream silently
-    const nextFallback = GUARANTEED_STREAMS[index % GUARANTEED_STREAMS.length];
-    if (streamUrl !== nextFallback) {
-      setStreamUrl(nextFallback);
+    const fallbackStream = GUARANTEED_STREAMS[index % GUARANTEED_STREAMS.length];
+    if (streamUrl !== fallbackStream) {
+      setStreamUrl(fallbackStream);
     }
     setIsLoading(false);
   };
@@ -205,7 +206,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
       onDoubleClick={handleDoubleTapLike}
       className="shorts-snap-item relative w-full h-[calc(100vh-6.5rem)] max-h-[820px] rounded-3xl overflow-hidden liquid-glass border border-white/20 shadow-2xl flex items-center justify-center bg-black select-none group"
     >
-      {/* Heart Burst Gesture */}
+      {/* Heart Double-Tap Overlay */}
       {showHeartOverlay && (
         <div className="absolute z-40 inset-0 flex items-center justify-center pointer-events-none animate-spring-pop">
           <Heart className="w-28 h-28 text-[#ff2d95] fill-current drop-shadow-[0_0_35px_#ff2d95] animate-ping" />
@@ -214,8 +215,8 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
 
       {/* Loading Spinner */}
       {isLoading && (
-        <div className="absolute z-10 inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
-          <Loader2 className="w-9 h-9 text-[#00e5ff] animate-spin drop-shadow" />
+        <div className="absolute z-10 inset-0 flex items-center justify-center bg-black/40 pointer-events-none">
+          <Loader2 className="w-10 h-10 text-[#00e5ff] animate-spin drop-shadow" />
         </div>
       )}
 
@@ -227,16 +228,22 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         muted={isMuted}
         playsInline
         preload={isActive ? 'auto' : 'metadata'}
+        onLoadedMetadata={() => {
+          if (videoRef.current) setDuration(videoRef.current.duration);
+        }}
         onCanPlay={() => setIsLoading(false)}
         onWaiting={() => setIsLoading(true)}
-        onPlaying={() => setIsLoading(false)}
+        onPlaying={() => {
+          setIsLoading(false);
+          setIsPlaying(true);
+        }}
         onTimeUpdate={handleTimeUpdate}
         onError={handleVideoError}
         onClick={handleTogglePlayPause}
         className="w-full h-full object-cover rounded-3xl cursor-pointer"
       />
 
-      {/* Play Overlay Button */}
+      {/* Play Tap Overlay Button */}
       {!isPlaying && !isLoading && (
         <div 
           onClick={handleTogglePlayPause}
@@ -362,7 +369,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         </div>
       </div>
 
-      {/* Floating Action Column (Right Side) */}
+      {/* Floating Action Column */}
       <div className="absolute right-3 bottom-8 z-20 flex flex-col items-center gap-3.5">
         <button 
           type="button"
@@ -514,10 +521,16 @@ export const ShortsFeedView: React.FC = () => {
   const validClips = (clips || []).filter(c => !isBlocked(c.userId));
 
   const scrollToIndex = useCallback((idx: number) => {
-    if (!containerRef.current) return;
-    const items = containerRef.current.querySelectorAll('.shorts-snap-item');
+    const container = containerRef.current;
+    if (!container) return;
+    const items = container.querySelectorAll('.shorts-snap-item');
+    
     if (items[idx]) {
-      items[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      items[idx].scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setActiveIndex(idx);
+    } else {
+      const targetY = idx * container.clientHeight;
+      container.scrollTo({ top: targetY, behavior: 'smooth' });
       setActiveIndex(idx);
     }
   }, []);
@@ -544,7 +557,7 @@ export const ShortsFeedView: React.FC = () => {
   // Wheel Scroll Controller
   const handleWheelScroll = (e: React.WheelEvent<HTMLDivElement>) => {
     if (wheelLockRef.current) return;
-    if (Math.abs(e.deltaY) > 30) {
+    if (Math.abs(e.deltaY) > 20) {
       wheelLockRef.current = true;
       if (e.deltaY > 0) {
         scrollToIndex(Math.min(validClips.length - 1, activeIndex + 1));
@@ -553,7 +566,7 @@ export const ShortsFeedView: React.FC = () => {
       }
       setTimeout(() => {
         wheelLockRef.current = false;
-      }, 500);
+      }, 450);
     }
   };
 
@@ -642,13 +655,13 @@ export const ShortsFeedView: React.FC = () => {
 
   return (
     <div className="relative flex justify-center items-center pb-12 max-w-5xl mx-auto">
-      {/* Up / Down Controls for Larger Displays */}
-      <div className="hidden lg:flex flex-col gap-3 fixed right-12 top-1/2 -translate-y-1/2 z-30">
+      {/* Up / Down Navigation Controls (Visible on all viewports) */}
+      <div className="flex flex-col gap-3 absolute -right-1 sm:-right-12 top-1/2 -translate-y-1/2 z-30">
         <button
           type="button"
           onClick={() => scrollToIndex(Math.max(0, activeIndex - 1))}
           disabled={activeIndex === 0}
-          className="p-3 rounded-2xl liquid-glass hover:bg-[#00e5ff] text-white hover:text-slate-900 transition-all disabled:opacity-30 border border-white/20 shadow-xl"
+          className="p-2.5 sm:p-3 rounded-2xl liquid-glass hover:bg-[#00e5ff] text-white hover:text-slate-900 transition-all disabled:opacity-30 border border-white/20 shadow-2xl"
           title="Previous Short (Arrow Up)"
         >
           <ChevronUp className="w-5 h-5" />
@@ -657,7 +670,7 @@ export const ShortsFeedView: React.FC = () => {
           type="button"
           onClick={() => scrollToIndex(Math.min(validClips.length - 1, activeIndex + 1))}
           disabled={activeIndex === validClips.length - 1}
-          className="p-3 rounded-2xl liquid-glass hover:bg-[#ff2d95] text-white hover:text-slate-900 transition-all disabled:opacity-30 border border-white/20 shadow-xl"
+          className="p-2.5 sm:p-3 rounded-2xl liquid-glass hover:bg-[#ff2d95] text-white hover:text-slate-900 transition-all disabled:opacity-30 border border-white/20 shadow-2xl"
           title="Next Short (Arrow Down)"
         >
           <ChevronDown className="w-5 h-5" />
