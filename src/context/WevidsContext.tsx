@@ -88,7 +88,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     sounds.enabled = state.soundEnabled;
   }, [state.soundEnabled]);
 
-  // Restore authenticated or persistent session
   useEffect(() => {
     const session = getStoredSession();
     if (session?.user) {
@@ -111,7 +110,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   }, []);
 
-  // Helper to construct conversations with streak counters and message request limits
   const buildConversationsFromDms = (
     dms: DirectMessageItem[],
     profilesMap: Record<string, UserProfile>,
@@ -149,7 +147,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         is_approved: dm.is_approved
       };
 
-      // Check mutual follow status from follows table
       const myFollow = followsList.find(f => f.follower_id === currentUserId && f.following_id === partnerId);
       const theyFollow = followsList.find(f => f.follower_id === partnerId && f.following_id === currentUserId);
       const isMutual = Boolean(
@@ -159,7 +156,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
       const isApprovedRequest = Boolean(dm.is_approved === true || (theyFollow && myFollow));
 
-      // Check streak record
       const streakRec = streaksList.find(s => 
         (s.user_1 === currentUserId && s.user_2 === partnerId) ||
         (s.user_1 === partnerId && s.user_2 === currentUserId)
@@ -208,7 +204,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return result;
   };
 
-  // Synchronize Supabase tables (follows, conversations, streaks, messages)
   const syncWithSupabase = useCallback(async (silent = false) => {
     if (!isSupabaseConfigured()) return;
     if (!silent) dispatch({ type: 'SET_CLOUD_SYNCING', payload: true });
@@ -233,7 +228,14 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       const profileMap: Record<string, UserProfile> = {};
       if (profilesRes.data && profilesRes.data.length > 0) {
         profilesRes.data.forEach((p: any) => {
-          if (p && p.id) profileMap[p.id] = p;
+          if (p && p.id) {
+            profileMap[p.id] = {
+              ...p,
+              follower_count: p.follower_count ?? p.followers ?? 0,
+              following_count: p.following_count ?? p.following ?? 0,
+              likes_count: p.likes_count ?? p.likes ?? 0
+            };
+          }
         });
         dispatch({ type: 'SET_ALL_USERS', payload: profileMap });
 
@@ -715,13 +717,11 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return (state.currentUser.blockedUserIds || []).includes(userId);
   };
 
-  // ATOMIC Mutual Follow Handler using Supabase RPC & fallback state updates
   const toggleFollowUser = async (userId: string) => {
     sounds.click();
     const currentlyFollowing = isFollowing(userId);
     const wasFollowedByThem = isFollowedBy(userId);
 
-    // Optimistically update local context state
     dispatch({ type: 'TOGGLE_FOLLOW_USER', payload: { userId, isFollowing: currentlyFollowing } });
 
     const willBeMutual = !currentlyFollowing && wasFollowedByThem;
@@ -735,14 +735,12 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
 
     try {
-      // Execute atomic RPC procedure in Supabase
       const { data, error } = await supabase.rpc('toggle_follow_atomic', {
         p_follower_id: state.currentUser.id,
         p_following_id: userId
       });
 
       if (error) {
-        // Fallback REST operations
         if (!currentlyFollowing) {
           await supabase.from('follows').upsert([{
             follower_id: state.currentUser.id,
@@ -806,7 +804,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     window.location.reload();
   };
 
-  // Atomic Get or Create Conversation Pair
   const startOrOpenChatWithUser = async (userId: string) => {
     sounds.click();
     const isFriend = isMutualFriend(userId);
@@ -872,7 +869,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-  // Atomic Send Message Procedure
   const sendMessage = async (convId: string, message: any) => {
     const activeConv = state.conversations.find(c => c.id === convId);
     if (!activeConv) return;
@@ -880,7 +876,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const receiverId = activeConv.members.find(m => m !== state.currentUser.id) || '';
     const isFriend = isMutualFriend(receiverId);
 
-    // Frontend pre-check for 1-Message Request Rule
     if (!isFriend && activeConv.status === 'pending_request' && activeConv.requestedBy === state.currentUser.id && activeConv.messages.length >= 1) {
       toast.error('Request Limit: You can only send 1 request message until recipient accepts or follows back.');
       return;
@@ -938,32 +933,24 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     syncWithSupabase(true);
   };
 
-  // Fixed acceptMessageRequest with DB persistence
   const acceptMessageRequest = async (convId: string) => {
     sounds.success();
     const conv = state.conversations.find(c => c.id === convId);
     const partnerId = conv?.members.find(m => m !== state.currentUser.id);
 
-    // 1. Immediately update conversation status in local state
     dispatch({ type: 'SET_CONVERSATION_STATUS', payload: { convId, status: 'active' } });
 
     if (partnerId) {
-      // 2. Mutual follow setup: Add partner to following list
       const currentlyFollowing = isFollowing(partnerId);
       if (!currentlyFollowing) {
         dispatch({ type: 'TOGGLE_FOLLOW_USER', payload: { userId: partnerId, isFollowing: false } });
       }
 
-      // 3. Persist 'accepted' follow status in Supabase database
       try {
-        await supabase.from('follows').upsert([
-          { follower_id: state.currentUser.id, following_id: partnerId, status: 'accepted' },
-          { follower_id: partnerId, following_id: state.currentUser.id, status: 'accepted' }
-        ]);
-
-        await supabase.from('direct_messages').update({
-          is_approved: true
-        }).or(`sender_id.eq.${partnerId},receiver_id.eq.${partnerId}`);
+        await supabase.rpc('accept_message_request', {
+          p_sender_id: partnerId,
+          p_receiver_id: state.currentUser.id
+        });
       } catch {}
     }
 

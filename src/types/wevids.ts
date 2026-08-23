@@ -29,6 +29,9 @@ export interface UserProfile {
   bioAudioTitle?: string;
   followers: number;
   following: number;
+  follower_count?: number;
+  following_count?: number;
+  likes_count?: number;
   followingIds?: string[];
   followerIds?: string[];
   blockedUserIds?: string[];
@@ -48,6 +51,12 @@ export interface FollowRecord {
   follower_id: string;
   following_id: string;
   status: 'pending' | 'accepted';
+  created_at?: string;
+}
+
+export interface ProfileLikeRecord {
+  liker_id: string;
+  target_id: string;
   created_at?: string;
 }
 
