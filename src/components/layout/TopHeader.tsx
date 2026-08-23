@@ -95,7 +95,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           }}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs font-orbitron font-bold transition-all shadow-sm ${
             isCloudConnected 
-              ? 'bg-[#10b981]/15 border-[#10b981]/40 text-[#10b981] hover:bg-[#10b981]/25' 
+              ? 'bg-[#10b981]/15 border-[#10b981]/40 text-[#10b981] hover:bg-[#10b981]/25 hover:scale-105' 
               : 'liquid-glass-pill text-[#9494b8] hover:text-white'
           }`}
           title={isCloudConnected ? `Supabase Live Synced (Last: ${lastCloudSync || 'Active'}). Click to sync now.` : 'Click to configure Supabase Connection'}
@@ -121,7 +121,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             sounds.click();
             onTogglePerfMode();
           }}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs font-orbitron font-bold transition-all shadow-sm ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs font-orbitron font-bold transition-all shadow-sm hover:scale-105 ${
             perfMode === 'entry'
               ? 'bg-[#00e5ff]/20 text-[#00e5ff] border-[#00e5ff]/50'
               : 'bg-[#ff2d95]/20 text-[#ff2d95] border-[#ff2d95]/50'
@@ -180,12 +180,12 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             sounds.pop();
             setIsCartOpen(true);
           }}
-          className="relative p-2 rounded-2xl liquid-glass-pill text-[#9494b8] hover:text-white transition-colors"
+          className="relative p-2 rounded-2xl liquid-glass-pill text-[#9494b8] hover:text-white transition-colors hover:scale-105"
           title="Open Cart"
         >
           <ShoppingBag className="w-4 h-4 text-[#fbbf24]" />
           {totalCartCount > 0 && (
-            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#ff2d95] text-slate-900 font-bold text-[9px] flex items-center justify-center shadow-md">
+            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#ff2d95] text-slate-900 font-bold text-[9px] flex items-center justify-center shadow-md animate-pulse">
               {totalCartCount}
             </span>
           )}
@@ -197,7 +197,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             sounds.click();
             setActiveView('profile');
           }}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl liquid-glass-pill border-[#ff2d95]/40 cursor-pointer hover:border-[#00e5ff] transition-all"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl liquid-glass-pill border-[#ff2d95]/40 cursor-pointer hover:border-[#00e5ff] transition-all hover:scale-105"
         >
           <span className="text-xs font-bold text-[#ff2d95] font-orbitron">
             ⚡ {currentUser?.walletBalance ? Number(currentUser.walletBalance).toFixed(0) : '0'} <span className="text-[10px] text-[#00e5ff] hidden xs:inline">WVDS</span>

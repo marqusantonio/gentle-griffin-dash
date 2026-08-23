@@ -435,7 +435,7 @@ export const DualFeedView: React.FC = () => {
       {activeTab === 'feed' && (
         <form 
           onSubmit={handleInlineSubmit}
-          className="rounded-3xl bg-[#161632]/80 border border-white/15 p-4 backdrop-blur-xl shadow-xl space-y-3 relative overflow-hidden"
+          className="rounded-3xl bg-[#161632]/80 border border-white/15 p-4 backdrop-blur-xl shadow-xl space-y-3 relative overflow-hidden animate-spring-pop"
         >
           <div className="flex items-start gap-3">
             <div
@@ -538,7 +538,7 @@ export const DualFeedView: React.FC = () => {
               onClick={() => { sounds.click(); setFilterTag(tag); }}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
                 filterTag === tag
-                  ? 'bg-[#00e5ff] text-slate-900 font-bold shadow-md'
+                  ? 'bg-[#00e5ff] text-slate-900 font-bold shadow-md scale-102'
                   : 'bg-white/5 text-[#8a8aa8] hover:text-white border border-white/5'
               }`}
             >
@@ -572,7 +572,7 @@ export const DualFeedView: React.FC = () => {
               return (
                 <article
                   key={post.id}
-                  className={`rounded-3xl bg-[#161632]/80 border border-white/10 backdrop-blur-xl overflow-hidden hover:border-[#00e5ff]/40 transition-all ${
+                  className={`rounded-3xl liquid-glass-card border border-white/10 backdrop-blur-xl overflow-hidden hover:border-[#00e5ff]/40 transition-all ${
                     viewDensity === 'compact' ? 'p-3' : 'p-4'
                   }`}
                 >
@@ -583,7 +583,7 @@ export const DualFeedView: React.FC = () => {
                       className="flex items-center gap-3 cursor-pointer group flex-1 min-w-0"
                     >
                       <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-900 text-sm shadow-md shrink-0 group-hover:scale-105 transition-transform"
+                        className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-900 text-sm shadow-md shrink-0 group-hover:scale-105 transition-transform border border-white/20"
                         style={{ background: post.authorColor || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
                       >
                         {post.authorAvatar || 'U'}
@@ -831,7 +831,7 @@ export const DualFeedView: React.FC = () => {
             {clips.map(clip => (
               <div
                 key={clip.id}
-                className="rounded-3xl bg-[#161632]/80 border border-white/10 backdrop-blur-xl overflow-hidden hover:border-[#00e5ff]/40 transition-colors group"
+                className="rounded-3xl liquid-glass-card border border-white/10 overflow-hidden group"
               >
                 <div className="relative aspect-[9/16] bg-black overflow-hidden">
                   <video
