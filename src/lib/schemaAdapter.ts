@@ -24,13 +24,27 @@ export const insertPostWithAutoFallback = async (post: Record<string, any>): Pro
     comments: Array.isArray(post.comments) ? post.comments : []
   };
 
-  // If a valid UUID was provided, include it, otherwise let Postgres generate gen_random_uuid()
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(post.id);
   if (isUuid) {
     payload.id = post.id;
   }
 
-  const { data, error } = await supabase.from('posts').insert(payload);
+  let { data, error } = await supabase.from('posts').insert(payload);
+  
+  if (error && (error.message?.includes('schema cache') || error.message?.includes('column') || error.message?.includes('does not exist'))) {
+    // Retry with minimal payload if schema cache is lagging
+    const minimalPayload = {
+      content: payload.content,
+      authorName: payload.authorName,
+      authorHandle: payload.authorHandle,
+      userId: payload.userId,
+      mediaUrl: payload.mediaUrl
+    };
+    const retry = await supabase.from('posts').insert(minimalPayload);
+    data = retry.data;
+    error = retry.error;
+  }
+
   return { data, error };
 };
 

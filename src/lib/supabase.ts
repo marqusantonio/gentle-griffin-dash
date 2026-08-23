@@ -2,7 +2,6 @@
 const rawSupabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || 'https://dmoxkwtifnwymcalzbie.supabase.co';
 const rawSupabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'sb_publishable_secKTwXm6CJ4GaTOho_7OA_wG6S5Ut8';
 
-// Clean base URL ensuring no trailing slashes or /rest/v1 paths in base URL
 export const sanitizeBaseUrl = (url: string): string => {
   if (!url) return '';
   return url.trim().replace(/\/+$/, '').replace(/\/rest\/v1\/?$/, '');
@@ -99,7 +98,6 @@ export const isSupabaseConfigured = (): boolean => {
   return Boolean(url && anonKey);
 };
 
-// Query Builder for .from('table').select().order().eq().or()
 class PostgrestQueryBuilder<T = any> implements PromiseLike<{ data: T[] | null; error: any }> {
   private table: string;
   private url: string;
@@ -216,10 +214,7 @@ class PostgrestQueryBuilder<T = any> implements PromiseLike<{ data: T[] | null; 
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
-        if (errJson.message && errJson.message.includes('schema cache')) {
-          return { data: null, error: { message: errJson.message, hint: 'Run the SQL schema script to add missing columns.' } };
-        }
-        return { data: null, error: errJson.message || errJson.error_description || 'Query error' };
+        return { data: null, error: errJson.message || errJson.error_description || `Query error (${res.status})` };
       }
 
       if (res.status === 204) {
@@ -306,9 +301,7 @@ export class RealtimeChannel {
     if (this.ws) {
       try {
         this.ws.close();
-      } catch {
-        // safe ignore
-      }
+      } catch {}
       this.ws = null;
     }
   }
@@ -371,9 +364,7 @@ export class SupabaseClientInstance {
             method: 'POST',
             headers: { 'apikey': k, 'Authorization': `Bearer ${session.access_token}` },
           });
-        } catch {
-          // safe ignore
-        }
+        } catch {}
       }
       saveStoredSession(null);
       return { error: null };
@@ -775,7 +766,6 @@ ALTER TABLE public.game_scores ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Public full access game_scores" ON public.game_scores;
 CREATE POLICY "Public full access game_scores" ON public.game_scores FOR ALL TO public USING (true) WITH CHECK (true);
 
--- Ensure anon & authenticated roles have full permissions across tables
 GRANT ALL ON public.posts TO anon, authenticated;
 GRANT ALL ON public.clips TO anon, authenticated;
 GRANT ALL ON public.profiles TO anon, authenticated;
@@ -786,29 +776,4 @@ GRANT ALL ON public.files TO anon, authenticated;
 GRANT ALL ON public.products TO anon, authenticated;
 GRANT ALL ON public.direct_messages TO anon, authenticated;
 GRANT ALL ON public.game_scores TO anon, authenticated;
-
--- Enable Realtime publication safely (idempotent block that ignores duplicate object errors)
-DO $$
-BEGIN
-  BEGIN
-    ALTER PUBLICATION supabase_realtime ADD TABLE public.posts;
-  EXCEPTION WHEN duplicate_object THEN NULL;
-  END;
-  BEGIN
-    ALTER PUBLICATION supabase_realtime ADD TABLE public.clips;
-  EXCEPTION WHEN duplicate_object THEN NULL;
-  END;
-  BEGIN
-    ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
-  EXCEPTION WHEN duplicate_object THEN NULL;
-  END;
-  BEGIN
-    ALTER PUBLICATION supabase_realtime ADD TABLE public.direct_messages;
-  EXCEPTION WHEN duplicate_object THEN NULL;
-  END;
-  BEGIN
-    ALTER PUBLICATION supabase_realtime ADD TABLE public.game_scores;
-  EXCEPTION WHEN duplicate_object THEN NULL;
-  END;
-END $$;
 `;
