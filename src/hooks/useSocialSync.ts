@@ -27,7 +27,7 @@ export function useSocialSync({ currentUserId, targetUserId }: SocialSyncOptions
           .from('profiles')
           .select('follower_count, following_count, likes_count, followers, likes')
           .eq('id', targetUserId)
-          .single();
+          .maybeSingle();
 
         if (!profileError && profileData) {
           setFollowerCount(profileData.follower_count ?? profileData.followers ?? 0);
@@ -116,7 +116,7 @@ export function useSocialSync({ currentUserId, targetUserId }: SocialSyncOptions
     try {
       if (isSupabaseConfigured()) {
         if (nextFollowingState) {
-          const { error } = await supabase.from('follows').insert([{
+          const { error } = await supabase.from('follows').upsert([{
             follower_id: currentUserId,
             following_id: targetUserId,
             status: 'accepted'
@@ -156,7 +156,7 @@ export function useSocialSync({ currentUserId, targetUserId }: SocialSyncOptions
     try {
       if (isSupabaseConfigured()) {
         if (nextLikedState) {
-          const { error } = await supabase.from('profile_likes').insert([{
+          const { error } = await supabase.from('profile_likes').upsert([{
             liker_id: currentUserId,
             target_id: targetUserId
           }]);

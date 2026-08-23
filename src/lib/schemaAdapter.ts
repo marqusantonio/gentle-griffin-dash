@@ -1,11 +1,12 @@
 import { supabase } from '../integrations/supabase/client';
 
-export const isUuid = (str: string): boolean => {
+export const isUuid = (str?: string | null): boolean => {
+  if (!str) return false;
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 };
 
 /**
- * Clean post and video serializer for Supabase that matches the existing table schema.
+ * Clean post and video serializer for Supabase that strictly conforms to the active table schema.
  * Prevents invalid UUID syntax errors and satisfies all PostgreSQL column constraints.
  */
 export const insertPostWithAutoFallback = async (post: Record<string, any>): Promise<{ data: any; error: any }> => {
@@ -23,10 +24,11 @@ export const insertPostWithAutoFallback = async (post: Record<string, any>): Pro
     authorHandle: post.authorHandle || '@creator',
     authorAvatar: post.authorAvatar || 'C',
     authorColor: post.authorColor || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
-    userId: post.userId || post.user_id || 'guest',
+    userId: post.userId || 'guest',
+    // Only map user_id if it is a valid UUID, otherwise pass null to avoid postgres uuid parse errors
+    user_id: isUuid(post.userId) ? post.userId : isUuid(post.user_id) ? post.user_id : null,
     mediaUrl: mediaValue,
     mediaType: isVideo ? 'video' : isImage ? 'image' : null,
-    // Satisfy PostgreSQL NOT NULL constraint on video_url column
     video_url: videoValue || 'none',
     likes: Number(post.likes) || 0,
     dislikes: Number(post.dislikes) || 0,
@@ -35,7 +37,7 @@ export const insertPostWithAutoFallback = async (post: Record<string, any>): Pro
     comments: Array.isArray(post.comments) ? post.comments : []
   };
 
-  // Only pass id if it's a valid UUID; otherwise let postgres gen_random_uuid() handle it
+  // Only pass id if it's a valid UUID; otherwise postgres gen_random_uuid() generates it
   if (post.id && isUuid(post.id)) {
     payload.id = post.id;
   }
