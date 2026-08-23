@@ -9,7 +9,8 @@ import {
   Menu,
   Zap,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  Play
 } from 'lucide-react';
 import { isSupabaseConfigured, getStoredSession } from '../../lib/supabase';
 import { sounds } from '../../lib/soundFx';
@@ -35,7 +36,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
     setIsMobileSidebarOpen,
     syncWithSupabase,
     isCloudSyncing,
-    lastCloudSync
+    lastCloudSync,
+    triggerEasterEggClick
   } = useWevids();
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -58,7 +60,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-30 w-full h-16 liquid-glass border-b border-white/15 px-4 sm:px-6 flex items-center justify-between gap-3 shadow-[0_15px_40px_rgba(0,0,0,0.5)]">
+    <header className="sticky top-0 z-30 w-full h-16 liquid-glass border-b border-white/15 px-3 sm:px-6 flex items-center justify-between gap-3 shadow-[0_15px_40px_rgba(0,0,0,0.5)]">
       {/* Mobile Hamburger Menu */}
       <button
         type="button"
@@ -72,7 +74,23 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
         <Menu className="w-5 h-5" />
       </button>
 
-      {/* Search Input Bar with Liquid Glass Sheen */}
+      {/* WEVIDS Brand Logo Button */}
+      <div 
+        onClick={triggerEasterEggClick}
+        className="flex items-center gap-2 px-2.5 py-1.5 rounded-2xl bg-white/[0.04] border border-white/15 cursor-pointer hover:border-[#ff2d95]/60 hover:bg-white/[0.08] transition-all group select-none shadow-sm"
+        title="WEVIDS v3.1 (Click 5x for Easter Egg)"
+      >
+        <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-[#ff2d95] via-[#9333ea] to-[#00e5ff] p-[1.5px] shadow-sm group-hover:scale-105 transition-transform">
+          <div className="w-full h-full bg-[#0a0a1a] rounded-[10.5px] flex items-center justify-center text-white">
+            <Play className="w-3 h-3 fill-current text-[#00e5ff] ml-0.5 group-hover:text-[#ff2d95] transition-colors" />
+          </div>
+        </div>
+        <span className="font-orbitron font-extrabold text-sm text-white tracking-wider hidden xs:inline">
+          WEVIDS
+        </span>
+      </div>
+
+      {/* Search Input Bar */}
       <form onSubmit={handleSearchSubmit} className="relative flex-1 max-w-md hidden sm:block">
         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9494b8]" />
         <input
@@ -86,7 +104,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
 
       {/* Action Badges & Buttons */}
       <div className="flex items-center gap-2 sm:gap-3 ml-auto">
-        {/* Supabase Auto-Sync Heartbeat Indicator */}
+        {/* Supabase Auto-Sync Indicator */}
         <button
           type="button"
           onClick={() => {

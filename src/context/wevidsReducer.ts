@@ -10,11 +10,11 @@ import {
   SavedCollection, 
   SharedFileItem, 
   AudioTrackItem, 
-  FilmItem,
-  ViewName,
-  DirectMessageItem,
-  CommentItem,
-  CommentReply
+  FilmItem, 
+  ViewName, 
+  DirectMessageItem, 
+  CommentItem, 
+  CommentReply 
 } from '../types/wevids';
 import { 
   CURRENT_USER, 
@@ -50,6 +50,7 @@ export interface WevidsState {
   viewingProfileUser: UserProfile | null;
   isSupabaseModalOpen: boolean;
   isMobileSidebarOpen: boolean;
+  isEasterEggOpen: boolean;
   
   currentUser: UserProfile;
   allUsers: Record<string, UserProfile>;
@@ -80,6 +81,7 @@ export const initialWevidsState: WevidsState = {
   viewingProfileUser: null,
   isSupabaseModalOpen: false,
   isMobileSidebarOpen: false,
+  isEasterEggOpen: false,
   currentUser: CURRENT_USER,
   allUsers: MOCK_USERS,
   soundEnabled: true,
@@ -101,6 +103,7 @@ export type WevidsAction =
   | { type: 'CLOSE_USER_PROFILE_MODAL' }
   | { type: 'SET_IS_SUPABASE_MODAL_OPEN'; payload: boolean }
   | { type: 'SET_IS_MOBILE_SIDEBAR_OPEN'; payload: boolean }
+  | { type: 'SET_IS_EASTER_EGG_OPEN'; payload: boolean }
   | { type: 'UPDATE_CURRENT_USER'; payload: Partial<UserProfile> }
   | { type: 'SET_ALL_USERS'; payload: Record<string, UserProfile> }
   | { type: 'TOGGLE_FOLLOW_USER'; payload: { userId: string; isFollowing: boolean } }
@@ -170,6 +173,8 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
       return { ...state, isSupabaseModalOpen: action.payload };
     case 'SET_IS_MOBILE_SIDEBAR_OPEN':
       return { ...state, isMobileSidebarOpen: action.payload };
+    case 'SET_IS_EASTER_EGG_OPEN':
+      return { ...state, isEasterEggOpen: action.payload };
     case 'UPDATE_CURRENT_USER':
       return { 
         ...state, 
@@ -445,7 +450,7 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
     case 'ADD_CLIP':
       return { ...state, clips: [action.payload, ...state.clips.filter(c => c.id !== action.payload.id)] };
     case 'DELETE_CLIP':
-      return { ...state, clips: state.clips.filter(c => c.id !== action.payload.clipId) };
+      return { ...state, clips: state.clips.filter(c => c.clipId !== action.payload.clipId) };
     case 'SET_CLIPS':
       return { ...state, clips: action.payload || [] };
     case 'ADD_LONG_VIDEO':

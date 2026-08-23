@@ -17,7 +17,8 @@ import {
   User,
   ShieldAlert,
   Sparkles,
-  X
+  X,
+  Play
 } from 'lucide-react';
 import { ViewName } from '../../types/wevids';
 import { sounds } from '../../lib/soundFx';
@@ -28,7 +29,8 @@ export const Sidebar: React.FC = () => {
     setActiveView, 
     currentUser, 
     isMobileSidebarOpen, 
-    setIsMobileSidebarOpen 
+    setIsMobileSidebarOpen,
+    triggerEasterEggClick
   } = useWevids();
 
   const navItems: { id: ViewName; label: string; icon: React.ReactNode; badge?: string }[] = [
@@ -60,15 +62,28 @@ export const Sidebar: React.FC = () => {
       {/* DESKTOP STICKY SIDEBAR */}
       <aside className="hidden md:flex flex-col w-60 shrink-0 sticky top-20 h-[calc(100vh-6rem)] rounded-3xl liquid-glass p-3 space-y-1.5 overflow-y-auto scrollbar-none border border-white/20 shadow-[0_20px_60px_rgba(0,0,0,0.7)] backdrop-blur-2xl">
         
-        {/* Sidebar Header Badge */}
-        <div className="px-3 py-2 mb-1 flex items-center justify-between border-b border-white/10 pb-2">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#00e5ff] animate-ping" />
-            <span className="font-orbitron font-bold text-[11px] text-white tracking-wider uppercase">
-              WEVIDS NODE OS
-            </span>
+        {/* WEVIDS BRAND LOGO HEADER + 5-CLICK GUBBY EASTER EGG */}
+        <div 
+          onClick={triggerEasterEggClick}
+          className="px-3 py-2.5 mb-1.5 rounded-2xl bg-white/[0.04] border border-white/15 flex items-center justify-between cursor-pointer hover:border-[#ff2d95]/60 hover:bg-white/[0.08] transition-all group select-none shadow-md"
+          title="WEVIDS v3.1 (Tap 5 times for Easter Egg 🤫)"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#ff2d95] via-[#9333ea] to-[#00e5ff] p-[1.5px] shadow-[0_0_15px_rgba(255,45,149,0.5)] group-hover:scale-110 transition-transform">
+              <div className="w-full h-full bg-[#0a0a1a] rounded-[10.5px] flex items-center justify-center text-white">
+                <Play className="w-3.5 h-3.5 fill-current text-[#00e5ff] ml-0.5 group-hover:text-[#ff2d95] transition-colors" />
+              </div>
+            </div>
+            <div>
+              <div className="font-orbitron font-extrabold text-sm text-white tracking-wider flex items-center gap-1">
+                <span>WEVIDS</span>
+                <span className="text-[10px] text-[#00e5ff] font-normal">v3.1</span>
+              </div>
+              <div className="text-[9px] text-[#8a8aa8] font-mono tracking-tight">Social Video OS</div>
+            </div>
           </div>
-          <Sparkles className="w-3.5 h-3.5 text-[#ff2d95] animate-spin-slow" />
+
+          <Sparkles className="w-4 h-4 text-[#ff2d95] group-hover:rotate-45 transition-transform animate-pulse" />
         </div>
 
         {/* Navigation Links */}
@@ -146,9 +161,20 @@ export const Sidebar: React.FC = () => {
             </button>
 
             <div className="space-y-4 overflow-y-auto pr-1">
-              <div className="flex items-center gap-2 pb-3 border-b border-white/10">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#00e5ff] animate-ping" />
-                <span className="font-orbitron font-bold text-xs text-white">WEVIDS MENU</span>
+              {/* MOBILE BRAND LOGO */}
+              <div 
+                onClick={triggerEasterEggClick}
+                className="flex items-center gap-2.5 pb-3 border-b border-white/10 cursor-pointer"
+              >
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#ff2d95] via-[#9333ea] to-[#00e5ff] p-[1.5px] shadow-md">
+                  <div className="w-full h-full bg-[#0a0a1a] rounded-[10.5px] flex items-center justify-center text-[#00e5ff]">
+                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                  </div>
+                </div>
+                <div>
+                  <div className="font-orbitron font-bold text-sm text-white">WEVIDS</div>
+                  <div className="text-[9px] text-[#8a8aa8] font-mono">Tap 5x for Easter Egg</div>
+                </div>
               </div>
 
               <div className="space-y-1.5">

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, ReactNode, useCallback, useState } from 'react';
 import { wevidsReducer, initialWevidsState, WevidsState } from './wevidsReducer';
 import { 
   PostItem, 
@@ -41,6 +41,8 @@ export interface WevidsContextType extends WevidsState {
   setIsCartOpen: (open: boolean) => void;
   setIsVideoCallOpen: (open: boolean) => void;
   setIsMobileSidebarOpen: (open: boolean) => void;
+  setIsEasterEggOpen: (open: boolean) => void;
+  triggerEasterEggClick: () => void;
   openShareModal: (title: string, url: string) => void;
   closeShareModal: () => void;
   openUserProfileModal: (user: UserProfile) => void;
@@ -83,6 +85,7 @@ const WevidsContext = createContext<WevidsContextType | undefined>(undefined);
 
 export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(wevidsReducer, initialWevidsState);
+  const [logoClickCount, setLogoClickCount] = useState(0);
 
   useEffect(() => {
     sounds.enabled = state.soundEnabled;
@@ -109,6 +112,26 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       });
     }
   }, []);
+
+  const triggerEasterEggClick = () => {
+    sounds.pop();
+    const nextCount = logoClickCount + 1;
+    if (nextCount >= 5) {
+      sounds.success();
+      toast.success('🎉 You unlocked the secret Gubby Easter Egg!');
+      dispatch({ type: 'SET_IS_EASTER_EGG_OPEN', payload: true });
+      setLogoClickCount(0);
+    } else {
+      setLogoClickCount(nextCount);
+      if (nextCount >= 2) {
+        toast.info(`${5 - nextCount} more taps to unlock secret Easter Egg... 🤫`);
+      }
+    }
+  };
+
+  const setIsEasterEggOpen = (open: boolean) => {
+    dispatch({ type: 'SET_IS_EASTER_EGG_OPEN', payload: open });
+  };
 
   const buildConversationsFromDms = (
     dms: DirectMessageItem[],
@@ -328,7 +351,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       dispatch({ type: 'SET_LAST_CLOUD_SYNC', payload: new Date().toLocaleTimeString() });
     } catch {
       // Safe offline fallback
-    } finally {
+    } flex {
       if (!silent) dispatch({ type: 'SET_CLOUD_SYNCING', payload: false });
     }
   }, [state.currentUser.id]);
@@ -1103,6 +1126,8 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     setIsCartOpen,
     setIsVideoCallOpen,
     setIsMobileSidebarOpen,
+    setIsEasterEggOpen,
+    triggerEasterEggClick,
     openShareModal,
     closeShareModal,
     openUserProfileModal,

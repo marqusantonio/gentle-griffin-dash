@@ -29,12 +29,13 @@ export const Index: React.FC = () => {
   const { 
     activeView, 
     isSupabaseModalOpen, 
-    setIsSupabaseModalOpen 
+    setIsSupabaseModalOpen,
+    isEasterEggOpen,
+    setIsEasterEggOpen
   } = useWevids();
 
   const [perfMode, setPerfMode] = React.useState<'entry' | 'highend'>('highend');
   const [isPerfModalOpen, setIsPerfModalOpen] = React.useState(false);
-  const [easterEggOpen, setEasterEggOpen] = React.useState(false);
 
   React.useEffect(() => {
     document.body.classList.remove('perf-entry', 'perf-highend');
@@ -96,8 +97,8 @@ export const Index: React.FC = () => {
       <VideoCallModal />
       <ShareModal />
       <GubbyEasterEggModal
-        isOpen={easterEggOpen}
-        onClose={() => setEasterEggOpen(false)}
+        isOpen={isEasterEggOpen}
+        onClose={() => setIsEasterEggOpen(false)}
       />
     </div>
   );
