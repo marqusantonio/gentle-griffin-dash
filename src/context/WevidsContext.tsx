@@ -119,7 +119,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   ): Conversation[] => {
     const map = new Map<string, { partnerId: string; messages: ChatMessage[]; lastMsg: string; time: string; status: 'active' | 'pending_request' | 'declined' | 'blocked'; requestedBy?: string; streakCount?: number }>();
 
-    // Track partners with explicitly approved or declined DMs
     const approvedPartners = new Set<string>();
     const declinedPartners = new Set<string>();
     dms.forEach(dm => {
@@ -238,14 +237,24 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         profilesRes, 
         followsRes,
         streaksRes,
-        dmsRes
+        dmsRes,
+        audioRes,
+        filmsRes,
+        romsRes,
+        filesRes,
+        productsRes
       ] = await Promise.all([
         supabase.from('posts').select('*').order('created_at', { ascending: false }),
         supabase.from('clips').select('*').order('created_at', { ascending: false }),
         supabase.from('profiles').select('*'),
         supabase.from('follows').select('*'),
         supabase.from('streaks').select('*'),
-        supabase.from('direct_messages').select('*').order('created_at', { ascending: true })
+        supabase.from('direct_messages').select('*').order('created_at', { ascending: true }),
+        supabase.from('audio_tracks').select('*').order('created_at', { ascending: false }),
+        supabase.from('films').select('*').order('created_at', { ascending: false }),
+        supabase.from('roms').select('*').order('created_at', { ascending: false }),
+        supabase.from('files').select('*').order('created_at', { ascending: false }),
+        supabase.from('products').select('*').order('created_at', { ascending: false })
       ]);
 
       const profileMap: Record<string, UserProfile> = {};
@@ -277,6 +286,26 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       if (clipsRes.data && clipsRes.data.length > 0) {
         const genuineClips = clipsRes.data.filter((c: any) => Boolean(c.videoUrl || c.video_url));
         dispatch({ type: 'SET_CLIPS', payload: genuineClips });
+      }
+
+      if (audioRes.data && audioRes.data.length > 0) {
+        dispatch({ type: 'SET_AUDIO_TRACKS', payload: audioRes.data });
+      }
+
+      if (filmsRes.data && filmsRes.data.length > 0) {
+        dispatch({ type: 'SET_FILMS', payload: filmsRes.data });
+      }
+
+      if (romsRes.data && romsRes.data.length > 0) {
+        dispatch({ type: 'SET_ROMS', payload: romsRes.data });
+      }
+
+      if (filesRes.data && filesRes.data.length > 0) {
+        dispatch({ type: 'SET_SHARED_FILES', payload: filesRes.data });
+      }
+
+      if (productsRes.data && productsRes.data.length > 0) {
+        dispatch({ type: 'SET_PRODUCTS', payload: productsRes.data });
       }
 
       const followsList: FollowRecord[] = followsRes.data || [];
@@ -961,17 +990,14 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const conv = state.conversations.find(c => c.id === convId);
     const partnerId = conv?.members.find(m => m !== state.currentUser.id);
 
-    // 1. Instantly set local conversation status to active
     dispatch({ type: 'SET_CONVERSATION_STATUS', payload: { convId, status: 'active' } });
 
     if (partnerId) {
-      // 2. Ensure current user follows partner so status becomes mutual friends
       const currentlyFollowing = isFollowing(partnerId);
       if (!currentlyFollowing) {
         dispatch({ type: 'TOGGLE_FOLLOW_USER', payload: { userId: partnerId, isFollowing: false } });
       }
 
-      // 3. Update direct_messages table in Supabase directly
       try {
         await supabase
           .from('direct_messages')
@@ -986,7 +1012,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           .eq('receiver_id', partnerId);
       } catch {}
 
-      // 4. Update RPC in Supabase
       try {
         await supabase.rpc('accept_message_request', {
           p_sender_id: partnerId,
@@ -1058,6 +1083,25 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const setSoundEnabled = (enabled: boolean) => {
     dispatch({ type: 'SET_SOUND_ENABLED', payload: enabled });
+  };
+
+  const deactivateAccount = async () => {
+    sounds.pop();
+    await updateCurrentUser({ isDeactivated: true });
+    toast.info('Account deactivated. Your profile is now hidden.');
+  };
+
+  const deleteAccount = async () => {
+    sounds.pop();
+    dispatch({ type: 'PURGE_ACCOUNT' });
+    try {
+      await supabase.from('posts').delete().eq('userId', state.currentUser.id);
+      await supabase.from('clips').delete().eq('userId', state.currentUser.id);
+      await supabase.from('profiles').delete().eq('id', state.currentUser.id);
+    } catch {}
+    localStorage.clear();
+    toast.success('Your account and data have been permanently deleted.');
+    window.location.reload();
   };
 
   const value: WevidsContextType = {
