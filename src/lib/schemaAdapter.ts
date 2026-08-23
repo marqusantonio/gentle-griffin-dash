@@ -6,8 +6,7 @@ export const isUuid = (str?: string | null): boolean => {
 };
 
 /**
- * Clean post and video serializer for Supabase that strictly conforms to the active table schema.
- * Prevents invalid UUID syntax errors and satisfies all PostgreSQL column constraints.
+ * Clean post serializer for Supabase conforming strictly to the table schema.
  */
 export const insertPostWithAutoFallback = async (post: Record<string, any>): Promise<{ data: any; error: any }> => {
   const isVideo = post.mediaType === 'video' || Boolean(post.video_url || (post.mediaUrl && (post.mediaUrl.endsWith('.mp4') || post.mediaUrl.startsWith('data:video'))));
@@ -25,7 +24,6 @@ export const insertPostWithAutoFallback = async (post: Record<string, any>): Pro
     authorAvatar: post.authorAvatar || 'C',
     authorColor: post.authorColor || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
     userId: post.userId || 'guest',
-    // Only map user_id if it is a valid UUID, otherwise pass null to avoid postgres uuid parse errors
     user_id: isUuid(post.userId) ? post.userId : isUuid(post.user_id) ? post.user_id : null,
     mediaUrl: mediaValue,
     mediaType: isVideo ? 'video' : isImage ? 'image' : null,
@@ -37,13 +35,35 @@ export const insertPostWithAutoFallback = async (post: Record<string, any>): Pro
     comments: Array.isArray(post.comments) ? post.comments : []
   };
 
-  // Only pass id if it's a valid UUID; otherwise postgres gen_random_uuid() generates it
   if (post.id && isUuid(post.id)) {
     payload.id = post.id;
   }
 
   const { data, error } = await supabase.from('posts').upsert([payload]).select();
+  return { data, error };
+};
 
+/**
+ * Clean short clip serializer for Supabase to prevent unmapped column errors.
+ */
+export const insertClipWithAutoFallback = async (clip: Record<string, any>): Promise<{ data: any; error: any }> => {
+  const videoSrc = clip.videoUrl || clip.video_url || '';
+
+  const payload: Record<string, any> = {
+    id: String(clip.id || `clip-${Date.now()}`),
+    userId: String(clip.userId || 'guest'),
+    title: clip.title || 'Short Clip',
+    description: clip.description || '',
+    videoUrl: videoSrc,
+    video_url: videoSrc,
+    audioTrack: clip.audioTrack || 'Original Audio Track',
+    likes: Number(clip.likes) || 0,
+    dislikes: Number(clip.dislikes) || 0,
+    shares: Number(clip.shares) || 0,
+    comments: Array.isArray(clip.comments) ? clip.comments : []
+  };
+
+  const { data, error } = await supabase.from('clips').upsert([payload]).select();
   return { data, error };
 };
 
