@@ -13,7 +13,8 @@ import {
   FilmItem,
   ViewName,
   DirectMessageItem,
-  CommentItem
+  CommentItem,
+  CommentReply
 } from '../types/wevids';
 import { 
   CURRENT_USER, 
@@ -107,6 +108,8 @@ export type WevidsAction =
   | { type: 'UNBLOCK_USER'; payload: { userId: string } }
   | { type: 'TOGGLE_POST_LIKE'; payload: { postId: string } }
   | { type: 'ADD_POST_COMMENT'; payload: { postId: string; comment: CommentItem } }
+  | { type: 'TOGGLE_COMMENT_LIKE'; payload: { postId: string; commentId: string } }
+  | { type: 'ADD_COMMENT_REPLY'; payload: { postId: string; commentId: string; reply: CommentReply } }
   | { type: 'TOGGLE_CLIP_LIKE'; payload: { clipId: string } }
   | { type: 'TOGGLE_CLIP_DISLIKE'; payload: { clipId: string } }
   | { type: 'TOGGLE_CLIP_BOOKMARK'; payload: { clipId: string } }
@@ -262,6 +265,42 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
               }
             : p
         )
+      };
+    case 'TOGGLE_COMMENT_LIKE':
+      return {
+        ...state,
+        posts: state.posts.map(p => {
+          if (p.id !== action.payload.postId) return p;
+          return {
+            ...p,
+            comments: (p.comments || []).map(c => {
+              if (c.id !== action.payload.commentId) return c;
+              const newLiked = !c.isLiked;
+              return {
+                ...c,
+                isLiked: newLiked,
+                likes: newLiked ? (Number(c.likes) || 0) + 1 : Math.max(0, (Number(c.likes) || 1) - 1)
+              };
+            })
+          };
+        })
+      };
+    case 'ADD_COMMENT_REPLY':
+      return {
+        ...state,
+        posts: state.posts.map(p => {
+          if (p.id !== action.payload.postId) return p;
+          return {
+            ...p,
+            comments: (p.comments || []).map(c => {
+              if (c.id !== action.payload.commentId) return c;
+              return {
+                ...c,
+                replies: [...(c.replies || []), action.payload.reply]
+              };
+            })
+          };
+        })
       };
     case 'TOGGLE_CLIP_LIKE':
       return {

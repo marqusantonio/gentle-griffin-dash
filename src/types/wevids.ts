@@ -101,6 +101,18 @@ export interface FilmItem {
   views?: string;
 }
 
+export interface CommentReply {
+  id: string;
+  user: string;
+  userName: string;
+  userAvatar: string;
+  userColor: string;
+  text: string;
+  timestamp: string;
+  likes: number;
+  isLiked?: boolean;
+}
+
 export interface CommentItem {
   id: string;
   user: string;
@@ -113,6 +125,7 @@ export interface CommentItem {
   timestamp: string;
   likes: number;
   isLiked?: boolean;
+  replies?: CommentReply[];
 }
 
 export interface PostItem {

@@ -11,31 +11,33 @@ import {
   Trash2, 
   Play, 
   Pause, 
-  ChevronUp, 
-  Database, 
-  Code,
+  Sparkles, 
+  Bookmark, 
+  Check, 
+  LayoutGrid, 
   Image as ImageIcon,
   Video as VideoIcon,
   Send,
-  Sparkles,
-  Bookmark,
-  Check,
-  Flame,
-  LayoutGrid,
-  ListFilter,
-  Eye
+  CornerDownRight
 } from 'lucide-react';
 import { RichCommentInput } from '../comments/RichCommentInput';
 import { CreatePostModal } from './CreatePostModal';
 import { sounds } from '../../lib/soundFx';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { insertPostWithAutoFallback } from '../../lib/schemaAdapter';
-import { PostItem, ShortClipItem, CommentItem } from '../../types/wevids';
+import { PostItem, ShortClipItem, CommentItem, CommentReply } from '../../types/wevids';
 import { getErrorMessage, isTableOrSchemaMissingError } from '../../lib/errorUtils';
 import { toast } from 'sonner';
 
 export const DualFeedView: React.FC = () => {
-  const { currentUser, setActiveView, openUserProfileModal, allUsers } = useWevids();
+  const { 
+    currentUser, 
+    setActiveView, 
+    openUserProfileModal, 
+    allUsers,
+    toggleCommentLike,
+    addCommentReply
+  } = useWevids();
 
   const [activeTab, setActiveTab] = useState<'feed' | 'clips'>('feed');
   const [filterTag, setFilterTag] = useState<string>('All');
@@ -46,6 +48,8 @@ export const DualFeedView: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [expandedComments, setExpandedComments] = useState<string | null>(null);
+  const [activeReplyCommentId, setActiveReplyCommentId] = useState<string | null>(null);
+  const [replyInputText, setReplyInputText] = useState('');
   const [playingClipId, setPlayingClipId] = useState<string | null>(null);
   const [copiedPostId, setCopiedPostId] = useState<string | null>(null);
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
@@ -84,7 +88,6 @@ export const DualFeedView: React.FC = () => {
         }
       } else if (postsData) {
         const normalizedPosts: PostItem[] = postsData.map((p: any) => {
-          // STRICT MEDIA DETECTION: Only render media if explicitly marked as image or video with actual URL
           const hasVideo = p.mediaType === 'video' || Boolean(p.video_url && p.video_url.length > 5);
           const hasImage = p.mediaType === 'image' || Boolean(p.mediaUrl && !p.mediaUrl.endsWith('.mp4') && p.mediaUrl.startsWith('data:image') || (p.mediaUrl && /\.(jpg|jpeg|png|webp|gif)$/i.test(p.mediaUrl)));
           
@@ -225,7 +228,9 @@ export const DualFeedView: React.FC = () => {
       media: commentData.media,
       mediaType: commentData.mediaType,
       timestamp: 'Just now',
-      likes: 0
+      likes: 0,
+      isLiked: false,
+      replies: []
     };
 
     const updatedComments = [newComment, ...(targetPost.comments || [])];
@@ -235,6 +240,64 @@ export const DualFeedView: React.FC = () => {
     try {
       await supabase.from('posts').update({ comments: updatedComments }).eq('id', postId);
     } catch {}
+  };
+
+  const handleCommentLikeClick = (postId: string, commentId: string) => {
+    sounds.like();
+    toggleCommentLike(postId, commentId);
+
+    setPosts(prev => prev.map(p => {
+      if (p.id !== postId) return p;
+      return {
+        ...p,
+        comments: (p.comments || []).map(c => {
+          if (c.id !== commentId) return c;
+          const newLiked = !c.isLiked;
+          return {
+            ...c,
+            isLiked: newLiked,
+            likes: newLiked ? (Number(c.likes) || 0) + 1 : Math.max(0, (Number(c.likes) || 1) - 1)
+          };
+        })
+      };
+    }));
+  };
+
+  const handleSendReply = async (postId: string, commentId: string) => {
+    if (!replyInputText.trim()) return;
+    sounds.pop();
+
+    await addCommentReply(postId, commentId, replyInputText.trim());
+
+    setPosts(prev => prev.map(p => {
+      if (p.id !== postId) return p;
+      return {
+        ...p,
+        comments: (p.comments || []).map(c => {
+          if (c.id !== commentId) return c;
+          return {
+            ...c,
+            replies: [
+              ...(c.replies || []),
+              {
+                id: `r-${Date.now()}`,
+                user: currentUser?.id || 'guest',
+                userName: currentUser?.name || 'Creator',
+                userAvatar: currentUser?.avatar || 'C',
+                userColor: currentUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
+                text: replyInputText.trim(),
+                timestamp: 'Just now',
+                likes: 0
+              }
+            ]
+          };
+        })
+      };
+    }));
+
+    setReplyInputText('');
+    setActiveReplyCommentId(null);
+    toast.success('Reply published!');
   };
 
   // Instant Inline Fast Post Submission
@@ -265,7 +328,6 @@ export const DualFeedView: React.FC = () => {
       created_at: new Date().toISOString()
     };
 
-    // Optimistic UI update
     setPosts(prev => [newPost, ...prev]);
     sounds.success();
     toast.success('Post published live!');
@@ -369,7 +431,7 @@ export const DualFeedView: React.FC = () => {
         </div>
       </div>
 
-      {/* Instant Fast Creator Box (Inline Composer) */}
+      {/* Instant Fast Creator Box */}
       {activeTab === 'feed' && (
         <form 
           onSubmit={handleInlineSubmit}
@@ -393,7 +455,6 @@ export const DualFeedView: React.FC = () => {
                 className="w-full bg-transparent text-sm text-white placeholder-[#8a8aa8] focus:outline-none resize-none"
               />
 
-              {/* Media Attachment Preview */}
               {inlineMediaUrl && (
                 <div className="relative rounded-2xl overflow-hidden border border-white/20 my-2 max-h-48 bg-black flex items-center justify-center">
                   {inlineMediaType === 'image' ? (
@@ -436,7 +497,6 @@ export const DualFeedView: React.FC = () => {
                 <span className="hidden xs:inline">Video</span>
               </button>
 
-              {/* Tag selector */}
               <select
                 value={inlineTag}
                 onChange={(e) => setInlineTag(e.target.value)}
@@ -582,7 +642,7 @@ export const DualFeedView: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Post Media: STRICTLY ONLY RENDER IF TRUE VALID IMAGE/VIDEO (FIXES 0S GHOST BUG) */}
+                  {/* Post Media */}
                   {post.mediaUrl && post.mediaType === 'image' && (
                     <div className="mb-3 rounded-2xl overflow-hidden border border-white/10 bg-black max-h-96 flex items-center justify-center">
                       <img
@@ -637,12 +697,12 @@ export const DualFeedView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Comments Expansion */}
+                  {/* Comments & Nested Replies Expansion */}
                   {expandedComments === post.id && (
                     <div className="mt-3 pt-3 border-t border-white/5 space-y-3 bg-black/20 -mx-4 -mb-4 p-4 rounded-b-3xl">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-bold text-[#8a8aa8] uppercase tracking-wider">
-                          {post.comments?.length || 0} Comments & Reactions
+                          {post.comments?.length || 0} Comments & Replies
                         </span>
                         <button
                           onClick={() => setExpandedComments(null)}
@@ -653,22 +713,87 @@ export const DualFeedView: React.FC = () => {
                       </div>
 
                       {post.comments && post.comments.length > 0 && (
-                        <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+                        <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
                           {post.comments.map((comment: CommentItem) => (
-                            <div key={comment.id} className="flex items-start gap-2.5">
-                              <div
-                                className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[10px] text-slate-900 shrink-0"
-                                style={{ background: comment.userColor || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
-                              >
-                                {comment.userAvatar || 'U'}
+                            <div key={comment.id} className="space-y-2">
+                              <div className="flex items-start gap-2.5">
+                                <div
+                                  className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[10px] text-slate-900 shrink-0"
+                                  style={{ background: comment.userColor || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
+                                >
+                                  {comment.userAvatar || 'U'}
+                                </div>
+                                <div className="flex-1 min-w-0 bg-white/5 rounded-2xl p-2.5 border border-white/5 text-xs space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-bold text-white">{comment.userName}</span>
+                                    <span className="text-[9px] text-[#8a8aa8]">{comment.timestamp}</span>
+                                  </div>
+
+                                  {comment.text && <p className="text-white/90 leading-relaxed">{comment.text}</p>}
+                                  
+                                  {comment.media && (
+                                    <img src={comment.media} alt="Attached" className="rounded-xl mt-1 max-h-32 object-cover" />
+                                  )}
+
+                                  {/* Comment Action Controls: Like & Reply */}
+                                  <div className="pt-1 flex items-center gap-3 text-[10px] text-[#8a8aa8]">
+                                    <button
+                                      onClick={() => handleCommentLikeClick(post.id, comment.id)}
+                                      className={`flex items-center gap-1 font-bold transition-colors ${comment.isLiked ? 'text-[#ff2d95]' : 'hover:text-white'}`}
+                                    >
+                                      <Heart className={`w-3 h-3 ${comment.isLiked ? 'fill-current' : ''}`} />
+                                      <span>{comment.likes || 0} Likes</span>
+                                    </button>
+
+                                    <button
+                                      onClick={() => setActiveReplyCommentId(activeReplyCommentId === comment.id ? null : comment.id)}
+                                      className="flex items-center gap-1 hover:text-[#00e5ff] font-bold"
+                                    >
+                                      <CornerDownRight className="w-3 h-3" />
+                                      <span>Reply ({comment.replies?.length || 0})</span>
+                                    </button>
+                                  </div>
+                                </div>
                               </div>
-                              <div className="flex-1 min-w-0 bg-white/5 rounded-2xl p-2.5 border border-white/5 text-xs">
-                                <div className="font-bold text-white mb-0.5">{comment.userName}</div>
-                                {comment.text && <p className="text-white/90 leading-relaxed">{comment.text}</p>}
-                                {comment.media && (
-                                  <img src={comment.media} alt="Attached" className="rounded-xl mt-1 max-h-32 object-cover" />
-                                )}
-                              </div>
+
+                              {/* Nested Replies Stream */}
+                              {comment.replies && comment.replies.length > 0 && (
+                                <div className="ml-8 space-y-2 border-l-2 border-white/10 pl-3">
+                                  {comment.replies.map((reply: CommentReply) => (
+                                    <div key={reply.id} className="flex items-start gap-2 text-xs">
+                                      <div
+                                        className="w-5 h-5 rounded-full flex items-center justify-center font-bold text-[8px] text-slate-900 shrink-0"
+                                        style={{ background: reply.userColor }}
+                                      >
+                                        {reply.userAvatar}
+                                      </div>
+                                      <div className="flex-1 bg-white/[0.03] rounded-xl p-2 border border-white/5">
+                                        <div className="font-bold text-white text-[11px] mb-0.5">{reply.userName}</div>
+                                        <p className="text-white/85 text-[11px]">{reply.text}</p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Inline Reply Form Input */}
+                              {activeReplyCommentId === comment.id && (
+                                <div className="ml-8 flex gap-2">
+                                  <input
+                                    type="text"
+                                    value={replyInputText}
+                                    onChange={(e) => setReplyInputText(e.target.value)}
+                                    placeholder={`Reply to ${comment.userName}...`}
+                                    className="flex-1 px-3 py-1.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:outline-none focus:border-[#00e5ff]"
+                                  />
+                                  <button
+                                    onClick={() => handleSendReply(post.id, comment.id)}
+                                    className="px-3 py-1.5 rounded-xl bg-[#00e5ff] text-slate-900 font-bold text-xs shadow-md"
+                                  >
+                                    Send
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>

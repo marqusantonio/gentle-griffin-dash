@@ -15,7 +15,9 @@ import {
   DirectMessageItem, 
   ChatMessage,
   FollowRecord,
-  StreakRecord
+  StreakRecord,
+  CommentItem,
+  CommentReply
 } from '../types/wevids';
 import { supabase, isSupabaseConfigured, getStoredSession, checkContentModeration } from '../lib/supabase';
 import { insertPostWithAutoFallback } from '../lib/schemaAdapter';
@@ -50,10 +52,13 @@ export interface WevidsContextType extends WevidsState {
   unblockUser: (userId: string) => Promise<void>;
   isBlocked: (userId?: string) => boolean;
   isFollowing: (userId?: string) => boolean;
+  isFollowedBy: (userId?: string) => boolean;
   getFollowStatus: (userId?: string) => 'none' | 'pending' | 'accepted';
   isMutualFriend: (userId?: string) => boolean;
   togglePostLike: (postId: string) => Promise<void>;
   addPostComment: (postId: string, comment: any) => Promise<void>;
+  toggleCommentLike: (postId: string, commentId: string) => Promise<void>;
+  addCommentReply: (postId: string, commentId: string, text: string) => Promise<void>;
   toggleClipLike: (clipId: string) => Promise<void>;
   toggleClipDislike: (clipId: string) => Promise<void>;
   toggleClipBookmark: (clipId: string) => void;
@@ -147,7 +152,12 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       // Check mutual follow status from follows table
       const myFollow = followsList.find(f => f.follower_id === currentUserId && f.following_id === partnerId);
       const theyFollow = followsList.find(f => f.follower_id === partnerId && f.following_id === currentUserId);
-      const isMutual = Boolean(myFollow?.status === 'accepted' && theyFollow?.status === 'accepted');
+      const isMutual = Boolean(
+        (myFollow?.status === 'accepted' && theyFollow?.status === 'accepted') ||
+        ((state.currentUser.followingIds || []).includes(partnerId) && ((partner.followerIds || []).includes(currentUserId) || (partner.followingIds || []).includes(currentUserId)))
+      );
+
+      const isApprovedRequest = Boolean(dm.is_approved === true || (theyFollow && myFollow));
 
       // Check streak record
       const streakRec = streaksList.find(s => 
@@ -161,7 +171,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           messages: [chatMsg],
           lastMsg: dm.content || 'Media',
           time: new Date(dm.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          status: dm.is_blocked ? 'blocked' : isMutual ? 'active' : dm.is_friend_request && dm.is_approved === null ? 'pending_request' : dm.is_approved === false ? 'declined' : 'active',
+          status: dm.is_blocked ? 'blocked' : (isMutual || isApprovedRequest) ? 'active' : dm.is_friend_request && dm.is_approved === null ? 'pending_request' : dm.is_approved === false ? 'declined' : 'active',
           requestedBy: dm.sender_id,
           streakCount: streakRec?.current_streak || 0
         });
@@ -171,7 +181,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         item.lastMsg = dm.content || 'Media';
         item.time = new Date(dm.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         if (dm.is_blocked) item.status = 'blocked';
-        if (isMutual) item.status = 'active';
+        if (isMutual || isApprovedRequest) item.status = 'active';
         item.streakCount = streakRec?.current_streak || item.streakCount || 0;
       }
     });
@@ -355,8 +365,8 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const addPostComment = async (postId: string, comment: any) => {
     sounds.pop();
     const post = state.posts.find(p => p.id === postId);
-    const newComment = {
-      id: `c-${Date.now()}`,
+    const newComment: CommentItem = {
+      id: `c-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       user: state.currentUser.id,
       userName: state.currentUser.name,
       userAvatar: state.currentUser.avatar,
@@ -365,7 +375,9 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       media: comment.media,
       mediaType: comment.mediaType,
       timestamp: 'Just now',
-      likes: 0
+      likes: 0,
+      isLiked: false,
+      replies: []
     };
 
     dispatch({ type: 'ADD_POST_COMMENT', payload: { postId, comment: newComment } });
@@ -373,6 +385,60 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     if (post) {
       try {
         const updatedComments = [newComment, ...(post.comments || [])];
+        await supabase.from('posts').update({ comments: updatedComments }).eq('id', postId);
+      } catch {}
+    }
+  };
+
+  const toggleCommentLike = async (postId: string, commentId: string) => {
+    sounds.like();
+    dispatch({ type: 'TOGGLE_COMMENT_LIKE', payload: { postId, commentId } });
+
+    const post = state.posts.find(p => p.id === postId);
+    if (post) {
+      const updatedComments = (post.comments || []).map(c => {
+        if (c.id !== commentId) return c;
+        const newLiked = !c.isLiked;
+        return {
+          ...c,
+          isLiked: newLiked,
+          likes: newLiked ? (Number(c.likes) || 0) + 1 : Math.max(0, (Number(c.likes) || 1) - 1)
+        };
+      });
+      try {
+        await supabase.from('posts').update({ comments: updatedComments }).eq('id', postId);
+      } catch {}
+    }
+  };
+
+  const addCommentReply = async (postId: string, commentId: string, replyText: string) => {
+    if (!replyText.trim()) return;
+    sounds.pop();
+
+    const newReply: CommentReply = {
+      id: `r-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      user: state.currentUser.id,
+      userName: state.currentUser.name,
+      userAvatar: state.currentUser.avatar,
+      userColor: state.currentUser.color,
+      text: replyText.trim(),
+      timestamp: 'Just now',
+      likes: 0,
+      isLiked: false
+    };
+
+    dispatch({ type: 'ADD_COMMENT_REPLY', payload: { postId, commentId, reply: newReply } });
+
+    const post = state.posts.find(p => p.id === postId);
+    if (post) {
+      const updatedComments = (post.comments || []).map(c => {
+        if (c.id !== commentId) return c;
+        return {
+          ...c,
+          replies: [...(c.replies || []), newReply]
+        };
+      });
+      try {
         await supabase.from('posts').update({ comments: updatedComments }).eq('id', postId);
       } catch {}
     }
@@ -623,10 +689,23 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return (state.currentUser.followingIds || []).includes(userId);
   };
 
+  const isFollowedBy = (userId?: string) => {
+    if (!userId || userId === state.currentUser.id) return false;
+    const targetUser = state.allUsers[userId];
+    return Boolean(
+      (state.currentUser.followerIds || []).includes(userId) ||
+      (targetUser?.followingIds || []).includes(state.currentUser.id)
+    );
+  };
+
+  const isMutualFriend = (userId?: string) => {
+    if (!userId || userId === state.currentUser.id) return false;
+    return Boolean(isFollowing(userId) && isFollowedBy(userId));
+  };
+
   const getFollowStatus = (userId?: string): 'none' | 'pending' | 'accepted' => {
     if (!userId || userId === state.currentUser.id) return 'none';
-    const isMutual = isMutualFriend(userId);
-    if (isMutual) return 'accepted';
+    if (isMutualFriend(userId)) return 'accepted';
     if (isFollowing(userId)) return 'pending';
     return 'none';
   };
@@ -636,44 +715,48 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     return (state.currentUser.blockedUserIds || []).includes(userId);
   };
 
-  const isMutualFriend = (userId?: string) => {
-    if (!userId || userId === state.currentUser.id) return false;
-    const targetUser = state.allUsers[userId];
-    const followingThem = (state.currentUser.followingIds || []).includes(userId);
-    const theyFollowMe = (targetUser?.followerIds || []).includes(state.currentUser.id) || 
-                         (targetUser?.followingIds || []).includes(state.currentUser.id);
-    return Boolean(followingThem && theyFollowMe);
-  };
-
-  // ATOMIC Mutual Follow Handler using Supabase RPC
+  // ATOMIC Mutual Follow Handler using Supabase RPC & fallback state updates
   const toggleFollowUser = async (userId: string) => {
     sounds.click();
     const currentlyFollowing = isFollowing(userId);
+    const wasFollowedByThem = isFollowedBy(userId);
+
+    // Optimistically update local context state
     dispatch({ type: 'TOGGLE_FOLLOW_USER', payload: { userId, isFollowing: currentlyFollowing } });
 
-    // Try executing atomic RPC stored procedure
+    const willBeMutual = !currentlyFollowing && wasFollowedByThem;
+
+    if (willBeMutual) {
+      toast.success('Mutual Friends Unlocked! 🤝 Unrestricted Direct Messaging enabled.');
+    } else if (!currentlyFollowing) {
+      toast.info('Followed creator! (1 message request allowed until they follow back)');
+    } else {
+      toast.info('Unfollowed creator.');
+    }
+
     try {
+      // Execute atomic RPC procedure in Supabase
       const { data, error } = await supabase.rpc('toggle_follow_atomic', {
         p_follower_id: state.currentUser.id,
         p_following_id: userId
       });
 
-      if (!error && data) {
-        if (data.status === 'accepted' || data.is_mutual) {
-          toast.success('Mutual Friends Unlocked! 🤝 Unrestricted Direct Messaging enabled.');
-        } else if (data.status === 'pending') {
-          toast.info('Follow Request Sent ⏳ (1-Message Request limit active until accepted).');
-        } else if (data.status === 'unfollowed') {
-          toast.info('Unfollowed creator.');
+      if (error) {
+        // Fallback REST operations
+        if (!currentlyFollowing) {
+          await supabase.from('follows').upsert([{
+            follower_id: state.currentUser.id,
+            following_id: userId,
+            status: willBeMutual ? 'accepted' : 'pending'
+          }]);
+          if (willBeMutual) {
+            await supabase.from('follows').update({ status: 'accepted' }).eq('follower_id', userId).eq('following_id', state.currentUser.id);
+          }
+        } else {
+          await supabase.from('follows').delete().eq('follower_id', state.currentUser.id).eq('following_id', userId);
         }
-      } else {
-        if (!currentlyFollowing) toast.success('Following creator!');
-        else toast.info('Unfollowed.');
       }
-    } catch {
-      if (!currentlyFollowing) toast.success('Following creator!');
-      else toast.info('Unfollowed.');
-    }
+    } catch {}
 
     syncWithSupabase(true);
   };
@@ -789,7 +872,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-  // Atomic Send Message Procedure with Server-side 1-Request Validation & 🔥 Streaks
+  // Atomic Send Message Procedure
   const sendMessage = async (convId: string, message: any) => {
     const activeConv = state.conversations.find(c => c.id === convId);
     if (!activeConv) return;
@@ -820,7 +903,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     
     dispatch({ type: 'ADD_MESSAGE', payload: { convId, message: newMessage } });
 
-    // Call atomic RPC endpoint or fallback to direct REST insert
     try {
       const cleanConvUuid = convId.replace('conv-', '');
       const { data: rpcRes, error: rpcErr } = await supabase.rpc('send_message_with_rules', {
@@ -836,7 +918,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           toast.error('Server Validation: Cannot send >1 request message until recipient accepts.');
           return;
         }
-        // Fallback REST insert
         await supabase.from('direct_messages').insert([{
           id: newMessage.id,
           sender_id: state.currentUser.id,
@@ -857,23 +938,52 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     syncWithSupabase(true);
   };
 
+  // Fixed acceptMessageRequest with DB persistence
   const acceptMessageRequest = async (convId: string) => {
     sounds.success();
     const conv = state.conversations.find(c => c.id === convId);
     const partnerId = conv?.members.find(m => m !== state.currentUser.id);
 
+    // 1. Immediately update conversation status in local state
+    dispatch({ type: 'SET_CONVERSATION_STATUS', payload: { convId, status: 'active' } });
+
     if (partnerId) {
-      // Auto follow back to establish mutual friend status
-      await toggleFollowUser(partnerId);
+      // 2. Mutual follow setup: Add partner to following list
+      const currentlyFollowing = isFollowing(partnerId);
+      if (!currentlyFollowing) {
+        dispatch({ type: 'TOGGLE_FOLLOW_USER', payload: { userId: partnerId, isFollowing: false } });
+      }
+
+      // 3. Persist 'accepted' follow status in Supabase database
+      try {
+        await supabase.from('follows').upsert([
+          { follower_id: state.currentUser.id, following_id: partnerId, status: 'accepted' },
+          { follower_id: partnerId, following_id: state.currentUser.id, status: 'accepted' }
+        ]);
+
+        await supabase.from('direct_messages').update({
+          is_approved: true
+        }).or(`sender_id.eq.${partnerId},receiver_id.eq.${partnerId}`);
+      } catch {}
     }
 
-    dispatch({ type: 'SET_CONVERSATION_STATUS', payload: { convId, status: 'active' } });
     toast.success('Message request accepted! You are now Friends 🤝');
+    syncWithSupabase(true);
   };
 
   const declineMessageRequest = async (convId: string) => {
     sounds.click();
     dispatch({ type: 'SET_CONVERSATION_STATUS', payload: { convId, status: 'declined' } });
+    
+    const conv = state.conversations.find(c => c.id === convId);
+    const partnerId = conv?.members.find(m => m !== state.currentUser.id);
+    if (partnerId) {
+      try {
+        await supabase.from('direct_messages').update({
+          is_approved: false
+        }).eq('sender_id', partnerId).eq('receiver_id', state.currentUser.id);
+      } catch {}
+    }
     toast.info('Message request declined.');
   };
 
@@ -951,10 +1061,13 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     unblockUser,
     isBlocked,
     isFollowing,
+    isFollowedBy,
     getFollowStatus,
     isMutualFriend,
     togglePostLike,
     addPostComment,
+    toggleCommentLike,
+    addCommentReply,
     toggleClipLike,
     toggleClipDislike,
     toggleClipBookmark,
