@@ -59,7 +59,7 @@ export interface WevidsContextType extends WevidsState {
   togglePostLike: (postId: string) => Promise<void>;
   addPostComment: (postId: string, comment: any) => Promise<void>;
   toggleCommentLike: (postId: string, commentId: string) => Promise<void>;
-  addCommentReply: (postId: string, commentId: string, text: string) => Promise<void>;
+  addCommentReply: (postId: string, commentId: string, replyData: { text: string; media?: string; mediaType?: 'image' | 'video' | 'gif' | 'sticker' | 'audio' }) => Promise<void>;
   toggleClipLike: (clipId: string) => Promise<void>;
   toggleClipDislike: (clipId: string) => Promise<void>;
   toggleClipBookmark: (clipId: string) => void;
@@ -345,8 +345,6 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   useEffect(() => {
     syncWithSupabase(true);
-
-    // Optimized sync frequency (30s) to prevent main-thread lag during video playback
     const interval = setInterval(() => syncWithSupabase(true), 30000);
     return () => clearInterval(interval);
   }, [syncWithSupabase]);
@@ -379,10 +377,8 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       created_at: new Date().toISOString()
     };
 
-    // Instant optimistic UI state update
     dispatch({ type: 'ADD_POST', payload: newPostItem });
 
-    // Background database sync
     insertPostWithAutoFallback({
       id: newPostItem.id,
       userId: newPostItem.userId,
@@ -398,9 +394,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       video_url: newPostItem.mediaType === 'video' ? newPostItem.mediaUrl : 'none',
       tags: newPostItem.tags
     }).then(({ error }) => {
-      if (error) {
-        console.warn('Post background sync issue:', error);
-      }
+      if (!error) syncWithSupabase(true);
     });
 
     return true;
@@ -498,8 +492,11 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     }
   };
 
-  const addCommentReply = async (postId: string, commentId: string, replyText: string) => {
-    if (!replyText.trim()) return;
+  const addCommentReply = async (
+    postId: string, 
+    commentId: string, 
+    replyData: { text: string; media?: string; mediaType?: 'image' | 'video' | 'gif' | 'sticker' | 'audio' }
+  ) => {
     sounds.pop();
 
     const newReply: CommentReply = {
@@ -508,7 +505,9 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       userName: state.currentUser.name,
       userAvatar: state.currentUser.avatar,
       userColor: state.currentUser.color,
-      text: replyText.trim(),
+      text: replyData.text || '',
+      media: replyData.media,
+      mediaType: replyData.mediaType,
       timestamp: 'Just now',
       likes: 0,
       isLiked: false
@@ -533,14 +532,10 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   const addClip = async (clip: ShortClipItem) => {
     sounds.success();
-    // Instant UI state update
     dispatch({ type: 'ADD_CLIP', payload: clip });
 
-    // Background Async Persistence
     supabase.from('clips').upsert([clip]).then(({ error }) => {
-      if (error) {
-        console.warn('Clip background insert warning:', error);
-      }
+      if (!error) syncWithSupabase(true);
     });
   };
 
@@ -589,15 +584,19 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const addClipComment = async (clipId: string, comment: any) => {
     sounds.pop();
     const clip = state.clips.find(c => c.id === clipId);
-    const newComment = {
+    const newComment: CommentItem = {
       id: `comm-${Date.now()}`,
       user: comment.user,
       userName: comment.userName,
       userAvatar: comment.userAvatar,
       userColor: comment.userColor,
       text: comment.text,
+      media: comment.media,
+      mediaType: comment.mediaType,
       timestamp: 'Just now',
-      likes: 0
+      likes: 0,
+      isLiked: false,
+      replies: []
     };
 
     dispatch({ type: 'ADD_CLIP_COMMENT', payload: { clipId, comment: newComment } });

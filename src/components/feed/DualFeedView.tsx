@@ -48,7 +48,6 @@ export const DualFeedView: React.FC = () => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [expandedComments, setExpandedComments] = useState<string | null>(null);
   const [activeReplyCommentId, setActiveReplyCommentId] = useState<string | null>(null);
-  const [replyInputText, setReplyInputText] = useState('');
   const [playingClipId, setPlayingClipId] = useState<string | null>(null);
   const [copiedPostId, setCopiedPostId] = useState<string | null>(null);
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
@@ -262,11 +261,15 @@ export const DualFeedView: React.FC = () => {
     }));
   };
 
-  const handleSendReply = async (postId: string, commentId: string) => {
-    if (!replyInputText.trim()) return;
+  const handleSendReply = async (
+    postId: string, 
+    commentId: string, 
+    replyPayload: { text: string; media?: string; mediaType?: 'image' | 'video' | 'gif' | 'sticker' | 'audio' }
+  ) => {
+    if (!replyPayload.text.trim() && !replyPayload.media) return;
     sounds.pop();
 
-    await addCommentReply(postId, commentId, replyInputText.trim());
+    await addCommentReply(postId, commentId, replyPayload);
 
     setPosts(prev => prev.map(p => {
       if (p.id !== postId) return p;
@@ -284,7 +287,9 @@ export const DualFeedView: React.FC = () => {
                 userName: currentUser?.name || 'Creator',
                 userAvatar: currentUser?.avatar || 'C',
                 userColor: currentUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)',
-                text: replyInputText.trim(),
+                text: replyPayload.text,
+                media: replyPayload.media,
+                mediaType: replyPayload.mediaType,
                 timestamp: 'Just now',
                 likes: 0
               }
@@ -294,9 +299,8 @@ export const DualFeedView: React.FC = () => {
       };
     }));
 
-    setReplyInputText('');
     setActiveReplyCommentId(null);
-    toast.success('Reply published!');
+    toast.success('Rich reply published!');
   };
 
   // Instant Inline Fast Post Submission
@@ -705,7 +709,7 @@ export const DualFeedView: React.FC = () => {
                       </div>
 
                       {post.comments && post.comments.length > 0 && (
-                        <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                        <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
                           {post.comments.map((comment: CommentItem) => (
                             <div key={comment.id} className="space-y-2">
                               <div className="flex items-start gap-2.5">
@@ -724,7 +728,9 @@ export const DualFeedView: React.FC = () => {
                                   {comment.text && <p className="text-white/90 leading-relaxed">{comment.text}</p>}
                                   
                                   {comment.media && (
-                                    <img src={comment.media} alt="Attached" className="rounded-xl mt-1 max-h-32 object-cover" />
+                                    <div className="mt-1 rounded-xl overflow-hidden max-h-36 border border-white/10">
+                                      <img src={comment.media} alt="Attached media" className="w-full h-full object-cover max-h-36" />
+                                    </div>
                                   )}
 
                                   {/* Comment Action Controls: Like & Reply */}
@@ -759,31 +765,27 @@ export const DualFeedView: React.FC = () => {
                                       >
                                         {reply.userAvatar}
                                       </div>
-                                      <div className="flex-1 bg-white/[0.03] rounded-xl p-2 border border-white/5">
+                                      <div className="flex-1 bg-white/[0.03] rounded-xl p-2 border border-white/5 space-y-1">
                                         <div className="font-bold text-white text-[11px] mb-0.5">{reply.userName}</div>
-                                        <p className="text-white/85 text-[11px]">{reply.text}</p>
+                                        {reply.text && <p className="text-white/85 text-[11px]">{reply.text}</p>}
+                                        {reply.media && (
+                                          <div className="mt-1 rounded-lg overflow-hidden max-h-28 border border-white/10">
+                                            <img src={reply.media} alt="Reply media" className="w-full h-full object-cover max-h-28" />
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
                                   ))}
                                 </div>
                               )}
 
-                              {/* Inline Reply Form Input */}
+                              {/* Inline Rich Reply Form Input */}
                               {activeReplyCommentId === comment.id && (
-                                <div className="ml-8 flex gap-2">
-                                  <input
-                                    type="text"
-                                    value={replyInputText}
-                                    onChange={(e) => setReplyInputText(e.target.value)}
+                                <div className="ml-8 pt-1">
+                                  <RichCommentInput
+                                    onSend={(replyPayload) => handleSendReply(post.id, comment.id, replyPayload)}
                                     placeholder={`Reply to ${comment.userName}...`}
-                                    className="flex-1 px-3 py-1.5 rounded-xl bg-black/40 border border-white/10 text-xs text-white placeholder-[#8a8aa8] focus:outline-none focus:border-[#00e5ff]"
                                   />
-                                  <button
-                                    onClick={() => handleSendReply(post.id, comment.id)}
-                                    className="px-3 py-1.5 rounded-xl bg-[#00e5ff] text-slate-900 font-bold text-xs shadow-md"
-                                  >
-                                    Send
-                                  </button>
                                 </div>
                               )}
                             </div>

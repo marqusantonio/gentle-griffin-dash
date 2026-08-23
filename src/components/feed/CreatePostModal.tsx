@@ -11,8 +11,9 @@ import {
   Loader2
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
-import { supabase, checkContentModeration } from '../../lib/supabase';
+import { checkContentModeration } from '../../lib/supabase';
 import { insertPostWithAutoFallback } from '../../lib/schemaAdapter';
+import { uploadFileToPublicStorage } from '../../lib/storageUtils';
 import { PostItem, ShortClipItem } from '../../types/wevids';
 import { getErrorMessage } from '../../lib/errorUtils';
 import { toast } from 'sonner';
@@ -34,7 +35,8 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   const [content, setContent] = useState('');
   const [title, setTitle] = useState('');
   const [audioTrack, setAudioTrack] = useState('Original Audio Track');
-  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [mediaPreviewUrl, setMediaPreviewUrl] = useState<string | null>(null);
   const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
   const [selectedTag, setSelectedTag] = useState('#WEVIDS');
   const [isUploading, setIsUploading] = useState(false);
@@ -57,11 +59,10 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
       return;
     }
 
+    setMediaFile(file);
     setFileName(file.name);
     setMediaType('image');
-    // Fast zero-memory object URL preview
-    const objectUrl = URL.createObjectURL(file);
-    setMediaUrl(objectUrl);
+    setMediaPreviewUrl(URL.createObjectURL(file));
     sounds.pop();
     toast.success(`Photo attached: ${file.name}`);
   };
@@ -75,11 +76,10 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
       return;
     }
 
+    setMediaFile(file);
     setFileName(file.name);
     setMediaType('video');
-    // Fast zero-memory object URL preview (instant 0ms lag)
-    const objectUrl = URL.createObjectURL(file);
-    setMediaUrl(objectUrl);
+    setMediaPreviewUrl(URL.createObjectURL(file));
     sounds.success();
     toast.success(`Video attached: ${file.name}`);
   };
@@ -87,7 +87,8 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   const resetForm = () => {
     setContent('');
     setTitle('');
-    setMediaUrl(null);
+    setMediaFile(null);
+    setMediaPreviewUrl(null);
     setMediaType(null);
     setFileName('');
   };
@@ -104,14 +105,22 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     setIsUploading(true);
 
     try {
+      let finalPublicMediaUrl: string | undefined = undefined;
+
+      if (mediaFile) {
+        toast.loading('Uploading media for global device access...');
+        finalPublicMediaUrl = await uploadFileToPublicStorage(mediaFile, targetType);
+        toast.dismiss();
+      }
+
       if (targetType === 'clips') {
-        if (!mediaUrl && !content.trim() && !title.trim()) {
-          toast.error('Please attach a video or provide a title for your Clip');
+        if (!finalPublicMediaUrl && !content.trim() && !title.trim()) {
+          toast.error('Please attach a video file for your Clip');
           setIsUploading(false);
           return;
         }
 
-        const clipVideoUrl = mediaUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
+        const clipVideoUrl = finalPublicMediaUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
 
         const newClip: ShortClipItem = {
           id: `clip-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -126,10 +135,9 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
           comments: []
         };
 
-        // Instant optimistic UI update
         sounds.success();
         await addClip(newClip);
-        toast.success('Short Clip published live!');
+        toast.success('Short Clip published live to all devices!');
         resetForm();
         setActiveView('clips');
         onClose();
@@ -137,7 +145,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         return;
       }
 
-      if (!content.trim() && !mediaUrl) {
+      if (!content.trim() && !finalPublicMediaUrl) {
         toast.error('Please write something or attach media');
         setIsUploading(false);
         return;
@@ -153,8 +161,8 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         location: currentUser?.location || 'Earth Node',
         time: 'Just now',
         content: content.trim(),
-        mediaUrl: mediaUrl || undefined,
-        mediaType: mediaUrl ? (mediaType || 'image') : undefined,
+        mediaUrl: finalPublicMediaUrl,
+        mediaType: finalPublicMediaUrl ? (mediaType || 'image') : undefined,
         likes: 0,
         shares: 0,
         comments: [],
@@ -170,11 +178,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
       // Async background database sync
       insertPostWithAutoFallback(newPost).then(({ error }) => {
-        if (error) {
-          console.warn('Background Supabase post sync warning:', error);
-        } else {
-          syncWithSupabase(true);
-        }
+        if (!error) syncWithSupabase(true);
       });
     } catch (err: any) {
       toast.error(getErrorMessage(err));
@@ -325,18 +329,19 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
           />
 
           {/* Media Preview Box */}
-          {mediaUrl && (
+          {mediaPreviewUrl && (
             <div className="relative rounded-2xl overflow-hidden border border-white/20 bg-black max-h-52 flex items-center justify-center">
               {mediaType === 'image' ? (
-                <img src={mediaUrl} alt="Upload preview" className="w-full h-full object-cover max-h-52" />
+                <img src={mediaPreviewUrl} alt="Upload preview" className="w-full h-full object-cover max-h-52" />
               ) : (
-                <video src={mediaUrl} controls autoPlay loop className="w-full h-full object-cover max-h-52" />
+                <video src={mediaPreviewUrl} controls autoPlay loop className="w-full h-full object-cover max-h-52" />
               )}
 
               <button
                 type="button"
                 onClick={() => {
-                  setMediaUrl(null);
+                  setMediaFile(null);
+                  setMediaPreviewUrl(null);
                   setMediaType(null);
                   setFileName('');
                 }}
@@ -413,7 +418,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold text-xs shadow-lg hover:scale-105 transition-transform flex items-center gap-1.5 disabled:opacity-50"
             >
               {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-              <span>{isUploading ? 'PUBLISHING...' : targetType === 'clips' ? 'PUBLISH CLIP' : 'PUBLISH POST'}</span>
+              <span>{isUploading ? 'UPLOADING...' : targetType === 'clips' ? 'PUBLISH CLIP' : 'PUBLISH POST'}</span>
             </button>
           </div>
         </form>

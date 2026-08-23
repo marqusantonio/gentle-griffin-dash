@@ -134,6 +134,8 @@ export interface CommentReply {
   userAvatar: string;
   userColor: string;
   text: string;
+  media?: string;
+  mediaType?: 'image' | 'video' | 'gif' | 'sticker' | 'audio';
   timestamp: string;
   likes: number;
   isLiked?: boolean;
