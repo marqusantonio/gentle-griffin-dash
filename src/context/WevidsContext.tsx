@@ -351,7 +351,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       dispatch({ type: 'SET_LAST_CLOUD_SYNC', payload: new Date().toLocaleTimeString() });
     } catch {
       // Safe offline fallback
-    } flex {
+    } finally {
       if (!silent) dispatch({ type: 'SET_CLOUD_SYNCING', payload: false });
     }
   }, [state.currentUser.id]);
