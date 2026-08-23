@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserPlus, UserCheck, Zap, ShieldCheck, Loader2 } from 'lucide-react';
+import { UserPlus, UserCheck, Zap, Loader2 } from 'lucide-react';
 import { useWevids } from '../../context/WevidsContext';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { sounds } from '../../lib/soundFx';
@@ -28,7 +28,6 @@ export const FollowButton: React.FC<FollowButtonProps> = ({
 
   const isMe = targetUserId === currentUser?.id;
 
-  // Determine relationship status from Supabase RPC or Context
   useEffect(() => {
     if (isMe) return;
 
@@ -84,7 +83,6 @@ export const FollowButton: React.FC<FollowButtonProps> = ({
     try {
       await toggleFollowUser(targetUserId);
 
-      // Re-evaluate
       if (isSupabaseConfigured() && currentUser?.id) {
         const { data } = await supabase.rpc('get_relationship_status', {
           p_current_user_id: currentUser.id,
@@ -112,20 +110,19 @@ export const FollowButton: React.FC<FollowButtonProps> = ({
     lg: 'px-5 py-2.5 text-xs font-orbitron font-bold'
   }[size];
 
-  // 1. FRIENDS / MUTUAL LINKED
   if (relStatus === 'FRIENDS') {
     return (
       <button
         onClick={handleAction}
         disabled={isProcessing}
-        className={`relative inline-flex items-center gap-1.5 rounded-2xl bg-gradient-to-r from-[#06b6d4] via-[#a855f7] to-[#ec4899] p-[1.5px] shadow-[0_0_20px_rgba(6,182,212,0.6)] animate-pulse hover:scale-105 transition-all duration-300 group ${className}`}
+        className={`relative inline-flex items-center gap-1.5 rounded-2xl bg-gradient-to-r from-cyan-400 via-purple-500 to-pink-500 p-[1.5px] shadow-[0_0_20px_rgba(6,182,212,0.6)] animate-pulse hover:scale-105 transition-all duration-300 group ${className}`}
         title="Mutual Friends Linked - Unrestricted Messaging"
       >
-        <span className={`w-full h-full bg-[#030712] rounded-[14px] ${sizeClasses} flex items-center gap-1.5 font-orbitron font-bold text-[#06b6d4] group-hover:bg-transparent group-hover:text-white transition-all`}>
+        <span className={`w-full h-full bg-slate-950 rounded-[14px] ${sizeClasses} flex items-center gap-1.5 font-orbitron font-bold text-cyan-400 group-hover:bg-transparent group-hover:text-white transition-all`}>
           {isProcessing ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
           ) : (
-            <Zap className="w-3.5 h-3.5 text-[#a855f7] animate-bounce" />
+            <Zap className="w-3.5 h-3.5 text-purple-400 animate-bounce" />
           )}
           <span>⚡ LINKED / FRIENDS</span>
         </span>
@@ -133,13 +130,12 @@ export const FollowButton: React.FC<FollowButtonProps> = ({
     );
   }
 
-  // 2. FOLLOW BACK
   if (relStatus === 'FOLLOW_BACK') {
     return (
       <button
         onClick={handleAction}
         disabled={isProcessing}
-        className={`inline-flex items-center gap-1.5 rounded-2xl bg-gradient-to-r from-[#a855f7] to-[#06b6d4] text-slate-950 font-orbitron font-bold ${sizeClasses} shadow-[0_0_15px_rgba(168,85,247,0.5)] hover:shadow-[0_0_25px_rgba(6,182,212,0.8)] hover:scale-105 transition-all duration-300 ${className}`}
+        className={`inline-flex items-center gap-1.5 rounded-2xl bg-gradient-to-r from-purple-500 to-cyan-400 text-slate-950 font-orbitron font-bold ${sizeClasses} shadow-[0_0_15px_rgba(168,85,247,0.5)] hover:shadow-[0_0_25px_rgba(6,182,212,0.8)] hover:scale-105 transition-all duration-300 ${className}`}
         title={`${targetUserName} follows you. Click to follow back & unlock Friends status!`}
       >
         {isProcessing ? (
@@ -152,13 +148,12 @@ export const FollowButton: React.FC<FollowButtonProps> = ({
     );
   }
 
-  // 3. FOLLOWING / REQUESTED
   if (relStatus === 'FOLLOWING') {
     return (
       <button
         onClick={handleAction}
         disabled={isProcessing}
-        className={`inline-flex items-center gap-1.5 rounded-2xl bg-white/5 border border-[#06b6d4]/40 text-[#06b6d4] font-orbitron font-bold ${sizeClasses} hover:bg-red-500/20 hover:border-red-500/50 hover:text-red-400 transition-all duration-300 ${className}`}
+        className={`inline-flex items-center gap-1.5 rounded-2xl bg-slate-900 border border-cyan-400/40 text-cyan-400 font-orbitron font-bold ${sizeClasses} hover:bg-red-500/20 hover:border-red-500/50 hover:text-red-400 transition-all duration-300 ${className}`}
         title="Click to unfollow"
       >
         {isProcessing ? (
@@ -171,12 +166,11 @@ export const FollowButton: React.FC<FollowButtonProps> = ({
     );
   }
 
-  // 4. NONE (DEFAULT FOLLOW)
   return (
     <button
       onClick={handleAction}
       disabled={isProcessing}
-      className={`inline-flex items-center gap-1.5 rounded-2xl bg-[#030712] border border-[#06b6d4] text-[#06b6d4] font-orbitron font-bold ${sizeClasses} shadow-[0_0_10px_rgba(6,182,212,0.3)] hover:shadow-[0_0_20px_rgba(6,182,212,0.7)] hover:bg-[#06b6d4] hover:text-slate-950 transition-all duration-300 ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-2xl bg-slate-950 border border-cyan-400 text-cyan-400 font-orbitron font-bold ${sizeClasses} shadow-[0_0_10px_rgba(6,182,212,0.3)] hover:shadow-[0_0_20px_rgba(6,182,212,0.7)] hover:bg-cyan-400 hover:text-slate-950 transition-all duration-300 ${className}`}
     >
       {isProcessing ? (
         <Loader2 className="w-3.5 h-3.5 animate-spin" />
