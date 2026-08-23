@@ -20,21 +20,35 @@ import { ShareModal } from '../components/modals/ShareModal';
 import { UserProfileModal } from '../components/modals/UserProfileModal';
 import { SupabaseConnectModal } from '../components/modals/SupabaseConnectModal';
 import { PerformanceModeModal } from '../components/modals/PerformanceModeModal';
+import { AuthOnboardingModal } from '../components/modals/AuthOnboardingModal';
+import { getStoredSession } from '../lib/supabase';
 import { toast } from 'sonner';
 
 const MainContent: React.FC = () => {
   const { activeView } = useWevids();
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
   const [isPerfModalOpen, setIsPerfModalOpen] = useState(false);
+  const [isAuthOnboardingOpen, setIsAuthOnboardingOpen] = useState(false);
   
-  // Performance mode state: entry (default fast, no blur lag) vs highend (liquid glass)
+  // Performance mode state: entry (default fast) vs highend (liquid glass)
   const [perfMode, setPerfMode] = useState<'entry' | 'highend'>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('wevids_perf_mode');
       if (saved === 'highend' || saved === 'entry') return saved;
     }
-    return 'entry'; // Default to Entry/Midrange for instant smooth 60fps on all devices
+    return 'entry';
   });
+
+  // Check first-time user onboarding modal
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const session = getStoredSession();
+      const onboardingCompleted = localStorage.getItem('wevids_onboarding_completed_v3');
+      if (!session && !onboardingCompleted) {
+        setIsAuthOnboardingOpen(true);
+      }
+    }
+  }, []);
 
   // Apply performance mode class to body
   useEffect(() => {
@@ -42,15 +56,6 @@ const MainContent: React.FC = () => {
     document.body.classList.add(`perf-${perfMode}`);
     localStorage.setItem('wevids_perf_mode', perfMode);
   }, [perfMode]);
-
-  // Show performance modal on first visit if not selected before
-  useEffect(() => {
-    const hasChosen = localStorage.getItem('wevids_perf_mode_chosen');
-    if (!hasChosen) {
-      setIsPerfModalOpen(true);
-      localStorage.setItem('wevids_perf_mode_chosen', 'true');
-    }
-  }, []);
 
   const handleTogglePerfMode = () => {
     const next = perfMode === 'entry' ? 'highend' : 'entry';
@@ -116,6 +121,10 @@ const MainContent: React.FC = () => {
         onClose={() => setIsPerfModalOpen(false)}
         currentMode={perfMode}
         onSelectMode={(mode) => setPerfMode(mode)}
+      />
+      <AuthOnboardingModal
+        isOpen={isAuthOnboardingOpen}
+        onClose={() => setIsAuthOnboardingOpen(false)}
       />
     </div>
   );

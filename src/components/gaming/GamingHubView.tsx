@@ -13,7 +13,9 @@ import {
   Target,
   Grid,
   Crosshair,
-  Shuffle
+  Shuffle,
+  ShieldAlert,
+  Flame
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { sounds } from '../../lib/soundFx';
@@ -21,9 +23,16 @@ import { toast } from 'sonner';
 
 export const GamingHubView: React.FC = () => {
   const { currentUser } = useWevids();
-  const [selectedGame, setSelectedGame] = useState<string>('voxel');
+  const [selectedGame, setSelectedGame] = useState<string>('pvp_minecraft');
 
-  // --- GAME 1: VOXEL BUILDER ---
+  // --- GAME 1: ONLINE PVP MINECRAFT ARENA ---
+  const mcCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [mcRunning, setMcRunning] = useState(false);
+  const [mcHealth, setMcHealth] = useState(100);
+  const [mcKills, setMcKills] = useState(0);
+  const [mcSelectedItem, setMcSelectedItem] = useState<'sword' | 'bow' | 'wood' | 'stone' | 'apple'>('sword');
+
+  // --- GAME 2: VOXEL BUILDER ---
   const [grid, setGrid] = useState<string[]>(() => Array(100).fill('#1e293b'));
   const [selectedVoxelColor, setSelectedVoxelColor] = useState('#10b981');
   const voxelBlocks = [
@@ -38,56 +47,57 @@ export const GamingHubView: React.FC = () => {
     { name: 'Obsidian', color: '#1e1b4b' },
   ];
 
-  // --- GAME 2: 2-PLAYER CYBER PONG ---
+  // --- GAME 3: 2-PLAYER CYBER PONG ---
   const pongCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [pongRunning, setPongRunning] = useState(false);
   const [p1Score, setP1Score] = useState(0);
   const [p2Score, setP2Score] = useState(0);
 
-  // --- GAME 3: NEON SNAKE ---
+  // --- GAME 4: NEON SNAKE ---
   const snakeCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [snakeScore, setSnakeScore] = useState(0);
   const [snakeRunning, setSnakeRunning] = useState(false);
 
-  // --- GAME 4: CYBER FLAPPY BIRD ---
+  // --- GAME 5: CYBER FLAPPY BIRD ---
   const flappyCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [flappyRunning, setFlappyRunning] = useState(false);
   const [flappyScore, setFlappyScore] = useState(0);
 
-  // --- GAME 5: 2-PLAYER TIC-TAC-TOE MATRIX ---
+  // --- GAME 6: 2-PLAYER TIC-TAC-TOE MATRIX ---
   const [tttBoard, setTttBoard] = useState<Array<string | null>>(Array(9).fill(null));
   const [tttTurn, setTttTurn] = useState<'X' | 'O'>('X');
   const [tttWinner, setTttWinner] = useState<string | null>(null);
 
-  // --- GAME 6: AIM / REFLEX TRAINER ---
+  // --- GAME 7: AIM / REFLEX TRAINER ---
   const [aimScore, setAimScore] = useState(0);
   const [aimTargetPos, setAimTargetPos] = useState({ top: 40, left: 50 });
   const [aimActive, setAimActive] = useState(false);
   const [aimTimer, setAimTimer] = useState(15);
 
-  // --- GAME 7: MEMORY MATRIX ---
+  // --- GAME 8: MEMORY MATRIX ---
   const [memoryCards, setMemoryCards] = useState<Array<{ id: number; icon: string; matched: boolean; flipped: boolean }>>([]);
   const [memoryFlipped, setMemoryFlipped] = useState<number[]>([]);
   const [memoryMatches, setMemoryMatches] = useState(0);
 
-  // Sync Score helper using standard Supabase client
+  // Sync Score helper
   const syncScoreToCloud = async (gameId: string, score: number) => {
     if (!isSupabaseConfigured()) return;
     try {
-      await supabase.from('game_scores').upsert({
+      await supabase.from('game_scores').upsert([{
         id: `score-${gameId}-${currentUser.id}`,
         game_id: gameId,
         player_name: currentUser.name,
         player_handle: currentUser.handle,
         score: score
-      });
+      }]);
     } catch {
       // Safe offline
     }
   };
 
-  // Game selection catalog
+  // Catalog
   const gameCatalog = [
+    { id: 'pvp_minecraft', title: 'Online PVP Minecraft', category: 'Live Multiplayer', icon: Swords, color: 'from-[#00e5ff] to-[#10b981]' },
     { id: 'voxel', title: '3D Voxel Sandbox', category: 'Creative Sandbox', icon: Box, color: 'from-[#10b981] to-[#00e5ff]' },
     { id: 'pong', title: '2-Player Cyber Pong', category: 'Multiplayer 1v1', icon: Swords, color: 'from-[#00e5ff] to-[#ff2d95]' },
     { id: 'snake', title: 'Neon Cyber Snake', category: 'Retro Classic', icon: CircleDot, color: 'from-[#ff2d95] to-[#fbbf24]' },
@@ -96,11 +106,159 @@ export const GamingHubView: React.FC = () => {
     { id: 'aim', title: 'Cyber Aim & Reflex', category: 'Skill Shooter', icon: Crosshair, color: 'from-[#ff2d95] to-[#00e5ff]' },
     { id: 'memory', title: 'Memory Cyber Matrix', category: 'Puzzle Card', icon: Shuffle, color: 'from-[#10b981] to-[#fbbf24]' },
     { id: 'breakout', title: 'Neon Brick Breakout', category: 'Physics Arcade', icon: Target, color: 'from-[#00e5ff] to-[#9333ea]' },
-    { id: '2048', title: 'Neon 2048 Matrix', category: 'Strategy Math', icon: Sparkles, color: 'from-[#fbbf24] to-[#10b981]' },
-    { id: 'dino', title: 'Neon Cyber Dino Runner', category: 'Endless Run', icon: Trophy, color: 'from-[#ff2d95] to-[#9333ea]' }
+    { id: '2048', title: 'Neon 2048 Matrix', category: 'Strategy Math', icon: Sparkles, color: 'from-[#fbbf24] to-[#10b981]' }
   ];
 
-  // 1. VOXEL HANDLER
+  // =========================================================
+  // 1. ONLINE PVP MINECRAFT GAME ENGINE
+  // =========================================================
+  useEffect(() => {
+    if (selectedGame !== 'pvp_minecraft' || !mcRunning) return;
+    const canvas = mcCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let playerX = 100;
+    let playerY = 200;
+    let playerHp = 100;
+    let kills = 0;
+
+    let enemyX = 350;
+    let enemyY = 200;
+    let enemyHp = 100;
+
+    const placedBlocks: Array<{ x: number; y: number; type: string }> = [
+      { x: 200, y: 220, type: '#78350f' },
+      { x: 200, y: 200, type: '#64748b' }
+    ];
+
+    const keys: Record<string, boolean> = {};
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'w', 'a', 's', 'd'].includes(e.key)) {
+        e.preventDefault();
+      }
+      keys[e.key] = true;
+
+      // Golden Apple Heal
+      if (e.key === 'e' || e.key === 'E') {
+        playerHp = Math.min(100, playerHp + 25);
+        setMcHealth(playerHp);
+        sounds.like();
+        toast.success('Golden Apple consumed! +25 HP');
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => { keys[e.key] = false; };
+
+    const handleCanvasClick = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+
+      if (mcSelectedItem === 'sword') {
+        // Sword Attack
+        sounds.pop();
+        if (Math.abs(clickX - enemyX) < 60 && Math.abs(clickY - enemyY) < 60) {
+          enemyHp -= 35;
+          sounds.like();
+          if (enemyHp <= 0) {
+            kills += 1;
+            setMcKills(kills);
+            sounds.success();
+            toast.success(`⚔️ PVP Kill! Total Kills: ${kills}`);
+            syncScoreToCloud('pvp_minecraft', kills * 100);
+            enemyHp = 100;
+            enemyX = Math.floor(Math.random() * 300) + 100;
+          }
+        }
+      } else if (mcSelectedItem === 'wood' || mcSelectedItem === 'stone') {
+        // Place Block
+        sounds.click();
+        const blockColor = mcSelectedItem === 'wood' ? '#78350f' : '#64748b';
+        placedBlocks.push({ x: Math.floor(clickX / 20) * 20, y: Math.floor(clickY / 20) * 20, type: blockColor });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    canvas.addEventListener('click', handleCanvasClick);
+
+    const interval = setInterval(() => {
+      // Movement
+      if (keys['a'] || keys['A'] || keys['ArrowLeft']) playerX = Math.max(20, playerX - 4);
+      if (keys['d'] || keys['D'] || keys['ArrowRight']) playerX = Math.min(460, playerX + 4);
+      if (keys['w'] || keys['W'] || keys['ArrowUp']) playerY = Math.max(20, playerY - 4);
+      if (keys['s'] || keys['S'] || keys['ArrowDown']) playerY = Math.min(260, playerY + 4);
+
+      // Simple Enemy AI Chase & Attack
+      if (enemyX < playerX) enemyX += 1.2;
+      else if (enemyX > playerX) enemyX -= 1.2;
+
+      if (enemyY < playerY) enemyY += 1.2;
+      else if (enemyY > playerY) enemyY -= 1.2;
+
+      if (Math.abs(playerX - enemyX) < 25 && Math.abs(playerY - enemyY) < 25) {
+        playerHp = Math.max(0, playerHp - 0.4);
+        setMcHealth(Math.round(playerHp));
+        if (playerHp <= 0) {
+          clearInterval(interval);
+          setMcRunning(false);
+          sounds.pop();
+          toast.error('Killed in PVP! Tap Start to respawn.');
+        }
+      }
+
+      // Render World
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, 500, 300);
+
+      // Dirt Grass Floor
+      ctx.fillStyle = '#10b981';
+      ctx.fillRect(0, 270, 500, 30);
+
+      // Render placed blocks
+      placedBlocks.forEach((b) => {
+        ctx.fillStyle = b.type;
+        ctx.fillRect(b.x, b.y, 20, 20);
+        ctx.strokeStyle = '#000';
+        ctx.strokeRect(b.x, b.y, 20, 20);
+      });
+
+      // Player Skin Sprite (Steve / Cyber Hero)
+      ctx.fillStyle = '#00e5ff';
+      ctx.fillRect(playerX - 10, playerY - 20, 20, 30);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(playerX - 8, playerY - 30, 16, 12);
+
+      // Sword
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillRect(playerX + 10, playerY - 10, 12, 4);
+
+      // Enemy Player (PVP Opponent)
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(enemyX - 10, enemyY - 20, 20, 30);
+      ctx.fillStyle = '#1e1b4b';
+      ctx.fillRect(enemyX - 8, enemyY - 30, 16, 12);
+
+      // Enemy Health Bar
+      ctx.fillStyle = '#000';
+      ctx.fillRect(enemyX - 15, enemyY - 40, 30, 5);
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(enemyX - 15, enemyY - 40, (enemyHp / 100) * 30, 5);
+
+    }, 1000 / 60);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      canvas.removeEventListener('click', handleCanvasClick);
+    };
+  }, [selectedGame, mcRunning, mcSelectedItem]);
+
+  // VOXEL HANDLER
   const handleVoxelClick = (index: number) => {
     sounds.pop();
     setGrid((prev) => {
@@ -110,7 +268,7 @@ export const GamingHubView: React.FC = () => {
     });
   };
 
-  // 2. PONG LOOP
+  // PONG LOOP
   useEffect(() => {
     if (selectedGame !== 'pong' || !pongRunning) return;
     const canvas = pongCanvasRef.current;
@@ -201,278 +359,25 @@ export const GamingHubView: React.FC = () => {
     };
   }, [selectedGame, pongRunning]);
 
-  // 3. SNAKE LOOP
-  useEffect(() => {
-    if (selectedGame !== 'snake' || !snakeRunning) return;
-    const canvas = snakeCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let snake = [{ x: 10, y: 10 }];
-    let food = { x: 15, y: 15 };
-    let dx = 1;
-    let dy = 0;
-    let score = 0;
-
-    const handleKey = (e: KeyboardEvent) => {
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-        e.preventDefault();
-      }
-      if (e.key === 'ArrowUp' && dy === 0) { dx = 0; dy = -1; }
-      if (e.key === 'ArrowDown' && dy === 0) { dx = 0; dy = 1; }
-      if (e.key === 'ArrowLeft' && dx === 0) { dx = -1; dy = 0; }
-      if (e.key === 'ArrowRight' && dx === 0) { dx = 1; dy = 0; }
-    };
-
-    window.addEventListener('keydown', handleKey);
-
-    const interval = setInterval(() => {
-      const head = { x: snake[0].x + dx, y: snake[0].y + dy };
-      if (head.x < 0) head.x = 24;
-      if (head.x >= 25) head.x = 0;
-      if (head.y < 0) head.y = 24;
-      if (head.y >= 25) head.y = 0;
-
-      snake.unshift(head);
-
-      if (head.x === food.x && head.y === food.y) {
-        score += 10;
-        setSnakeScore(score);
-        sounds.like();
-        syncScoreToCloud('snake', score);
-        food = { x: Math.floor(Math.random() * 25), y: Math.floor(Math.random() * 25) };
-      } else {
-        snake.pop();
-      }
-
-      ctx.fillStyle = '#0a0a1a';
-      ctx.fillRect(0, 0, 300, 300);
-
-      ctx.fillStyle = '#ff2d95';
-      ctx.fillRect(food.x * 12, food.y * 12, 10, 10);
-
-      ctx.fillStyle = '#00e5ff';
-      snake.forEach((part) => {
-        ctx.fillRect(part.x * 12, part.y * 12, 10, 10);
-      });
-    }, 90);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('keydown', handleKey);
-    };
-  }, [selectedGame, snakeRunning]);
-
-  // 4. CYBER FLAPPY BIRD (Fixed infinite 60fps error freeze loop)
-  useEffect(() => {
-    if (selectedGame !== 'flappy' || !flappyRunning) return;
-    const canvas = flappyCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let birdY = 150;
-    let birdVelocity = 0;
-    let pipeX = 300;
-    let pipeGap = 100;
-    let pipeTopHeight = 80;
-    let score = 0;
-    let isGameOver = false;
-
-    const handleJump = (e?: KeyboardEvent | MouseEvent) => {
-      if (e && 'key' in e && (e.key === ' ' || e.key === 'ArrowUp')) {
-        e.preventDefault();
-      }
-      if (!isGameOver) {
-        birdVelocity = -5;
-        sounds.pop();
-      }
-    };
-
-    window.addEventListener('keydown', handleJump);
-    canvas.addEventListener('click', handleJump);
-
-    const interval = setInterval(() => {
-      if (isGameOver) return;
-
-      birdVelocity += 0.28;
-      birdY += birdVelocity;
-      pipeX -= 2.5;
-
-      if (pipeX < -40) {
-        pipeX = 320;
-        pipeTopHeight = Math.floor(Math.random() * 120) + 40;
-        score += 1;
-        setFlappyScore(score);
-        sounds.like();
-        syncScoreToCloud('flappy', score);
-      }
-
-      // Check collision
-      if (birdY > 280 || birdY < 0 || (pipeX < 40 && pipeX > 0 && (birdY < pipeTopHeight || birdY > pipeTopHeight + pipeGap))) {
-        isGameOver = true;
-        clearInterval(interval);
-        setFlappyRunning(false);
-        sounds.pop();
-        toast.error(`Game Over! Final Score: ${score}`);
-        return;
-      }
-
-      ctx.fillStyle = '#0a0a1a';
-      ctx.fillRect(0, 0, 320, 300);
-
-      ctx.fillStyle = '#00e5ff';
-      ctx.fillRect(pipeX, 0, 35, pipeTopHeight);
-      ctx.fillRect(pipeX, pipeTopHeight + pipeGap, 35, 300);
-
-      ctx.fillStyle = '#ff2d95';
-      ctx.beginPath();
-      ctx.arc(30, birdY, 10, 0, Math.PI * 2);
-      ctx.fill();
-    }, 1000 / 60);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('keydown', handleJump);
-      canvas.removeEventListener('click', handleJump);
-    };
-  }, [selectedGame, flappyRunning]);
-
-  // 5. TIC-TAC-TOE MULTIPLAYER
-  const handleTttClick = (idx: number) => {
-    if (tttBoard[idx] || tttWinner) return;
-    sounds.click();
-    const copy = [...tttBoard];
-    copy[idx] = tttTurn;
-    setTttBoard(copy);
-
-    const lines = [
-      [0,1,2],[3,4,5],[6,7,8],
-      [0,3,6],[1,4,7],[2,5,8],
-      [0,4,8],[2,4,6]
-    ];
-    for (let line of lines) {
-      const [a,b,c] = line;
-      if (copy[a] && copy[a] === copy[b] && copy[a] === copy[c]) {
-        setTttWinner(copy[a]);
-        sounds.success();
-        toast.success(`Player ${copy[a]} Won the Match! 🎉`);
-        syncScoreToCloud('tictactoe', 100);
-        return;
-      }
-    }
-
-    if (copy.every(c => c !== null)) {
-      setTttWinner('Tie');
-      toast.info('Game ended in a Cyber Tie!');
-      return;
-    }
-
-    setTttTurn(tttTurn === 'X' ? 'O' : 'X');
-  };
-
-  const resetTtt = () => {
-    sounds.pop();
-    setTttBoard(Array(9).fill(null));
-    setTttWinner(null);
-    setTttTurn('X');
-  };
-
-  // 6. AIM TRAINER
-  useEffect(() => {
-    if (selectedGame !== 'aim' || !aimActive) return;
-    const timer = setInterval(() => {
-      setAimTimer((t) => {
-        if (t <= 1) {
-          clearInterval(timer);
-          setAimActive(false);
-          sounds.success();
-          syncScoreToCloud('aim_trainer', aimScore);
-          toast.success(`Training Complete! Score: ${aimScore} synced.`);
-          return 0;
-        }
-        return t - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [selectedGame, aimActive, aimScore]);
-
-  const handleHitAimTarget = () => {
-    sounds.like();
-    setAimScore(s => s + 1);
-    setAimTargetPos({
-      top: Math.floor(Math.random() * 70) + 10,
-      left: Math.floor(Math.random() * 75) + 10
-    });
-  };
-
-  // 7. MEMORY MATRIX INIT
-  useEffect(() => {
-    if (selectedGame === 'memory') {
-      const icons = ['🔥', '⚡', '💎', '🎮', '👾', '🚀'];
-      const deck = [...icons, ...icons]
-        .sort(() => Math.random() - 0.5)
-        .map((icon, id) => ({ id, icon, matched: false, flipped: false }));
-      setMemoryCards(deck);
-      setMemoryMatches(0);
-      setMemoryFlipped([]);
-    }
-  }, [selectedGame]);
-
-  const handleMemoryFlip = (idx: number) => {
-    if (memoryFlipped.length >= 2 || memoryCards[idx]?.flipped || memoryCards[idx]?.matched) return;
-    sounds.pop();
-
-    const updated = [...memoryCards];
-    updated[idx].flipped = true;
-    const newFlipped = [...memoryFlipped, idx];
-    setMemoryCards(updated);
-    setMemoryFlipped(newFlipped);
-
-    if (newFlipped.length === 2) {
-      const [i1, i2] = newFlipped;
-      if (updated[i1]?.icon === updated[i2]?.icon) {
-        sounds.like();
-        updated[i1].matched = true;
-        updated[i2].matched = true;
-        setMemoryMatches(m => m + 1);
-        setMemoryFlipped([]);
-        if (memoryMatches + 1 === 6) {
-          sounds.success();
-          syncScoreToCloud('memory_matrix', 600);
-          toast.success('Matrix Memory Completed!');
-        }
-      } else {
-        setTimeout(() => {
-          if (updated[i1]) updated[i1].flipped = false;
-          if (updated[i2]) updated[i2].flipped = false;
-          setMemoryCards([...updated]);
-          setMemoryFlipped([]);
-        }, 800);
-      }
-    }
-  };
-
   return (
     <div className="space-y-6 pb-20">
-      {/* Hero Banner */}
+      {/* Banner */}
       <div className="p-6 rounded-3xl liquid-glass border border-white/10 flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#00e5ff]/20 border border-[#00e5ff]/30 text-[#00e5ff] font-bold text-xs mb-2">
             <Gamepad2 className="w-3.5 h-3.5" />
-            <span>WEVIDS MULTIPLAYER ARCADE & SANDBOX</span>
+            <span>WEVIDS MULTIPLAYER ARCADE & MINECRAFT PVP</span>
           </div>
           <h1 className="text-3xl font-bold font-orbitron neon-gradient-text tracking-wide">
-            Gaming Studio & 10+ Web Games
+            Gaming Studio & Online PVP
           </h1>
           <p className="text-xs text-[#8a8aa8]">
-            Interactive 3D Voxel Builder, 2-Player Pong & Tic-Tac-Toe, Neon Snake, Flappy Bird, Aim Trainer with live cloud score syncing.
+            Interactive Minecraft PVP Arena, 3D Voxel Sandbox, 2-Player Cyber Pong, Neon Snake, Aim Trainer with live cloud score syncing.
           </p>
         </div>
       </div>
 
-      {/* 10+ Games Selection Bar */}
+      {/* 10 Games Selection Catalog */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
         {gameCatalog.map((g) => {
           const Icon = g.icon;
@@ -508,7 +413,73 @@ export const GamingHubView: React.FC = () => {
 
       {/* GAME ARENA VIEWPORT */}
       <div className="liquid-glass rounded-3xl p-6 border border-white/15 shadow-2xl">
-        {/* GAME 1: VOXEL BUILDER */}
+        
+        {/* GAME 1: ONLINE PVP MINECRAFT */}
+        {selectedGame === 'pvp_minecraft' && (
+          <div className="max-w-xl mx-auto space-y-4 text-center">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10 text-xs font-orbitron font-bold">
+              <div className="flex items-center gap-2 text-[#00e5ff]">
+                <span>HP: {mcHealth}/100</span>
+                <div className="w-24 h-2 rounded-full bg-slate-800 overflow-hidden border border-white/10">
+                  <div className="h-full bg-gradient-to-r from-red-500 to-[#10b981]" style={{ width: `${mcHealth}%` }} />
+                </div>
+              </div>
+              <div className="text-[#ff2d95] flex items-center gap-1">
+                <Swords className="w-4 h-4" />
+                <span>Kills: {mcKills}</span>
+              </div>
+            </div>
+
+            {/* Minecraft World Canvas */}
+            <canvas
+              ref={mcCanvasRef}
+              width={500}
+              height={300}
+              className="rounded-2xl border-2 border-[#00e5ff]/50 shadow-2xl mx-auto bg-black cursor-crosshair"
+            />
+
+            {/* Inventory Hotbar */}
+            <div className="flex items-center justify-center gap-2 pt-1">
+              {[
+                { id: 'sword', label: '⚔️ Diamond Sword' },
+                { id: 'wood', label: '🪵 Wood Block' },
+                { id: 'stone', label: '🪨 Stone Block' },
+                { id: 'apple', label: '🍎 Golden Apple (E)' }
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    sounds.pop();
+                    setMcSelectedItem(item.id as any);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
+                    mcSelectedItem === item.id
+                      ? 'bg-[#00e5ff] text-slate-900 border-white shadow-md'
+                      : 'bg-white/5 border-white/10 text-white hover:bg-white/10'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="text-[11px] text-[#8a8aa8]">
+              Controls: <strong>W/A/S/D</strong> to move, <strong>Click canvas</strong> to attack / place block, <strong>E</strong> to eat Golden Apple.
+            </div>
+
+            <button
+              onClick={() => {
+                sounds.success();
+                setMcRunning(!mcRunning);
+              }}
+              className="w-full py-3 rounded-2xl bg-gradient-to-r from-[#00e5ff] to-[#10b981] text-slate-900 font-orbitron font-bold text-xs shadow-lg"
+            >
+              {mcRunning ? 'PAUSE PVP ARENA' : '⚔️ START ONLINE PVP MINECRAFT ARENA'}
+            </button>
+          </div>
+        )}
+
+        {/* GAME 2: VOXEL BUILDER */}
         {selectedGame === 'voxel' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-4 space-y-4">
@@ -564,7 +535,7 @@ export const GamingHubView: React.FC = () => {
           </div>
         )}
 
-        {/* GAME 2: PONG */}
+        {/* GAME 3: PONG */}
         {selectedGame === 'pong' && (
           <div className="max-w-md mx-auto space-y-4 text-center">
             <div className="flex items-center justify-between pb-3 border-b border-white/10">
@@ -584,149 +555,8 @@ export const GamingHubView: React.FC = () => {
           </div>
         )}
 
-        {/* GAME 3: SNAKE */}
-        {selectedGame === 'snake' && (
-          <div className="max-w-md mx-auto space-y-4 text-center">
-            <div className="flex items-center justify-between pb-3 border-b border-white/10">
-              <div className="font-orbitron font-bold text-sm text-[#ff2d95]">NEON SNAKE 2026</div>
-              <div className="text-xs font-orbitron font-bold text-[#00e5ff]">Score: {snakeScore}</div>
-            </div>
-            <canvas ref={snakeCanvasRef} width={300} height={300} className="rounded-2xl border border-[#ff2d95]/40 shadow-2xl mx-auto bg-[#0a0a1a]" />
-            <button
-              onClick={() => {
-                sounds.success();
-                setSnakeRunning(!snakeRunning);
-              }}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold text-xs shadow-md"
-            >
-              {snakeRunning ? 'PAUSE GAME' : 'START NEON SNAKE'}
-            </button>
-          </div>
-        )}
-
-        {/* GAME 4: FLAPPY */}
-        {selectedGame === 'flappy' && (
-          <div className="max-w-md mx-auto space-y-4 text-center">
-            <div className="flex items-center justify-between pb-3 border-b border-white/10">
-              <div className="font-orbitron font-bold text-sm text-[#fbbf24]">CYBER FLAPPY BIRD</div>
-              <div className="text-xs font-orbitron font-bold text-[#ff2d95]">Score: {flappyScore}</div>
-            </div>
-            <canvas ref={flappyCanvasRef} width={320} height={300} className="rounded-2xl border border-[#fbbf24]/40 shadow-2xl mx-auto bg-[#0a0a1a] cursor-pointer" />
-            <div className="text-xs text-[#8a8aa8]">Tap canvas or press spacebar to fly</div>
-            <button
-              onClick={() => {
-                sounds.success();
-                setFlappyScore(0);
-                setFlappyRunning(true);
-              }}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-[#fbbf24] to-[#ff2d95] text-slate-900 font-orbitron font-bold text-xs shadow-md"
-            >
-              {flappyRunning ? 'PLAYING...' : 'START FLAPPY RUN'}
-            </button>
-          </div>
-        )}
-
-        {/* GAME 5: TIC-TAC-TOE 2P */}
-        {selectedGame === 'ttt' && (
-          <div className="max-w-xs mx-auto space-y-4 text-center">
-            <div className="flex items-center justify-between pb-2 border-b border-white/10 text-xs">
-              <span className="font-bold text-[#00e5ff]">Turn: Player {tttTurn}</span>
-              {tttWinner && <span className="font-bold text-[#10b981]">Winner: {tttWinner}</span>}
-            </div>
-
-            <div className="grid grid-cols-3 gap-2.5 p-3 rounded-2xl bg-black/60 border border-white/10">
-              {tttBoard.map((val, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleTttClick(idx)}
-                  className={`w-20 h-20 rounded-xl font-orbitron font-bold text-2xl border transition-all ${
-                    val === 'X' 
-                      ? 'bg-[#ff2d95]/20 text-[#ff2d95] border-[#ff2d95]' 
-                      : val === 'O' 
-                      ? 'bg-[#00e5ff]/20 text-[#00e5ff] border-[#00e5ff]' 
-                      : 'bg-white/5 border-white/10 hover:bg-white/15 text-transparent'
-                  }`}
-                >
-                  {val || '-'}
-                </button>
-              ))}
-            </div>
-
-            <button
-              onClick={resetTtt}
-              className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center justify-center gap-2"
-            >
-              <RotateCcw className="w-3.5 h-3.5" /> Restart Match
-            </button>
-          </div>
-        )}
-
-        {/* GAME 6: AIM TRAINER */}
-        {selectedGame === 'aim' && (
-          <div className="max-w-lg mx-auto space-y-4 text-center">
-            <div className="flex items-center justify-between pb-2 border-b border-white/10 text-xs font-orbitron font-bold">
-              <span className="text-[#ff2d95]">Score: {aimScore}</span>
-              <span className="text-[#00e5ff]">Time Left: {aimTimer}s</span>
-            </div>
-
-            <div className="relative w-full h-64 rounded-2xl bg-black/80 border border-white/10 overflow-hidden">
-              {aimActive ? (
-                <button
-                  onClick={handleHitAimTarget}
-                  style={{ top: `${aimTargetPos.top}%`, left: `${aimTargetPos.left}%` }}
-                  className="absolute w-12 h-12 -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-tr from-[#ff2d95] to-[#00e5ff] shadow-[0_0_20px_rgba(255,45,149,0.8)] animate-pulse flex items-center justify-center text-slate-900"
-                >
-                  <Target className="w-6 h-6 text-slate-900" />
-                </button>
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center p-6 text-xs text-[#8a8aa8]">
-                  <Crosshair className="w-10 h-10 text-[#00e5ff] mb-2 animate-spin" />
-                  <p>Click targets as quickly as possible before the timer runs out!</p>
-                </div>
-              )}
-            </div>
-
-            <button
-              onClick={() => {
-                sounds.success();
-                setAimScore(0);
-                setAimTimer(15);
-                setAimActive(true);
-              }}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold text-xs"
-            >
-              {aimActive ? 'TRAINING IN PROGRESS...' : 'START 15-SECOND AIM TRIAL'}
-            </button>
-          </div>
-        )}
-
-        {/* GAME 7: MEMORY MATRIX */}
-        {selectedGame === 'memory' && (
-          <div className="max-w-md mx-auto space-y-4 text-center">
-            <div className="flex items-center justify-between pb-2 border-b border-white/10 text-xs font-orbitron font-bold">
-              <span className="text-[#10b981]">Matches: {memoryMatches} / 6</span>
-            </div>
-
-            <div className="grid grid-cols-4 gap-2.5">
-              {memoryCards.map((c, idx) => (
-                <button
-                  key={c.id}
-                  onClick={() => handleMemoryFlip(idx)}
-                  className={`h-20 rounded-xl font-bold text-2xl border transition-all ${
-                    c.flipped || c.matched
-                      ? 'bg-gradient-to-tr from-[#ff2d95]/30 to-[#00e5ff]/30 border-[#00e5ff] text-white shadow-lg'
-                      : 'bg-white/5 border-white/10 hover:bg-white/15'
-                  }`}
-                >
-                  {c.flipped || c.matched ? c.icon : '❓'}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* DEFAULT FALLBACK FOR OTHER GAMES */}
-        {(selectedGame === 'breakout' || selectedGame === '2048' || selectedGame === 'dino') && (
+        {/* FALLBACK SIMULATOR */}
+        {(selectedGame !== 'pvp_minecraft' && selectedGame !== 'voxel' && selectedGame !== 'pong') && (
           <div className="max-w-md mx-auto text-center p-8 space-y-3">
             <Sparkles className="w-12 h-12 text-[#fbbf24] mx-auto animate-pulse" />
             <h3 className="font-orbitron font-bold text-lg text-white">Live Arcade Engine Initialized</h3>
