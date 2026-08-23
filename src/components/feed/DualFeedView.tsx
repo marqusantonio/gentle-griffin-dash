@@ -35,6 +35,7 @@ export const DualFeedView: React.FC = () => {
     openUserProfileModal, 
     allUsers,
     toggleCommentLike,
+    toggleReplyLike,
     addCommentReply
   } = useWevids();
 
@@ -255,6 +256,33 @@ export const DualFeedView: React.FC = () => {
             ...c,
             isLiked: newLiked,
             likes: newLiked ? (Number(c.likes) || 0) + 1 : Math.max(0, (Number(c.likes) || 1) - 1)
+          };
+        })
+      };
+    }));
+  };
+
+  const handleReplyLikeClick = (postId: string, commentId: string, replyId: string) => {
+    sounds.like();
+    toggleReplyLike(postId, commentId, replyId);
+
+    setPosts(prev => prev.map(p => {
+      if (p.id !== postId) return p;
+      return {
+        ...p,
+        comments: (p.comments || []).map(c => {
+          if (c.id !== commentId) return c;
+          return {
+            ...c,
+            replies: (c.replies || []).map(r => {
+              if (r.id !== replyId) return r;
+              const newLiked = !r.isLiked;
+              return {
+                ...r,
+                isLiked: newLiked,
+                likes: newLiked ? (Number(r.likes) || 0) + 1 : Math.max(0, (Number(r.likes) || 1) - 1)
+              };
+            })
           };
         })
       };
@@ -765,26 +793,42 @@ export const DualFeedView: React.FC = () => {
                                       >
                                         {reply.userAvatar}
                                       </div>
-                                      <div className="flex-1 bg-white/[0.03] rounded-xl p-2 border border-white/5 space-y-1">
-                                        <div className="font-bold text-white text-[11px] mb-0.5">{reply.userName}</div>
-                                        {reply.text && <p className="text-white/85 text-[11px]">{reply.text}</p>}
+                                      <div className="flex-1 bg-white/[0.03] rounded-xl p-2.5 border border-white/5 space-y-1">
+                                        <div className="flex items-center justify-between">
+                                          <span className="font-bold text-white text-[11px]">{reply.userName}</span>
+                                          <span className="text-[9px] text-[#8a8aa8]">{reply.timestamp}</span>
+                                        </div>
+
+                                        {reply.text && <p className="text-white/85 text-[11px] leading-relaxed">{reply.text}</p>}
+                                        
                                         {reply.media && (
-                                          <div className="mt-1 rounded-lg overflow-hidden max-h-28 border border-white/10">
-                                            <img src={reply.media} alt="Reply media" className="w-full h-full object-cover max-h-28" />
+                                          <div className="mt-1.5 rounded-xl overflow-hidden max-h-32 border border-white/10">
+                                            <img src={reply.media} alt="Reply attachment" className="w-full h-full object-cover max-h-32" />
                                           </div>
                                         )}
+
+                                        {/* Reply Like Action */}
+                                        <div className="pt-1 flex items-center gap-2 text-[10px] text-[#8a8aa8]">
+                                          <button
+                                            onClick={() => handleReplyLikeClick(post.id, comment.id, reply.id)}
+                                            className={`flex items-center gap-1 font-bold transition-colors ${reply.isLiked ? 'text-[#ff2d95]' : 'hover:text-white'}`}
+                                          >
+                                            <Heart className={`w-3 h-3 ${reply.isLiked ? 'fill-current' : ''}`} />
+                                            <span>{reply.likes || 0} Likes</span>
+                                          </button>
+                                        </div>
                                       </div>
                                     </div>
                                   ))}
                                 </div>
                               )}
 
-                              {/* Inline Rich Reply Form Input */}
+                              {/* Inline Rich Reply Form Input (Supports Photos, GIPHY, Stickers & Voice Notes) */}
                               {activeReplyCommentId === comment.id && (
                                 <div className="ml-8 pt-1">
                                   <RichCommentInput
                                     onSend={(replyPayload) => handleSendReply(post.id, comment.id, replyPayload)}
-                                    placeholder={`Reply to ${comment.userName}...`}
+                                    placeholder={`Reply with text, photo, GIF or voice to ${comment.userName}...`}
                                   />
                                 </div>
                               )}

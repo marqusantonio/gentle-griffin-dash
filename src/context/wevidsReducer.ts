@@ -112,6 +112,7 @@ export type WevidsAction =
   | { type: 'TOGGLE_POST_LIKE'; payload: { postId: string } }
   | { type: 'ADD_POST_COMMENT'; payload: { postId: string; comment: CommentItem } }
   | { type: 'TOGGLE_COMMENT_LIKE'; payload: { postId: string; commentId: string } }
+  | { type: 'TOGGLE_REPLY_LIKE'; payload: { postId: string; commentId: string; replyId: string } }
   | { type: 'ADD_COMMENT_REPLY'; payload: { postId: string; commentId: string; reply: CommentReply } }
   | { type: 'TOGGLE_CLIP_LIKE'; payload: { clipId: string } }
   | { type: 'TOGGLE_CLIP_DISLIKE'; payload: { clipId: string } }
@@ -285,6 +286,31 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
                 ...c,
                 isLiked: newLiked,
                 likes: newLiked ? (Number(c.likes) || 0) + 1 : Math.max(0, (Number(c.likes) || 1) - 1)
+              };
+            })
+          };
+        })
+      };
+    case 'TOGGLE_REPLY_LIKE':
+      return {
+        ...state,
+        posts: state.posts.map(p => {
+          if (p.id !== action.payload.postId) return p;
+          return {
+            ...p,
+            comments: (p.comments || []).map(c => {
+              if (c.id !== action.payload.commentId) return c;
+              return {
+                ...c,
+                replies: (c.replies || []).map(r => {
+                  if (r.id !== action.payload.replyId) return r;
+                  const newLiked = !r.isLiked;
+                  return {
+                    ...r,
+                    isLiked: newLiked,
+                    likes: newLiked ? (Number(r.likes) || 0) + 1 : Math.max(0, (Number(r.likes) || 1) - 1)
+                  };
+                })
               };
             })
           };

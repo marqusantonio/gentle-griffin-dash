@@ -59,6 +59,7 @@ export interface WevidsContextType extends WevidsState {
   togglePostLike: (postId: string) => Promise<void>;
   addPostComment: (postId: string, comment: any) => Promise<void>;
   toggleCommentLike: (postId: string, commentId: string) => Promise<void>;
+  toggleReplyLike: (postId: string, commentId: string, replyId: string) => Promise<void>;
   addCommentReply: (postId: string, commentId: string, replyData: { text: string; media?: string; mediaType?: 'image' | 'video' | 'gif' | 'sticker' | 'audio' }) => Promise<void>;
   toggleClipLike: (clipId: string) => Promise<void>;
   toggleClipDislike: (clipId: string) => Promise<void>;
@@ -484,6 +485,33 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           ...c,
           isLiked: newLiked,
           likes: newLiked ? (Number(c.likes) || 0) + 1 : Math.max(0, (Number(c.likes) || 1) - 1)
+        };
+      });
+      try {
+        await supabase.from('posts').update({ comments: updatedComments }).eq('id', postId);
+      } catch {}
+    }
+  };
+
+  const toggleReplyLike = async (postId: string, commentId: string, replyId: string) => {
+    sounds.like();
+    dispatch({ type: 'TOGGLE_REPLY_LIKE', payload: { postId, commentId, replyId } });
+
+    const post = state.posts.find(p => p.id === postId);
+    if (post && isSupabaseConfigured()) {
+      const updatedComments = (post.comments || []).map(c => {
+        if (c.id !== commentId) return c;
+        return {
+          ...c,
+          replies: (c.replies || []).map(r => {
+            if (r.id !== replyId) return r;
+            const newLiked = !r.isLiked;
+            return {
+              ...r,
+              isLiked: newLiked,
+              likes: newLiked ? (Number(r.likes) || 0) + 1 : Math.max(0, (Number(r.likes) || 1) - 1)
+            };
+          })
         };
       });
       try {
@@ -1158,6 +1186,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     togglePostLike,
     addPostComment,
     toggleCommentLike,
+    toggleReplyLike,
     addCommentReply,
     toggleClipLike,
     toggleClipDislike,

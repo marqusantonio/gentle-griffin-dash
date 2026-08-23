@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useWevids } from '../../context/WevidsContext';
 import { 
   Heart, 
@@ -14,7 +14,10 @@ import {
   Plus,
   Film,
   Bookmark,
-  Trash2
+  Trash2,
+  Play,
+  Pause,
+  AlertCircle
 } from 'lucide-react';
 import { RichCommentInput } from '../comments/RichCommentInput';
 import { CreatePostModal } from '../feed/CreatePostModal';
@@ -42,14 +45,30 @@ export const ShortsFeedView: React.FC = () => {
   } = useWevids();
 
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isMuted, setIsMuted] = useState(true);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [videoProgress, setVideoProgress] = useState(0);
   const [showComments, setShowComments] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [videoError, setVideoError] = useState(false);
+  const [showHeartOverlay, setShowHeartOverlay] = useState(false);
 
-  // STRICT VIDEO FILTER: Exclude any items that do not possess a valid videoUrl
-  const validClips = (clips || []).filter(c => 
-    Boolean(c?.videoUrl && c.videoUrl.length > 5 && !isBlocked(c.userId))
-  );
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  // STRICT VIDEO FILTER: Support both camelCase `videoUrl` and snake_case `video_url`
+  const validClips = (clips || []).filter(c => {
+    const src = c?.videoUrl || (c as any)?.video_url;
+    return Boolean(src && src.length > 5 && !isBlocked(c.userId));
+  });
+
+  const activeClip = validClips[currentIndex] || validClips[0];
+  const clipVideoSrc = activeClip?.videoUrl || (activeClip as any)?.video_url || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
+
+  useEffect(() => {
+    setVideoError(false);
+    setIsPlaying(true);
+    setVideoProgress(0);
+  }, [currentIndex, clipVideoSrc]);
 
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
@@ -60,7 +79,7 @@ export const ShortsFeedView: React.FC = () => {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'clips' },
         (payload: any) => {
-          if (payload?.new && payload.new.videoUrl) {
+          if (payload?.new && (payload.new.videoUrl || payload.new.video_url)) {
             sounds.success();
             toast.info(`New short clip: "${payload.new.title}"!`);
             addClip(payload.new);
@@ -107,7 +126,6 @@ export const ShortsFeedView: React.FC = () => {
     );
   }
 
-  const activeClip = validClips[currentIndex] || validClips[0];
   const clipAuthor = allUsers[activeClip?.userId] || currentUser;
   const isUserFollowing = isFollowing(activeClip?.userId);
   const isFriend = isMutualFriend(activeClip?.userId);
@@ -123,26 +141,94 @@ export const ShortsFeedView: React.FC = () => {
     setCurrentIndex(prev => (prev - 1 + validClips.length) % validClips.length);
   };
 
+  const handleTogglePlay = () => {
+    if (!videoRef.current) return;
+    if (isPlaying) {
+      videoRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      videoRef.current.play().catch(() => {});
+      setIsPlaying(true);
+    }
+  };
+
+  const handleVideoTimeUpdate = () => {
+    if (!videoRef.current) return;
+    const duration = videoRef.current.duration;
+    if (duration > 0) {
+      setVideoProgress((videoRef.current.currentTime / duration) * 100);
+    }
+  };
+
+  const handleDoubleTap = () => {
+    sounds.like();
+    setShowHeartOverlay(true);
+    if (!activeClip.isLiked) {
+      toggleClipLike(activeClip.id);
+    }
+    setTimeout(() => setShowHeartOverlay(false), 900);
+  };
+
   return (
     <div className="flex flex-col lg:flex-row gap-6 justify-center items-start pb-20 max-w-5xl mx-auto">
-      <div className="relative w-full max-w-[440px] mx-auto h-[680px] rounded-3xl overflow-hidden liquid-glass border border-white/20 shadow-[0_25px_80px_rgba(0,0,0,0.85)] flex items-center justify-center bg-black video-hardware-accelerated">
-        <video
-          key={activeClip.id}
-          src={activeClip.videoUrl}
-          autoPlay
-          loop
-          muted={isMuted}
-          playsInline
-          preload="metadata"
-          className="w-full h-full object-cover rounded-3xl"
-        />
+      <div 
+        onDoubleClick={handleDoubleTap}
+        className="relative w-full max-w-[440px] mx-auto h-[680px] rounded-3xl overflow-hidden liquid-glass border border-white/20 shadow-[0_25px_80px_rgba(0,0,0,0.85)] flex items-center justify-center bg-black video-hardware-accelerated select-none group"
+      >
+        {/* Double-Tap Heart Particle Burst */}
+        {showHeartOverlay && (
+          <div className="absolute z-40 inset-0 flex items-center justify-center pointer-events-none animate-spring-pop">
+            <Heart className="w-28 h-28 text-[#ff2d95] fill-current drop-shadow-[0_0_30px_#ff2d95] animate-ping" />
+          </div>
+        )}
 
+        {/* Video Element with Fallback Error Handler */}
+        {videoError ? (
+          <div className="p-8 text-center space-y-3 text-xs text-[#8a8aa8] z-10">
+            <AlertCircle className="w-10 h-10 text-[#ff2d95] mx-auto animate-pulse" />
+            <div className="font-bold text-white text-sm">Media Stream Offline</div>
+            <p>Video source unavailable. Tap next to skip.</p>
+          </div>
+        ) : (
+          <video
+            ref={videoRef}
+            key={activeClip.id}
+            src={clipVideoSrc}
+            autoPlay
+            loop
+            muted={isMuted}
+            playsInline
+            preload="metadata"
+            onTimeUpdate={handleVideoTimeUpdate}
+            onError={() => {
+              console.warn('Video failed to load:', clipVideoSrc);
+              setVideoError(true);
+            }}
+            onClick={handleTogglePlay}
+            className="w-full h-full object-cover rounded-3xl cursor-pointer"
+          />
+        )}
+
+        {/* Play/Pause Overlay Indicator when paused */}
+        {!isPlaying && !videoError && (
+          <div 
+            onClick={handleTogglePlay}
+            className="absolute z-30 inset-0 flex items-center justify-center bg-black/40 cursor-pointer backdrop-blur-[2px]"
+          >
+            <div className="w-16 h-16 rounded-full bg-black/60 border border-white/30 backdrop-blur-md flex items-center justify-center text-white shadow-2xl">
+              <Play className="w-8 h-8 fill-current text-[#00e5ff] ml-1" />
+            </div>
+          </div>
+        )}
+
+        {/* Header Top Badge */}
         <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
           <span className="px-3 py-1 rounded-full bg-black/70 backdrop-blur-md text-[10px] font-bold text-[#00e5ff] border border-[#00e5ff]/30 font-orbitron">
             CLIP {currentIndex + 1}/{validClips.length}
           </span>
         </div>
 
+        {/* Header Controls */}
         <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
           {isMine && (
             <button
@@ -171,11 +257,13 @@ export const ShortsFeedView: React.FC = () => {
               setIsMuted(!isMuted);
             }}
             className="p-2.5 rounded-full bg-black/60 backdrop-blur-md text-white hover:bg-[#ff2d95] transition-all border border-white/10 shadow-lg"
+            title={isMuted ? 'Unmute Audio' : 'Mute Audio'}
           >
-            {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+            {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-[#00e5ff]" />}
           </button>
         </div>
 
+        {/* Up / Down Navigation Controls */}
         {validClips.length > 1 && (
           <div className="absolute right-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
             <button
@@ -195,8 +283,9 @@ export const ShortsFeedView: React.FC = () => {
           </div>
         )}
 
-        <div className="absolute bottom-0 left-0 right-16 p-5 z-20 bg-gradient-to-t from-black/95 via-black/50 to-transparent space-y-2">
-          <div className="flex items-center gap-2.5">
+        {/* Bottom Creator Meta Overlay */}
+        <div className="absolute bottom-1 left-0 right-16 p-5 z-20 bg-gradient-to-t from-black/95 via-black/50 to-transparent space-y-2 pointer-events-none">
+          <div className="flex items-center gap-2.5 pointer-events-auto">
             <div 
               onClick={() => openUserProfileModal(clipAuthor)}
               className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-900 text-xs shadow-md cursor-pointer hover:scale-105 transition-transform"
@@ -236,16 +325,16 @@ export const ShortsFeedView: React.FC = () => {
             )}
           </div>
 
-          <h2 className="text-sm font-bold text-white drop-shadow">{activeClip.title}</h2>
-          <p className="text-xs text-[#e8e8f4]/90 line-clamp-2 drop-shadow">{activeClip.description}</p>
+          <h2 className="text-sm font-bold text-white drop-shadow pointer-events-auto">{activeClip.title}</h2>
+          <p className="text-xs text-[#e8e8f4]/90 line-clamp-2 drop-shadow pointer-events-auto">{activeClip.description}</p>
 
-          <div className="flex items-center gap-2 text-[11px] text-[#00e5ff] font-medium bg-black/60 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 inline-flex">
+          <div className="flex items-center gap-2 text-[11px] text-[#00e5ff] font-medium bg-black/60 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 inline-flex pointer-events-auto">
             <Music2 className="w-3 h-3 text-[#ff2d95] animate-pulse" />
             <span className="truncate max-w-[200px]">{activeClip.audioTrack}</span>
           </div>
         </div>
 
-        {/* Right Floating Actions */}
+        {/* Right Floating Action Toolbar */}
         <div className="absolute right-3 bottom-6 z-20 flex flex-col items-center gap-3.5">
           <button onClick={() => toggleClipLike(activeClip.id)} className="flex flex-col items-center group">
             <div className={`p-3 rounded-full backdrop-blur-md transition-all shadow-lg ${
@@ -288,6 +377,14 @@ export const ShortsFeedView: React.FC = () => {
             <span className="text-[10px] font-bold text-white mt-1 drop-shadow">Share</span>
           </button>
         </div>
+
+        {/* Video Scrubber Timeline Progress Bar */}
+        <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 z-30">
+          <div 
+            className="h-full bg-gradient-to-r from-[#ff2d95] via-[#00e5ff] to-[#10b981] transition-all duration-150 shadow-[0_0_10px_#00e5ff]"
+            style={{ width: `${videoProgress}%` }}
+          />
+        </div>
       </div>
 
       {/* Slide-out Comments Drawer */}
@@ -314,6 +411,11 @@ export const ShortsFeedView: React.FC = () => {
                     <span className="text-[10px] text-[#8a8aa8]">{c.timestamp}</span>
                   </div>
                   {c.text && <p className="text-xs text-[#e8e8f4] leading-relaxed">{c.text}</p>}
+                  {c.media && (
+                    <div className="rounded-xl overflow-hidden max-h-32 border border-white/10 mt-1">
+                      <img src={c.media} alt="Comment media" className="w-full h-full object-cover max-h-32" />
+                    </div>
+                  )}
                 </div>
               ))
             )}
