@@ -53,42 +53,17 @@ export const GamingHubView: React.FC = () => {
   const [p1Score, setP1Score] = useState(0);
   const [p2Score, setP2Score] = useState(0);
 
-  // --- GAME 4: NEON SNAKE ---
-  const snakeCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [snakeScore, setSnakeScore] = useState(0);
-  const [snakeRunning, setSnakeRunning] = useState(false);
-
-  // --- GAME 5: CYBER FLAPPY BIRD ---
-  const flappyCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [flappyRunning, setFlappyRunning] = useState(false);
-  const [flappyScore, setFlappyScore] = useState(0);
-
-  // --- GAME 6: 2-PLAYER TIC-TAC-TOE MATRIX ---
-  const [tttBoard, setTttBoard] = useState<Array<string | null>>(Array(9).fill(null));
-  const [tttTurn, setTttTurn] = useState<'X' | 'O'>('X');
-  const [tttWinner, setTttWinner] = useState<string | null>(null);
-
-  // --- GAME 7: AIM / REFLEX TRAINER ---
-  const [aimScore, setAimScore] = useState(0);
-  const [aimTargetPos, setAimTargetPos] = useState({ top: 40, left: 50 });
-  const [aimActive, setAimActive] = useState(false);
-  const [aimTimer, setAimTimer] = useState(15);
-
-  // --- GAME 8: MEMORY MATRIX ---
-  const [memoryCards, setMemoryCards] = useState<Array<{ id: number; icon: string; matched: boolean; flipped: boolean }>>([]);
-  const [memoryFlipped, setMemoryFlipped] = useState<number[]>([]);
-  const [memoryMatches, setMemoryMatches] = useState(0);
-
-  // Sync Score helper
+  // Sync Score helper to Supabase PostgreSQL table
   const syncScoreToCloud = async (gameId: string, score: number) => {
     if (!isSupabaseConfigured()) return;
     try {
       await supabase.from('game_scores').upsert([{
-        id: `score-${gameId}-${currentUser.id}`,
+        id: `score-${gameId}-${currentUser?.id || 'guest'}`,
         game_id: gameId,
-        player_name: currentUser.name,
-        player_handle: currentUser.handle,
-        score: score
+        player_name: currentUser?.name || 'Guest Player',
+        player_handle: currentUser?.handle || '@guest',
+        score: score,
+        created_at: new Date().toISOString()
       }]);
     } catch {
       // Safe offline

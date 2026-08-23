@@ -56,28 +56,12 @@ export const checkContentModeration = (text: string): { flagged: boolean; reason
 
 export const testSupabaseConnection = async (): Promise<{ ok: boolean; message: string }> => {
   try {
-    const { data, error } = await supabase.from('posts').select('id').limit(1);
+    const { error } = await supabase.from('posts').select('id').limit(1);
     if (error) {
       return { ok: false, message: error.message };
     }
-    return { ok: true, message: 'Supabase Database connected and responding!' };
+    return { ok: true, message: 'Supabase PostgreSQL tables are active and responding!' };
   } catch (err: any) {
     return { ok: false, message: err.message || 'Connection failed' };
   }
 };
-
-export const SUPABASE_SQL_SCHEMA = `-- WEVIDS OS Complete Database Schema
--- All tables are verified and active on Supabase:
--- 1. profiles
--- 2. posts
--- 3. clips
--- 4. direct_messages
--- 5. follows
--- 6. profile_likes
--- 7. audio_tracks
--- 8. films
--- 9. roms
--- 10. files
--- 11. products
--- 12. game_scores
-`;
