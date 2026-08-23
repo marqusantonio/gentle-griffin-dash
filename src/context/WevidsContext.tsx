@@ -119,6 +119,15 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   ): Conversation[] => {
     const map = new Map<string, { partnerId: string; messages: ChatMessage[]; lastMsg: string; time: string; status: 'active' | 'pending_request' | 'declined' | 'blocked'; requestedBy?: string; streakCount?: number }>();
 
+    // Track partners with explicitly approved or declined DMs
+    const approvedPartners = new Set<string>();
+    const declinedPartners = new Set<string>();
+    dms.forEach(dm => {
+      const pId = dm.sender_id === currentUserId ? dm.receiver_id : dm.sender_id;
+      if (dm.is_approved === true) approvedPartners.add(pId);
+      if (dm.is_approved === false) declinedPartners.add(pId);
+    });
+
     dms.forEach((dm) => {
       const partnerId = dm.sender_id === currentUserId ? dm.receiver_id : dm.sender_id;
       if (!partnerId) return;
@@ -154,7 +163,21 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         ((state.currentUser.followingIds || []).includes(partnerId) && ((partner.followerIds || []).includes(currentUserId) || (partner.followingIds || []).includes(currentUserId)))
       );
 
-      const isApprovedRequest = Boolean(dm.is_approved === true || (theyFollow && myFollow));
+      const isApprovedRequest = Boolean(
+        approvedPartners.has(partnerId) || 
+        dm.is_approved === true || 
+        (theyFollow && myFollow)
+      );
+
+      const computedStatus: 'active' | 'pending_request' | 'declined' | 'blocked' = dm.is_blocked
+        ? 'blocked'
+        : (isMutual || isApprovedRequest)
+        ? 'active'
+        : declinedPartners.has(partnerId)
+        ? 'declined'
+        : dm.is_friend_request && dm.is_approved === null
+        ? 'pending_request'
+        : 'active';
 
       const streakRec = streaksList.find(s => 
         (s.user_1 === currentUserId && s.user_2 === partnerId) ||
@@ -167,7 +190,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
           messages: [chatMsg],
           lastMsg: dm.content || 'Media',
           time: new Date(dm.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          status: dm.is_blocked ? 'blocked' : (isMutual || isApprovedRequest) ? 'active' : dm.is_friend_request && dm.is_approved === null ? 'pending_request' : dm.is_approved === false ? 'declined' : 'active',
+          status: computedStatus,
           requestedBy: dm.sender_id,
           streakCount: streakRec?.current_streak || 0
         });
@@ -177,7 +200,7 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         item.lastMsg = dm.content || 'Media';
         item.time = new Date(dm.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         if (dm.is_blocked) item.status = 'blocked';
-        if (isMutual || isApprovedRequest) item.status = 'active';
+        if (computedStatus === 'active') item.status = 'active';
         item.streakCount = streakRec?.current_streak || item.streakCount || 0;
       }
     });
@@ -276,7 +299,8 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       dispatch({ type: 'SET_LAST_CLOUD_SYNC', payload: new Date().toLocaleTimeString() });
     } catch {
       // Safe offline fallback
-    } finally {
+    } font-sans
+    finally {
       if (!silent) dispatch({ type: 'SET_CLOUD_SYNCING', payload: false });
     }
   }, [state.currentUser.id]);
@@ -938,14 +962,32 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const conv = state.conversations.find(c => c.id === convId);
     const partnerId = conv?.members.find(m => m !== state.currentUser.id);
 
+    // 1. Instantly set local conversation status to active
     dispatch({ type: 'SET_CONVERSATION_STATUS', payload: { convId, status: 'active' } });
 
     if (partnerId) {
+      // 2. Ensure current user follows partner so status becomes mutual friends
       const currentlyFollowing = isFollowing(partnerId);
       if (!currentlyFollowing) {
         dispatch({ type: 'TOGGLE_FOLLOW_USER', payload: { userId: partnerId, isFollowing: false } });
       }
 
+      // 3. Update direct_messages table in Supabase directly
+      try {
+        await supabase
+          .from('direct_messages')
+          .update({ is_approved: true })
+          .eq('sender_id', partnerId)
+          .eq('receiver_id', state.currentUser.id);
+
+        await supabase
+          .from('direct_messages')
+          .update({ is_approved: true })
+          .eq('sender_id', state.currentUser.id)
+          .eq('receiver_id', partnerId);
+      } catch {}
+
+      // 4. Update RPC in Supabase
       try {
         await supabase.rpc('accept_message_request', {
           p_sender_id: partnerId,
