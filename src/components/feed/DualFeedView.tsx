@@ -26,6 +26,7 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { insertPostWithAutoFallback } from '../../lib/schemaAdapter';
 import { PostItem, ShortClipItem, CommentItem, CommentReply } from '../../types/wevids';
 import { getErrorMessage, isTableOrSchemaMissingError } from '../../lib/errorUtils';
+import { resolveClipVideoUrl } from '../clips/ShortsFeedView';
 import { toast } from 'sonner';
 
 export const DualFeedView: React.FC = () => {
@@ -866,55 +867,58 @@ export const DualFeedView: React.FC = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {clips.map(clip => (
-              <div
-                key={clip.id}
-                className="rounded-3xl liquid-glass-card border border-white/10 overflow-hidden group"
-              >
-                <div className="relative aspect-[9/16] bg-black overflow-hidden">
-                  <video
-                    src={clip.videoUrl}
-                    loop
-                    muted
-                    playsInline
-                    preload="metadata"
-                    onClick={() => setPlayingClipId(playingClipId === clip.id ? null : clip.id)}
-                    className="w-full h-full object-cover"
-                  />
+            {clips.map(clip => {
+              const videoSrc = resolveClipVideoUrl(clip);
+              return (
+                <div
+                  key={clip.id}
+                  className="rounded-3xl liquid-glass-card border border-white/10 overflow-hidden group"
+                >
+                  <div className="relative aspect-[9/16] bg-black overflow-hidden">
+                    <video
+                      src={videoSrc}
+                      loop
+                      muted
+                      playsInline
+                      preload="metadata"
+                      onClick={() => setPlayingClipId(playingClipId === clip.id ? null : clip.id)}
+                      className="w-full h-full object-cover cursor-pointer"
+                    />
 
-                  <button
-                    onClick={() => setPlayingClipId(playingClipId === clip.id ? null : clip.id)}
-                    className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    {playingClipId === clip.id ? (
-                      <Pause className="w-12 h-12 text-white drop-shadow-lg" />
-                    ) : (
-                      <Play className="w-12 h-12 text-white drop-shadow-lg" />
-                    )}
-                  </button>
-
-                  <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md border border-[#ff2d95]/30">
-                    <Film className="w-3 h-3 text-[#ff2d95]" />
-                    <span className="text-[10px] font-bold text-[#00e5ff]">CLIP</span>
-                  </div>
-                </div>
-
-                <div className="p-3.5 space-y-2">
-                  <h3 className="font-bold text-sm text-white line-clamp-1">{clip.title}</h3>
-                  <p className="text-xs text-[#8a8aa8] line-clamp-2">{clip.description}</p>
-                  <div className="flex items-center justify-between pt-1 border-t border-white/5 text-xs text-[#8a8aa8]">
                     <button
-                      onClick={() => handleLikeClip(clip.id)}
-                      className="flex items-center gap-1 hover:text-[#ff2d95] font-bold"
+                      onClick={() => setPlayingClipId(playingClipId === clip.id ? null : clip.id)}
+                      className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity"
                     >
-                      <Heart className="w-4 h-4" />
-                      <span>{clip.likes}</span>
+                      {playingClipId === clip.id ? (
+                        <Pause className="w-12 h-12 text-white drop-shadow-lg" />
+                      ) : (
+                        <Play className="w-12 h-12 text-white drop-shadow-lg" />
+                      )}
                     </button>
-                    <span className="text-[10px] font-mono text-[#00e5ff]">HD 60FPS</span>
+
+                    <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md border border-[#ff2d95]/30">
+                      <Film className="w-3 h-3 text-[#ff2d95]" />
+                      <span className="text-[10px] font-bold text-[#00e5ff]">CLIP</span>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 space-y-2">
+                    <h3 className="font-bold text-sm text-white line-clamp-1">{clip.title}</h3>
+                    <p className="text-xs text-[#8a8aa8] line-clamp-2">{clip.description}</p>
+                    <div className="flex items-center justify-between pt-1 border-t border-white/5 text-xs text-[#8a8aa8]">
+                      <button
+                        onClick={() => handleLikeClip(clip.id)}
+                        className="flex items-center gap-1 hover:text-[#ff2d95] font-bold"
+                      >
+                        <Heart className="w-4 h-4" />
+                        <span>{clip.likes}</span>
+                      </button>
+                      <span className="text-[10px] font-mono text-[#00e5ff]">HD 60FPS</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )
       )}
