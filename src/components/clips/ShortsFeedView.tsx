@@ -31,11 +31,17 @@ import { toast } from 'sonner';
 
 const SPEED_OPTIONS = [1, 1.25, 1.5, 2];
 
-// Guaranteed playable source for a clip
 const getClipStream = (clip: ShortClipItem, index: number): string => {
   const candidate = clip.videoUrl;
   if (candidate && candidate.startsWith('https://')) return candidate;
   return RELIABLE_VIDEO_STREAMS[index % RELIABLE_VIDEO_STREAMS.length];
+};
+
+type ReactionState = {
+  likes: number;
+  dislikes: number;
+  isLiked: boolean;
+  isDisliked: boolean;
 };
 
 interface ShortCardProps {
@@ -105,7 +111,6 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     }
   };
 
-  // Reset when clip changes
   useEffect(() => {
     setCurrentSrc(getClipStream(clip, index));
     setStreamFailed(false);
@@ -114,7 +119,6 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     clearLoadTimeout();
   }, [clip.id, clip.videoUrl, index]);
 
-  // Playback control
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -126,7 +130,6 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
       setIsLoading(true);
       clearLoadTimeout();
 
-      // Auto-hide loading after 3 seconds no matter what
       loadTimeoutRef.current = setTimeout(() => {
         setIsLoading(false);
       }, 3000);
@@ -139,7 +142,6 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
             setIsPlaying(true);
           })
           .catch(() => {
-            // Autoplay muted fallback
             video.muted = true;
             video.play()
               .then(() => {
@@ -166,13 +168,11 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   }, [isActive, isMuted, playbackSpeed, currentSrc, streamFailed]);
 
   const handleVideoError = () => {
-    // Switch to reliable fallback only once
     if (!streamFailed) {
       setStreamFailed(true);
       setCurrentSrc(RELIABLE_VIDEO_STREAMS[(index + 1) % RELIABLE_VIDEO_STREAMS.length]);
       setIsLoading(false);
     } else {
-      // Give up, show error but not loading
       setIsLoading(false);
       setIsPlaying(false);
     }
@@ -262,7 +262,6 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
       onDoubleClick={handleDoubleTapLike}
       className="shorts-snap-item relative w-full h-[calc(100vh-8rem)] max-h-[750px] min-h-[480px] rounded-[2rem] overflow-hidden liquid-glass border border-white/15 shadow-[0_0_60px_rgba(0,229,255,0.18)] flex items-center justify-center bg-slate-950 select-none group shrink-0"
     >
-      {/* Futuristic active ring */}
       {isActive && (
         <div className="absolute -inset-1 rounded-[2.1rem] pointer-events-none z-0 opacity-60">
           <div className="absolute inset-0 rounded-[2.1rem] bg-[conic-gradient(from_0deg,#ff2d95,#00e5ff,#10b981,#ff2d95)] blur-lg animate-spin-slow" />
@@ -478,8 +477,6 @@ export const ShortsFeedView: React.FC = () => {
   const {
     clips,
     deleteClip,
-    toggleClipLike,
-    toggleClipDislike,
     toggleClipBookmark,
     addClipComment,
     openShareModal,
@@ -500,10 +497,11 @@ export const ShortsFeedView: React.FC = () => {
   const [commentingClipId, setCommentingClipId] = useState<string | null>(null);
   const [autoAdvance, setAutoAdvance] = useState(false);
 
+  const [reactionOverrides, setReactionOverrides] = useState<Record<string, ReactionState>>({});
+  const reactionLockRef = useRef<Record<string, boolean>>({});
+
   const containerRef = useRef<HTMLDivElement | null>(null);
   const wheelLockRef = useRef(false);
-  const likeLockRef = useRef<Record<string, boolean>>({});
-  const dislikeLockRef = useRef<Record<string, boolean>>({});
   const followLockRef = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -521,10 +519,140 @@ export const ShortsFeedView: React.FC = () => {
     });
   }, [clips, isBlocked]);
 
-  const activeCommentingClip = validClips.find(c => c.id === commentingClipId) || null;
+  // Keep numeric counts from Supabase realtime in sync without losing the
+  // current user's reaction flags while a request is in flight.
+  useEffect(() => {
+    setReactionOverrides(prev => {
+      const next = { ...prev };
+      validClips.forEach(clip => {
+        if (next[clip.id]) {
+          next[clip.id] = {
+            ...next[clip.id],
+            likes: Number(clip.likes) || 0,
+            dislikes: Number(clip.dislikes) || 0
+          };
+        }
+      });
+      return next;
+    });
+  }, [validClips]);
+
+  const getReactionState = useCallback((clipId: string): ReactionState => {
+    const clip = validClips.find(c => c.id === clipId);
+    return reactionOverrides[clipId] || {
+      likes: Number(clip?.likes) || 0,
+      dislikes: Number(clip?.dislikes) || 0,
+      isLiked: !!clip?.isLiked,
+      isDisliked: !!clip?.isDisliked
+    };
+  }, [reactionOverrides, validClips]);
+
+  const callReactionRpc = useCallback(async (clipId: string, reaction: 'like' | 'dislike') => {
+    if (!isSupabaseConfigured() || !currentUser?.id) return null;
+
+    const { data, error } = await supabase.rpc('toggle_clip_reaction', {
+      p_clip_id: clipId,
+      p_user_id: currentUser.id,
+      p_reaction: reaction
+    });
+
+    if (error) throw error;
+    return data as { likes: number; dislikes: number } | null;
+  }, [currentUser?.id]);
+
+  const handleToggleLike = useCallback(async (clipId: string) => {
+    if (reactionLockRef.current[clipId]) return;
+    reactionLockRef.current[clipId] = true;
+
+    const previous = getReactionState(clipId);
+    const nextLiked = !previous.isLiked;
+
+    const optimistic: ReactionState = {
+      likes: nextLiked ? previous.likes + 1 : Math.max(0, previous.likes - 1),
+      dislikes: nextLiked ? 0 : previous.dislikes,
+      isLiked: nextLiked,
+      isDisliked: false
+    };
+
+    setReactionOverrides(prev => ({ ...prev, [clipId]: optimistic }));
+
+    try {
+      const data = await callReactionRpc(clipId, 'like');
+      if (data) {
+        setReactionOverrides(prev => ({
+          ...prev,
+          [clipId]: {
+            likes: Number(data.likes) || 0,
+            dislikes: Number(data.dislikes) || 0,
+            isLiked: nextLiked,
+            isDisliked: false
+          }
+        }));
+      }
+    } catch {
+      setReactionOverrides(prev => ({ ...prev, [clipId]: previous }));
+      toast.error('Could not sync like');
+    } finally {
+      delete reactionLockRef.current[clipId];
+    }
+  }, [callReactionRpc, getReactionState]);
+
+  const handleToggleDislike = useCallback(async (clipId: string) => {
+    if (reactionLockRef.current[clipId]) return;
+    reactionLockRef.current[clipId] = true;
+
+    const previous = getReactionState(clipId);
+    const nextDisliked = !previous.isDisliked;
+
+    const optimistic: ReactionState = {
+      likes: nextDisliked ? 0 : previous.likes,
+      dislikes: nextDisliked ? previous.dislikes + 1 : Math.max(0, previous.dislikes - 1),
+      isLiked: false,
+      isDisliked: nextDisliked
+    };
+
+    setReactionOverrides(prev => ({ ...prev, [clipId]: optimistic }));
+
+    try {
+      const data = await callReactionRpc(clipId, 'dislike');
+      if (data) {
+        setReactionOverrides(prev => ({
+          ...prev,
+          [clipId]: {
+            likes: Number(data.likes) || 0,
+            dislikes: Number(data.dislikes) || 0,
+            isLiked: false,
+            isDisliked: nextDisliked
+          }
+        }));
+      }
+    } catch {
+      setReactionOverrides(prev => ({ ...prev, [clipId]: previous }));
+      toast.error('Could not sync dislike');
+    } finally {
+      delete reactionLockRef.current[clipId];
+    }
+  }, [callReactionRpc, getReactionState]);
+
+  const displayClips = useMemo(() => {
+    return validClips.map(clip => {
+      const override = reactionOverrides[clip.id];
+      if (!override) return clip;
+
+      return {
+        ...clip,
+        likes: override.likes,
+        dislikes: override.dislikes,
+        isLiked: override.isLiked,
+        isDisliked: override.isDisliked
+      };
+    });
+  }, [reactionOverrides, validClips]);
+
+  const activeCommentingClip = displayClips.find(c => c.id === commentingClipId) || null;
 
   const scrollToIndex = useCallback((idx: number) => {
-    const safeIndex = Math.max(0, Math.min(validClips.length - 1, idx));
+    const safeIndex = Math.max(0, Math.min(displayClips.length - 1, idx));
     const container = containerRef.current;
     if (!container) return;
     const items = container.querySelectorAll('.shorts-snap-item');
@@ -533,9 +661,8 @@ export const ShortsFeedView: React.FC = () => {
       container.scrollTo({ top: target.offsetTop, behavior: 'smooth' });
       setActiveIndex(safeIndex);
     }
-  }, [validClips.length]);
+  }, [displayClips.length]);
 
-  // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['ArrowDown', 'j', 'J'].includes(e.key)) {
@@ -557,7 +684,6 @@ export const ShortsFeedView: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeIndex, scrollToIndex]);
 
-  // Auto-advance shorts
   useEffect(() => {
     if (!autoAdvance) return;
     const interval = setInterval(() => {
@@ -573,7 +699,7 @@ export const ShortsFeedView: React.FC = () => {
       }
     }, 5000);
     return () => clearInterval(interval);
-  }, [autoAdvance, activeIndex, validClips.length]);
+  }, [autoAdvance, activeIndex, displayClips.length]);
 
   const handleWheelScroll = (e: React.WheelEvent<HTMLDivElement>) => {
     if (wheelLockRef.current) return;
@@ -599,7 +725,7 @@ export const ShortsFeedView: React.FC = () => {
     }, { root: container, threshold: 0.5 });
     items.forEach(item => observer.observe(item));
     return () => observer.disconnect();
-  }, [validClips.length]);
+  }, [displayClips.length]);
 
   const cyclePlaybackSpeed = () => {
     sounds.click();
@@ -609,77 +735,37 @@ export const ShortsFeedView: React.FC = () => {
     });
   };
 
-  // Atomic local + DB toggles with rapid-click locks
-  const handleToggleLike = async (clipId: string) => {
-    if (likeLockRef.current[clipId]) return;
-    likeLockRef.current[clipId] = true;
-    setTimeout(() => { delete likeLockRef.current[clipId]; }, 650);
-
-    toggleClipLike(clipId);
-
-    if (!isSupabaseConfigured() || !currentUser?.id) return;
-
-    try {
-      await (supabase as any).rpc('toggle_clip_reaction', {
-        p_clip_id: clipId,
-        p_user_id: currentUser.id,
-        p_reaction: 'like'
-      });
-    } catch {
-      // Rollback local state if DB rejected the atomic toggle
-      toggleClipLike(clipId);
-      toast.error('Could not sync like');
-    }
-  };
-
-  const handleToggleDislike = async (clipId: string) => {
-    if (dislikeLockRef.current[clipId]) return;
-    dislikeLockRef.current[clipId] = true;
-    setTimeout(() => { delete dislikeLockRef.current[clipId]; }, 650);
-
-    toggleClipDislike(clipId);
-
-    if (!isSupabaseConfigured() || !currentUser?.id) return;
-
-    try {
-      await (supabase as any).rpc('toggle_clip_reaction', {
-        p_clip_id: clipId,
-        p_user_id: currentUser.id,
-        p_reaction: 'dislike'
-      });
-    } catch {
-      toggleClipDislike(clipId);
-      toast.error('Could not sync dislike');
-    }
-  };
-
-  const handleFollowToggle = async (userId: string) => {
+  const handleFollowToggle = useCallback(async (userId: string) => {
     if (!currentUser?.id || currentUser.id === userId) return;
     if (followLockRef.current[userId]) return;
     followLockRef.current[userId] = true;
-    setTimeout(() => { delete followLockRef.current[userId]; }, 700);
+
+    const wasFollowing = isFollowing(userId);
 
     toggleFollowUser(userId);
 
-    if (!isSupabaseConfigured()) return;
+    if (!isSupabaseConfigured()) {
+      delete followLockRef.current[userId];
+      return;
+    }
 
     try {
-      await (supabase as any).rpc('toggle_follow_user', {
+      await supabase.rpc('toggle_follow_user', {
         p_follower_id: currentUser.id,
         p_following_id: userId
       });
-      if (isFollowing(userId)) {
-        toast.success('Following');
-      } else {
-        toast('Unfollowed');
-      }
+
+      if (!wasFollowing) toast.success('Following');
+      else toast('Unfollowed');
     } catch {
       toggleFollowUser(userId);
       toast.error('Could not sync follow');
+    } finally {
+      delete followLockRef.current[userId];
     }
-  };
+  }, [currentUser?.id, isFollowing, toggleFollowUser]);
 
-  if (validClips.length === 0) {
+  if (displayClips.length === 0) {
     return (
       <div className="max-w-md mx-auto py-20 text-center space-y-5">
         <div className="w-20 h-20 rounded-3xl liquid-glass border border-[#ff2d95]/40 flex items-center justify-center mx-auto text-[#ff2d95] shadow-2xl">
@@ -725,7 +811,7 @@ export const ShortsFeedView: React.FC = () => {
         <button
           type="button"
           onClick={() => scrollToIndex(activeIndex + 1)}
-          disabled={activeIndex === validClips.length - 1}
+          disabled={activeIndex === displayClips.length - 1}
           className="p-3 rounded-2xl bg-slate-950/80 hover:bg-[#ff2d95] text-white hover:text-slate-950 transition-all disabled:opacity-30 border border-white/20 shadow-2xl backdrop-blur-md"
         >
           <ChevronDown className="w-5 h-5" />
@@ -737,7 +823,7 @@ export const ShortsFeedView: React.FC = () => {
         onWheel={handleWheelScroll}
         className="shorts-snap-container no-scrollbar w-full max-w-[420px] h-[calc(100vh-8rem)] max-h-[750px] min-h-[480px] overflow-y-auto relative rounded-[2rem]"
       >
-        {validClips.map((clip, index) => {
+        {displayClips.map((clip, index) => {
           const authorUser = allUsers[clip.userId] || currentUser;
           const isMine = clip.userId === currentUser?.id;
           const isFollowingUser = isFollowing(clip.userId);
@@ -748,7 +834,7 @@ export const ShortsFeedView: React.FC = () => {
               key={clip.id}
               clip={clip}
               index={index}
-              totalClips={validClips.length}
+              totalClips={displayClips.length}
               isActive={index === activeIndex}
               isMuted={isMuted}
               playbackSpeed={playbackSpeed}
@@ -827,7 +913,6 @@ export const ShortsFeedView: React.FC = () => {
   );
 };
 
-// Export resolution helper for DualFeedView compatibility
 export const resolveClipVideoUrl = (clip: ShortClipItem, fallbackIndex = 0): string => {
   const url = clip.videoUrl;
   if (url && url.startsWith('https://')) return url;
