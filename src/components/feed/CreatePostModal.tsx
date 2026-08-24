@@ -9,13 +9,11 @@ import {
   Music2, 
   Tv, 
   Loader2,
-  AlertCircle,
-  CheckCircle2,
-  Zap
+  CheckCircle2
 } from 'lucide-react';
 import { sounds } from '../../lib/soundFx';
 import { checkContentModeration } from '../../lib/supabase';
-import { insertPostWithAutoFallback } from '../../lib/schemaAdapter';
+import { insertPostWithAutoFallback, insertClipWithAutoFallback } from '../../lib/schemaAdapter';
 import { uploadFileToPublicStorage } from '../../lib/storageUtils';
 import { PostItem, ShortClipItem } from '../../types/wevids';
 import { getErrorMessage } from '../../lib/errorUtils';
@@ -69,11 +67,8 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     setFileSizeMb(Number((file.size / (1024 * 1024)).toFixed(2)));
     setMediaType('image');
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setMediaPreviewUrl(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    const previewUrl = URL.createObjectURL(file);
+    setMediaPreviewUrl(previewUrl);
 
     sounds.pop();
     toast.success(`Photo attached: ${file.name}`);
@@ -83,7 +78,6 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate supported formats
     const isSupported = file.type.includes('mp4') || file.type.includes('webm') || file.type.includes('quicktime') || file.type.includes('ogg');
     if (!isSupported) {
       toast.error('Unsupported video format. Please upload MP4 or WebM video.');
@@ -101,11 +95,8 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     setFileSizeMb(Number(sizeInMb.toFixed(2)));
     setMediaType('video');
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setMediaPreviewUrl(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    const previewUrl = URL.createObjectURL(file);
+    setMediaPreviewUrl(previewUrl);
 
     sounds.success();
     toast.success(`Video attached (${sizeInMb.toFixed(1)} MB)`);
@@ -138,9 +129,9 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
       let finalPublicMediaUrl: string | undefined = undefined;
 
       if (mediaFile) {
-        setUploadProgress(40);
+        setUploadProgress(50);
         finalPublicMediaUrl = await uploadFileToPublicStorage(mediaFile, targetType);
-        setUploadProgress(80);
+        setUploadProgress(85);
       } else if (mediaPreviewUrl) {
         finalPublicMediaUrl = mediaPreviewUrl;
       }
@@ -340,7 +331,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
             />
           </div>
 
-          {/* Hidden File Inputs with Validation */}
+          {/* Hidden File Inputs */}
           <input
             type="file"
             ref={imageInputRef}
@@ -391,7 +382,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
           {isUploading && (
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs text-[#00e5ff] font-orbitron font-bold">
-                <span>Uploading & Optimizing Frame Pipeline...</span>
+                <span>Publishing Short Clip to Public Feed...</span>
                 <span>{uploadProgress}%</span>
               </div>
               <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">

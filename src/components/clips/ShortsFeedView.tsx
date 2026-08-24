@@ -87,13 +87,12 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   authorUser
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const progressBarRef = useRef<HTMLDivElement | null>(null);
+  const progressBarFillRef = useRef<HTMLDivElement | null>(null);
+  const progressBarContainerRef = useRef<HTMLDivElement | null>(null);
+  const timeLabelRef = useRef<HTMLSpanElement | null>(null);
   
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [progressPercent, setProgressPercent] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
   const [showHeartOverlay, setShowHeartOverlay] = useState(false);
   
   const [streamUrl, setStreamUrl] = useState<string>(() => {
@@ -104,7 +103,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     return GUARANTEED_STREAMS[index % GUARANTEED_STREAMS.length];
   });
 
-  // Handle active autoplay / pause mechanics
+  // Manage playback for ACTIVE vs INACTIVE cards efficiently
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -114,27 +113,26 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
 
     if (isActive) {
       setIsLoading(true);
-
-      const startPlay = async () => {
-        try {
-          await video.play();
-          setIsPlaying(true);
-          setIsLoading(false);
-        } catch {
-          // Fallback: Mute to guarantee autoplay compliance
-          video.muted = true;
-          try {
-            await video.play();
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
             setIsPlaying(true);
-          } catch {
-            setIsPlaying(false);
-          } finally {
             setIsLoading(false);
-          }
-        }
-      };
-
-      startPlay();
+          })
+          .catch(() => {
+            video.muted = true;
+            video.play()
+              .then(() => {
+                setIsPlaying(true);
+                setIsLoading(false);
+              })
+              .catch(() => {
+                setIsPlaying(false);
+                setIsLoading(false);
+              });
+          });
+      }
     } else {
       video.pause();
       try {
@@ -145,13 +143,27 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     }
   }, [isActive, playbackSpeed, isMuted, streamUrl]);
 
+  // Direct DOM update for video progress bar to avoid React state re-render thrashing
   const handleTimeUpdate = () => {
-    if (!videoRef.current) return;
-    const cur = videoRef.current.currentTime;
-    const dur = videoRef.current.duration || 1;
-    setCurrentTime(cur);
-    setDuration(dur);
-    setProgressPercent((cur / dur) * 100);
+    const video = videoRef.current;
+    if (!video) return;
+
+    const cur = video.currentTime;
+    const dur = video.duration || 1;
+    const pct = Math.min(100, Math.max(0, (cur / dur) * 100));
+
+    if (progressBarFillRef.current) {
+      progressBarFillRef.current.style.width = `${pct}%`;
+    }
+
+    if (timeLabelRef.current) {
+      const formatTime = (secs: number) => {
+        const m = Math.floor(secs / 60);
+        const s = Math.floor(secs % 60);
+        return `${m}:${s < 10 ? '0' : ''}${s}`;
+      };
+      timeLabelRef.current.innerText = `${formatTime(cur)} / ${formatTime(dur)}`;
+    }
   };
 
   const handleTogglePlayPause = (e?: React.MouseEvent) => {
@@ -178,20 +190,15 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
-    if (!progressBarRef.current || !videoRef.current) return;
-    const rect = progressBarRef.current.getBoundingClientRect();
+    if (!progressBarContainerRef.current || !videoRef.current) return;
+    const rect = progressBarContainerRef.current.getBoundingClientRect();
     const clickX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
     const newPercent = (clickX / rect.width);
     const newTime = newPercent * (videoRef.current.duration || 1);
     videoRef.current.currentTime = newTime;
-    setProgressPercent(newPercent * 100);
-    setCurrentTime(newTime);
-  };
-
-  const formatTime = (secs: number) => {
-    const m = Math.floor(secs / 60);
-    const s = Math.floor(secs % 60);
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
+    if (progressBarFillRef.current) {
+      progressBarFillRef.current.style.width = `${newPercent * 100}%`;
+    }
   };
 
   const handleVideoError = () => {
@@ -207,7 +214,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
       onDoubleClick={handleDoubleTapLike}
       className="shorts-snap-item relative w-full h-[calc(100vh-8rem)] max-h-[750px] min-h-[480px] rounded-3xl overflow-hidden liquid-glass border border-white/20 shadow-2xl flex items-center justify-center bg-black select-none group shrink-0"
     >
-      {/* Heart Tap Overlay */}
+      {/* Heart Double-Tap Overlay */}
       {showHeartOverlay && (
         <div className="absolute z-40 inset-0 flex items-center justify-center pointer-events-none animate-spring-pop">
           <Heart className="w-28 h-28 text-[#ff2d95] fill-current drop-shadow-[0_0_35px_#ff2d95] animate-ping" />
@@ -221,31 +228,34 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         </div>
       )}
 
-      <video
-        ref={videoRef}
-        src={streamUrl}
-        loop
-        muted={isMuted}
-        playsInline
-        preload={isActive ? 'auto' : 'metadata'}
-        onLoadedMetadata={() => {
-          if (videoRef.current) setDuration(videoRef.current.duration);
-        }}
-        onCanPlay={() => setIsLoading(false)}
-        onWaiting={() => setIsLoading(true)}
-        onPlaying={() => {
-          setIsLoading(false);
-          setIsPlaying(true);
-        }}
-        onPause={() => setIsPlaying(false)}
-        onTimeUpdate={handleTimeUpdate}
-        onError={handleVideoError}
-        onClick={handleTogglePlayPause}
-        className="w-full h-full object-cover rounded-3xl cursor-pointer"
-      />
+      {isActive ? (
+        <video
+          ref={videoRef}
+          src={streamUrl}
+          loop
+          muted={isMuted}
+          playsInline
+          preload="auto"
+          onCanPlay={() => setIsLoading(false)}
+          onWaiting={() => setIsLoading(true)}
+          onPlaying={() => {
+            setIsLoading(false);
+            setIsPlaying(true);
+          }}
+          onPause={() => setIsPlaying(false)}
+          onTimeUpdate={handleTimeUpdate}
+          onError={handleVideoError}
+          onClick={handleTogglePlayPause}
+          className="w-full h-full object-cover rounded-3xl cursor-pointer"
+        />
+      ) : (
+        <div className="w-full h-full bg-black flex items-center justify-center text-xs text-[#8a8aa8]">
+          <Play className="w-12 h-12 text-white/30" />
+        </div>
+      )}
 
       {/* Play Overlay Button */}
-      {!isPlaying && !isLoading && (
+      {!isPlaying && !isLoading && isActive && (
         <div 
           onClick={handleTogglePlayPause}
           className="absolute z-30 inset-0 flex items-center justify-center bg-black/30 cursor-pointer transition-all"
@@ -449,23 +459,22 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         </button>
       </div>
 
-      {/* Progress Bar */}
+      {/* Progress Bar Container */}
       <div 
-        ref={progressBarRef}
+        ref={progressBarContainerRef}
         onClick={handleSeek}
         className="absolute bottom-0 left-0 right-0 h-2 bg-white/20 hover:h-3 cursor-pointer z-30 transition-all flex items-end"
       >
         <div 
-          className="h-full bg-gradient-to-r from-[#ff2d95] via-[#00e5ff] to-[#10b981] transition-all duration-100 shadow-[0_0_12px_#00e5ff]"
-          style={{ width: `${progressPercent}%` }}
+          ref={progressBarFillRef}
+          className="h-full bg-gradient-to-r from-[#ff2d95] via-[#00e5ff] to-[#10b981] transition-all duration-75 shadow-[0_0_12px_#00e5ff]"
+          style={{ width: '0%' }}
         />
       </div>
 
-      {duration > 0 && (
-        <span className="absolute bottom-3 right-4 text-[9px] font-mono text-white/70 bg-black/50 px-2 py-0.5 rounded backdrop-blur z-20 pointer-events-none">
-          {formatTime(currentTime)} / {formatTime(duration)}
-        </span>
-      )}
+      <span ref={timeLabelRef} className="absolute bottom-3 right-4 text-[9px] font-mono text-white/70 bg-black/50 px-2 py-0.5 rounded backdrop-blur z-20 pointer-events-none">
+        0:00 / 0:00
+      </span>
     </div>
   );
 };
@@ -493,7 +502,7 @@ export const ShortsFeedView: React.FC = () => {
   const [isMuted, setIsMuted] = useState(true);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [commentingClip, setCommentingClip] = useState<ShortClipItem | null>(null);
+  const [commentingClipId, setCommentingClipId] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const wheelLockRef = useRef(false);
@@ -520,6 +529,7 @@ export const ShortsFeedView: React.FC = () => {
 
   // Valid Clips Filter
   const validClips = (clips || []).filter(c => !isBlocked(c.userId));
+  const activeCommentingClip = validClips.find(c => c.id === commentingClipId) || null;
 
   const scrollToIndex = useCallback((idx: number) => {
     const container = containerRef.current;
@@ -707,7 +717,7 @@ export const ShortsFeedView: React.FC = () => {
               onToggleDislike={toggleClipDislike}
               onToggleBookmark={toggleClipBookmark}
               onShare={(title, id) => openShareModal(title, `https://wevids.app/clip/${id}`)}
-              onOpenComments={(c) => setCommentingClip(c)}
+              onOpenComments={(c) => setCommentingClipId(c.id)}
               onDeleteClip={deleteClip}
               onUploadClick={() => setIsCreateOpen(true)}
               onFollowToggle={toggleFollowUser}
@@ -723,17 +733,17 @@ export const ShortsFeedView: React.FC = () => {
       </div>
 
       {/* Side Slide-out Comments Drawer */}
-      {commentingClip && (
+      {activeCommentingClip && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-2 sm:p-4">
           <div className="w-full max-w-md liquid-glass rounded-3xl p-5 border border-white/20 shadow-2xl flex flex-col h-[520px] animate-spring-pop">
             <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-3">
               <h3 className="font-orbitron font-bold text-sm text-white flex items-center gap-2">
                 <MessageCircle className="w-4 h-4 text-[#00e5ff]" />
-                Comments ({commentingClip.comments?.length || 0})
+                Comments ({activeCommentingClip.comments?.length || 0})
               </h3>
               <button 
                 type="button"
-                onClick={() => setCommentingClip(null)} 
+                onClick={() => setCommentingClipId(null)} 
                 className="p-1 rounded-lg text-[#8a8aa8] hover:text-white hover:bg-white/10"
               >
                 ✕
@@ -741,12 +751,12 @@ export const ShortsFeedView: React.FC = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
-              {!commentingClip.comments || commentingClip.comments.length === 0 ? (
+              {!activeCommentingClip.comments || activeCommentingClip.comments.length === 0 ? (
                 <div className="text-center py-16 text-xs text-[#8a8aa8]">
                   No comments yet! Be the first to share your reaction.
                 </div>
               ) : (
-                commentingClip.comments.map((c: CommentItem) => (
+                activeCommentingClip.comments.map((c: CommentItem) => (
                   <div key={c.id} className="p-3 rounded-2xl bg-white/5 border border-white/5 space-y-1.5">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-bold text-white">{c.userName}</span>
@@ -766,7 +776,7 @@ export const ShortsFeedView: React.FC = () => {
             <div className="pt-2 border-t border-white/10">
               <RichCommentInput
                 onSend={(comment) => {
-                  addClipComment(commentingClip.id, {
+                  addClipComment(activeCommentingClip.id, {
                     user: currentUser.id,
                     userName: currentUser.name,
                     userAvatar: currentUser.avatar,
