@@ -11,42 +11,35 @@ export const uploadFileToPublicStorage = async (
   }
 
   try {
-    // Attempt to create the 'media' bucket if it doesn't exist.
-    // This is safe even if the bucket already exists; it will throw and we ignore.
-    try {
-      await supabase.storage.createBucket('media', { public: true });
-    } catch (bucketError) {
-      // Bucket likely already exists; continue.
-    }
+    const fileBuffer = await file.arrayBuffer();
+    const base64 = arrayBufferToBase64(fileBuffer);
 
-    const fileExt = file.name.split('.').pop() || 'mp4';
-    const fileName = `${folder}/${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
-
-    const uploadPromise = supabase.storage.from('media').upload(fileName, file, {
-      cacheControl: '3600',
-      upsert: true,
+    const { data, error } = await supabase.functions.invoke('upload-media', {
+      body: {
+        fileName: file.name,
+        fileBase64: base64,
+        contentType: file.type,
+        folder,
+      },
     });
 
-    const timeoutPromise = new Promise<{ data: null; error: Error }>((resolve) =>
-      setTimeout(() => resolve({ data: null, error: new Error('Upload timeout fallback') }), 8000)
-    );
-
-    const { data, error } = await Promise.race([uploadPromise, timeoutPromise]);
-
-    if (!error && data) {
-      const { data: publicUrlData } = supabase.storage.from('media').getPublicUrl(fileName);
-      if (publicUrlData?.publicUrl) {
-        // Return remote URL for persistence
-        return publicUrlData.publicUrl;
-      }
+    if (!error && data?.publicUrl) {
+      return data.publicUrl;
     }
 
-    // If upload failed, we still return local blob for immediate viewing,
-    // but the caller should know it's not persistent.
-    console.warn('[storageUtils] Supabase storage upload failed, using local blob URL.', error);
+    console.warn('[storageUtils] Edge function upload failed, using local blob URL.', error || data?.error);
     return localPreviewUrl;
   } catch (err) {
     console.warn('[storageUtils] Error uploading file:', err);
     return localPreviewUrl;
   }
 };
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}

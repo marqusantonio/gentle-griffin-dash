@@ -26,7 +26,7 @@ import { CreatePostModal } from '../feed/CreatePostModal';
 import { sounds } from '../../lib/soundFx';
 import { ShortClipItem, CommentItem } from '../../types/wevids';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
-import { isValidVideoUrl, isRemoteVideoUrl, resolveVideoUrl, RELIABLE_VIDEO_STREAMS } from '../../lib/videoUtils';
+import { isValidVideoUrl, resolveVideoUrl, RELIABLE_VIDEO_STREAMS } from '../../lib/videoUtils';
 import { toast } from 'sonner';
 
 const SPEED_OPTIONS = [1, 1.25, 1.5, 2];
@@ -82,7 +82,8 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   const progressBarFillRef = useRef<HTMLDivElement | null>(null);
   const progressBarContainerRef = useRef<HTMLDivElement | null>(null);
   const timeLabelRef = useRef<HTMLSpanElement | null>(null);
-  
+  const loadingRef = useRef(false);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showHeartOverlay, setShowHeartOverlay] = useState(false);
@@ -90,11 +91,18 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   const [streamUrl, setStreamUrl] = useState<string>(() => resolveVideoUrl([clip.videoUrl, (clip as any)?.video_url, (clip as any)?.mediaUrl], index));
   const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Sync loading ref with state
+  useEffect(() => {
+    loadingRef.current = isLoading;
+  }, [isLoading]);
+
   // Reset stream when clip changes
   useEffect(() => {
     const nextUrl = resolveVideoUrl([clip.videoUrl, (clip as any)?.video_url, (clip as any)?.mediaUrl], index);
     setStreamUrl(nextUrl);
     setFallbackAttempt(0);
+    setIsLoading(false);
+    loadingRef.current = false;
   }, [clip.videoUrl, (clip as any)?.video_url, (clip as any)?.mediaUrl, index]);
 
   // Play/pause management
@@ -107,9 +115,11 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
 
     if (isActive) {
       setIsLoading(true);
+      loadingRef.current = true;
+
       if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
       loadTimeoutRef.current = setTimeout(() => {
-        if (isLoading) {
+        if (loadingRef.current) {
           handleVideoError();
         }
       }, 8000);
@@ -118,27 +128,34 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
       if (playPromise !== undefined) {
         playPromise
           .then(() => {
-            setIsPlaying(true);
             setIsLoading(false);
+            loadingRef.current = false;
+            setIsPlaying(true);
           })
           .catch(() => {
             video.muted = true;
             video.play()
               .then(() => {
-                setIsPlaying(true);
                 setIsLoading(false);
+                loadingRef.current = false;
+                setIsPlaying(true);
               })
               .catch(() => {
-                setIsPlaying(false);
                 setIsLoading(false);
+                loadingRef.current = false;
+                setIsPlaying(false);
               });
           });
+      } else {
+        setIsLoading(false);
+        loadingRef.current = false;
       }
     } else {
       video.pause();
       try { video.currentTime = 0; } catch {}
       setIsPlaying(false);
       setIsLoading(false);
+      loadingRef.current = false;
       if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
     }
 
@@ -153,6 +170,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     setFallbackAttempt(nextAttempt);
     setStreamUrl(nextFallback);
     setIsLoading(false);
+    loadingRef.current = false;
     if (videoRef.current) {
       videoRef.current.load();
     }
@@ -239,10 +257,11 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         playsInline
         webkit-playsinline="true"
         preload={isActive ? 'auto' : 'metadata'}
-        onCanPlay={() => setIsLoading(false)}
-        onLoadedMetadata={() => setIsLoading(false)}
-        onWaiting={() => setIsLoading(true)}
-        onPlaying={() => { setIsLoading(false); setIsPlaying(true); }}
+        onCanPlay={() => { setIsLoading(false); loadingRef.current = false; }}
+        onLoadedMetadata={() => { setIsLoading(false); loadingRef.current = false; }}
+        onLoadedData={() => { setIsLoading(false); loadingRef.current = false; }}
+        onWaiting={() => { setIsLoading(true); loadingRef.current = true; }}
+        onPlaying={() => { setIsLoading(false); loadingRef.current = false; setIsPlaying(true); }}
         onPause={() => setIsPlaying(false)}
         onTimeUpdate={handleTimeUpdate}
         onError={handleVideoError}
