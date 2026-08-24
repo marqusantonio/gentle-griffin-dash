@@ -1,23 +1,23 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useWevids } from '../../context/WevidsContext';
-import { 
-  Heart, 
-  MessageCircle, 
-  Share2, 
-  Volume2, 
-  VolumeX, 
-  ChevronUp, 
-  ChevronDown, 
-  ThumbsDown, 
-  CheckCircle2, 
-  Music2, 
-  Plus, 
-  Film, 
-  Bookmark, 
-  Trash2, 
-  Play, 
-  Sparkles, 
-  Gauge, 
+import {
+  Heart,
+  MessageCircle,
+  Share2,
+  Volume2,
+  VolumeX,
+  ChevronUp,
+  ChevronDown,
+  ThumbsDown,
+  CheckCircle2,
+  Music2,
+  Plus,
+  Film,
+  Bookmark,
+  Trash2,
+  Play,
+  Sparkles,
+  Gauge,
   Loader2,
   RefreshCw
 } from 'lucide-react';
@@ -30,6 +30,7 @@ import { isValidVideoUrl, resolveVideoUrl, RELIABLE_VIDEO_STREAMS } from '../../
 import { toast } from 'sonner';
 
 const SPEED_OPTIONS = [1, 1.25, 1.5, 2];
+const LOAD_TIMEOUT_MS = 7000;
 
 interface ShortCardProps {
   clip: ShortClipItem;
@@ -82,99 +83,115 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   const progressBarFillRef = useRef<HTMLDivElement | null>(null);
   const progressBarContainerRef = useRef<HTMLDivElement | null>(null);
   const timeLabelRef = useRef<HTMLSpanElement | null>(null);
-  const loadingRef = useRef(false);
+  const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // The video element owns loading state, but we mirror it for UI.
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showHeartOverlay, setShowHeartOverlay] = useState(false);
-  const [fallbackAttempt, setFallbackAttempt] = useState(0);
-  const [streamUrl, setStreamUrl] = useState<string>(() => resolveVideoUrl([clip.videoUrl, (clip as any)?.video_url, (clip as any)?.mediaUrl], index));
-  const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [sourceIndex, setSourceIndex] = useState(0);
 
-  // Sync loading ref with state
+  // Build all possible sources for this clip: user's source(s) + reliable fallbacks.
+  const sourceCandidates = useMemo(() => {
+    const primary: string[] = [];
+    const add = (url?: string | null) => {
+      if (isValidVideoUrl(url)) {
+        const trimmed = (url as string).trim();
+        if (!primary.includes(trimmed)) primary.push(trimmed);
+      }
+    };
+    add(clip.videoUrl);
+    add((clip as any)?.video_url);
+    add((clip as any)?.mediaUrl);
+
+    const fallbacks = RELIABLE_VIDEO_STREAMS.filter(url => !primary.includes(url));
+    return [...primary, ...fallbacks];
+  }, [clip.videoUrl, (clip as any)?.video_url, (clip as any)?.mediaUrl]);
+
+  const currentSource = sourceCandidates[sourceIndex % sourceCandidates.length] || RELIABLE_VIDEO_STREAMS[0];
+
+  const clearLoadTimeout = () => {
+    if (loadTimeoutRef.current) {
+      clearTimeout(loadTimeoutRef.current);
+      loadTimeoutRef.current = null;
+    }
+  };
+
+  const setLoading = useCallback((value: boolean) => {
+    setIsLoading(value);
+  }, []);
+
+  const forceNextSource = useCallback(() => {
+    clearLoadTimeout();
+    setLoading(false);
+    setSourceIndex(prev => (prev + 1) % Math.max(sourceCandidates.length, 1));
+  }, [sourceCandidates.length]);
+
+  // Reset source when clip changes.
   useEffect(() => {
-    loadingRef.current = isLoading;
-  }, [isLoading]);
+    setSourceIndex(0);
+    setLoading(false);
+    setIsPlaying(false);
+    clearLoadTimeout();
+  }, [clip.id, sourceCandidates.length]);
 
-  // Reset stream when clip changes
-  useEffect(() => {
-    const nextUrl = resolveVideoUrl([clip.videoUrl, (clip as any)?.video_url, (clip as any)?.mediaUrl], index);
-    setStreamUrl(nextUrl);
-    setFallbackAttempt(0);
-    setIsLoading(false);
-    loadingRef.current = false;
-  }, [clip.videoUrl, (clip as any)?.video_url, (clip as any)?.mediaUrl, index]);
-
-  // Play/pause management
+  // Start/stop playback and enforce timeout when active.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    video.playbackRate = playbackSpeed;
     video.muted = isMuted;
+    video.playbackRate = playbackSpeed;
 
     if (isActive) {
-      setIsLoading(true);
-      loadingRef.current = true;
+      setLoading(true);
+      clearLoadTimeout();
 
-      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
       loadTimeoutRef.current = setTimeout(() => {
-        if (loadingRef.current) {
-          handleVideoError();
+        // If the browser still hasn't loaded a playable frame, try the next source.
+        if (video.readyState < 2) {
+          forceNextSource();
+        } else {
+          setLoading(false);
         }
-      }, 8000);
+      }, LOAD_TIMEOUT_MS);
 
-      const playPromise = video.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            setIsLoading(false);
-            loadingRef.current = false;
+      const attemptPlay = async () => {
+        try {
+          await video.play();
+          setLoading(false);
+          setIsPlaying(true);
+        } catch {
+          // Browsers often reject unmuted autoplay; muting resolves it.
+          video.muted = true;
+          try {
+            await video.play();
+            setLoading(false);
             setIsPlaying(true);
-          })
-          .catch(() => {
-            video.muted = true;
-            video.play()
-              .then(() => {
-                setIsLoading(false);
-                loadingRef.current = false;
-                setIsPlaying(true);
-              })
-              .catch(() => {
-                setIsLoading(false);
-                loadingRef.current = false;
-                setIsPlaying(false);
-              });
-          });
-      } else {
-        setIsLoading(false);
-        loadingRef.current = false;
-      }
+          } catch {
+            setLoading(false);
+            setIsPlaying(false);
+          }
+        }
+      };
+
+      attemptPlay();
     } else {
+      clearLoadTimeout();
       video.pause();
       try { video.currentTime = 0; } catch {}
       setIsPlaying(false);
-      setIsLoading(false);
-      loadingRef.current = false;
-      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+      setLoading(false);
     }
 
     return () => {
-      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+      clearLoadTimeout();
     };
-  }, [isActive, playbackSpeed, isMuted, streamUrl]);
+  }, [isActive, isMuted, playbackSpeed, currentSource, forceNextSource, setLoading]);
 
   const handleVideoError = useCallback(() => {
-    const nextAttempt = fallbackAttempt + 1;
-    const nextFallback = RELIABLE_VIDEO_STREAMS[(index + nextAttempt) % RELIABLE_VIDEO_STREAMS.length];
-    setFallbackAttempt(nextAttempt);
-    setStreamUrl(nextFallback);
-    setIsLoading(false);
-    loadingRef.current = false;
-    if (videoRef.current) {
-      videoRef.current.load();
-    }
-  }, [fallbackAttempt, index]);
+    forceNextSource();
+  }, [forceNextSource]);
 
   const handleTimeUpdate = () => {
     const video = videoRef.current;
@@ -201,7 +218,10 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     if (!video) return;
 
     if (video.paused) {
-      video.play().then(() => setIsPlaying(true)).catch(() => {});
+      setLoading(true);
+      video.play()
+        .then(() => { setIsPlaying(true); setLoading(false); })
+        .catch(() => { setIsPlaying(false); setLoading(false); });
     } else {
       video.pause();
       setIsPlaying(false);
@@ -228,12 +248,12 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
 
   const handleManualStreamCycle = (e: React.MouseEvent) => {
     e.stopPropagation();
-    handleVideoError();
-    toast.success('Switched to alternative HD video stream!');
+    forceNextSource();
+    toast.success('Switched video stream.');
   };
 
   return (
-    <div 
+    <div
       onDoubleClick={handleDoubleTapLike}
       className="shorts-snap-item relative w-full h-[calc(100vh-8rem)] max-h-[750px] min-h-[480px] rounded-3xl overflow-hidden liquid-glass border border-white/20 shadow-2xl flex items-center justify-center bg-slate-900 select-none group shrink-0"
     >
@@ -243,36 +263,40 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         </div>
       )}
 
-      {isLoading && (
-        <div className="absolute z-10 inset-0 flex items-center justify-center bg-slate-900/40 pointer-events-none">
-          <Loader2 className="w-9 h-9 text-[#00e5ff] animate-spin drop-shadow" />
-        </div>
-      )}
-
       <video
         ref={videoRef}
-        src={streamUrl}
+        src={currentSource}
         loop
         muted={isMuted}
         playsInline
         webkit-playsinline="true"
         preload={isActive ? 'auto' : 'metadata'}
-        onCanPlay={() => { setIsLoading(false); loadingRef.current = false; }}
-        onLoadedMetadata={() => { setIsLoading(false); loadingRef.current = false; }}
-        onLoadedData={() => { setIsLoading(false); loadingRef.current = false; }}
-        onWaiting={() => { setIsLoading(true); loadingRef.current = true; }}
-        onPlaying={() => { setIsLoading(false); loadingRef.current = false; setIsPlaying(true); }}
+        onLoadStart={() => setLoading(true)}
+        onCanPlay={() => setLoading(false)}
+        onCanPlayThrough={() => setLoading(false)}
+        onLoadedMetadata={() => setLoading(false)}
+        onPlaying={() => { setLoading(false); setIsPlaying(true); }}
+        onWaiting={() => setLoading(true)}
         onPause={() => setIsPlaying(false)}
         onTimeUpdate={handleTimeUpdate}
         onError={handleVideoError}
         onClick={handleTogglePlayPause}
-        className="w-full h-full object-cover rounded-3xl cursor-pointer"
+        className="absolute inset-0 w-full h-full object-cover rounded-3xl cursor-pointer"
       />
 
-      {!isPlaying && !isLoading && isActive && (
-        <div 
+      {isLoading && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-900/55 pointer-events-none">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="w-10 h-10 text-[#00e5ff] animate-spin drop-shadow" />
+            <span className="text-[10px] font-orbitron text-white/70 tracking-widest">LOADING FEED</span>
+          </div>
+        </div>
+      )}
+
+      {isActive && !isPlaying && !isLoading && (
+        <div
           onClick={handleTogglePlayPause}
-          className="absolute z-30 inset-0 flex items-center justify-center bg-slate-900/30 cursor-pointer transition-all"
+          className="absolute inset-0 z-30 flex items-center justify-center bg-slate-900/30 cursor-pointer"
         >
           <div className="w-16 h-16 rounded-full bg-slate-900/75 border border-white/30 backdrop-blur-md flex items-center justify-center text-white shadow-2xl hover:scale-110 transition-transform">
             <Play className="w-8 h-8 fill-current text-[#00e5ff] ml-1" />
@@ -335,7 +359,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
       {/* Bottom overlay */}
       <div className="absolute bottom-4 left-0 right-16 p-5 z-20 bg-gradient-to-t from-slate-900/95 via-slate-900/50 to-transparent space-y-2 pointer-events-none">
         <div className="flex items-center gap-2.5 pointer-events-auto">
-          <div 
+          <div
             onClick={() => onProfileClick(authorUser)}
             className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-900 text-xs shadow-md cursor-pointer hover:scale-105 transition-transform"
             style={{ background: authorUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
@@ -413,9 +437,22 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
 };
 
 export const ShortsFeedView: React.FC = () => {
-  const { 
-    clips, deleteClip, toggleClipLike, toggleClipDislike, toggleClipBookmark, addClipComment, 
-    openShareModal, allUsers, currentUser, toggleFollowUser, isFollowing, isMutualFriend, openUserProfileModal, isBlocked, syncWithSupabase
+  const {
+    clips,
+    deleteClip,
+    toggleClipLike,
+    toggleClipDislike,
+    toggleClipBookmark,
+    addClipComment,
+    openShareModal,
+    allUsers,
+    currentUser,
+    toggleFollowUser,
+    isFollowing,
+    isMutualFriend,
+    openUserProfileModal,
+    isBlocked,
+    syncWithSupabase
   } = useWevids();
 
   const [activeIndex, setActiveIndex] = useState(0);
@@ -435,33 +472,36 @@ export const ShortsFeedView: React.FC = () => {
     return () => { supabase.removeChannel(channel); };
   }, [syncWithSupabase]);
 
-  const validClips = (clips || []).filter(c => {
-    if (!c || isBlocked(c.userId)) return false;
-    const url = resolveVideoUrl([c.videoUrl, (c as any)?.video_url, (c as any)?.mediaUrl]);
-    return isValidVideoUrl(url);
-  });
+  const validClips = useMemo(() => {
+    return (clips || []).filter(c => {
+      if (!c || isBlocked(c.userId)) return false;
+      const url = resolveVideoUrl([c.videoUrl, (c as any)?.video_url, (c as any)?.mediaUrl]);
+      return isValidVideoUrl(url);
+    });
+  }, [clips, isBlocked]);
 
   const activeCommentingClip = validClips.find(c => c.id === commentingClipId) || null;
 
   const scrollToIndex = useCallback((idx: number) => {
+    const safeIndex = Math.max(0, Math.min(validClips.length - 1, idx));
     const container = containerRef.current;
     if (!container) return;
     const items = container.querySelectorAll('.shorts-snap-item');
-    const target = items[idx] as HTMLElement;
+    const target = items[safeIndex] as HTMLElement;
     if (target) {
       container.scrollTo({ top: target.offsetTop, behavior: 'smooth' });
-      setActiveIndex(idx);
+      setActiveIndex(safeIndex);
     }
-  }, []);
+  }, [validClips.length]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['ArrowDown', 'j', 'J'].includes(e.key)) {
         e.preventDefault();
-        scrollToIndex(Math.min(validClips.length - 1, activeIndex + 1));
+        scrollToIndex(activeIndex + 1);
       } else if (['ArrowUp', 'k', 'K'].includes(e.key)) {
         e.preventDefault();
-        scrollToIndex(Math.max(0, activeIndex - 1));
+        scrollToIndex(activeIndex - 1);
       } else if (['m', 'M'].includes(e.key)) {
         setIsMuted(m => !m);
         sounds.pop();
@@ -469,14 +509,14 @@ export const ShortsFeedView: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeIndex, validClips.length, scrollToIndex]);
+  }, [activeIndex, scrollToIndex]);
 
   const handleWheelScroll = (e: React.WheelEvent<HTMLDivElement>) => {
     if (wheelLockRef.current) return;
     if (Math.abs(e.deltaY) > 20) {
       wheelLockRef.current = true;
-      if (e.deltaY > 0) scrollToIndex(Math.min(validClips.length - 1, activeIndex + 1));
-      else scrollToIndex(Math.max(0, activeIndex - 1));
+      const direction = e.deltaY > 0 ? 1 : -1;
+      scrollToIndex(activeIndex + direction);
       setTimeout(() => { wheelLockRef.current = false; }, 450);
     }
   };
@@ -510,7 +550,9 @@ export const ShortsFeedView: React.FC = () => {
     if (!isSupabaseConfigured()) return;
     try {
       const targetClip = clips.find(c => c.id === clipId);
-      const newLikes = targetClip?.isLiked ? Math.max(0, (targetClip.likes || 1) - 1) : ((targetClip?.likes || 0) + 1);
+      const newLikes = targetClip?.isLiked
+        ? Math.max(0, (targetClip.likes || 1) - 1)
+        : ((targetClip?.likes || 0) + 1);
       await supabase.from('clips').update({ likes: newLikes }).eq('id', clipId);
     } catch {}
   };
@@ -540,7 +582,7 @@ export const ShortsFeedView: React.FC = () => {
       <div className="flex flex-col gap-3.5 absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 z-30">
         <button
           type="button"
-          onClick={() => scrollToIndex(Math.max(0, activeIndex - 1))}
+          onClick={() => scrollToIndex(activeIndex - 1)}
           disabled={activeIndex === 0}
           className="p-3 rounded-2xl bg-slate-900/80 hover:bg-[#00e5ff] text-white hover:text-slate-900 transition-all disabled:opacity-30 border border-white/20 shadow-2xl backdrop-blur-md"
         >
@@ -548,7 +590,7 @@ export const ShortsFeedView: React.FC = () => {
         </button>
         <button
           type="button"
-          onClick={() => scrollToIndex(Math.min(validClips.length - 1, activeIndex + 1))}
+          onClick={() => scrollToIndex(activeIndex + 1)}
           disabled={activeIndex === validClips.length - 1}
           className="p-3 rounded-2xl bg-slate-900/80 hover:bg-[#ff2d95] text-white hover:text-slate-900 transition-all disabled:opacity-30 border border-white/20 shadow-2xl backdrop-blur-md"
         >
