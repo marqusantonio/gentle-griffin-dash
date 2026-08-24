@@ -19,7 +19,8 @@ import {
   CommentReply
 } from '../types/wevids';
 import { supabase, isSupabaseConfigured, getStoredSession, checkContentModeration } from '../lib/supabase';
-import { insertPostWithAutoFallback, syncPostCommentsToCloud, syncClipCommentsToCloud } from '../lib/schemaAdapter';
+import { insertPostWithAutoFallback, syncPostCommentsToCloud, syncClipCommentsToCloud, insertClipWithAutoFallback } from '../lib/schemaAdapter';
+import { resolveVideoUrl, isValidVideoUrl } from '../lib/videoUtils';
 import { sounds } from '../lib/soundFx';
 import { toast } from 'sonner';
 
@@ -297,7 +298,11 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       }
 
       if (clipsRes.data && clipsRes.data.length > 0) {
-        const genuineClips = clipsRes.data.filter((c: any) => Boolean(c.videoUrl || c.video_url));
+        // Use shared video URL validation to filter out invalid placeholder entries
+        const genuineClips = clipsRes.data.filter((c: any) => {
+          const url = resolveVideoUrl([c.videoUrl, c.video_url, c.mediaUrl]);
+          return isValidVideoUrl(url);
+        });
         dispatch({ type: 'SET_CLIPS', payload: genuineClips });
       }
 
@@ -574,9 +579,13 @@ export const WevidsProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     sounds.success();
     dispatch({ type: 'ADD_CLIP', payload: clip });
 
-    supabase.from('clips').upsert([clip]).then(({ error }) => {
-      if (!error) syncWithSupabase(true);
-    });
+    try {
+      // Use schema adapter for proper serialization, ensuring both videoUrl and video_url are set.
+      await insertClipWithAutoFallback(clip);
+      syncWithSupabase(true);
+    } catch (err) {
+      console.error('[addClip] Error persisting clip:', err);
+    }
   };
 
   const toggleClipLike = async (clipId: string) => {

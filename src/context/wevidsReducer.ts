@@ -476,7 +476,8 @@ export const wevidsReducer = (state: WevidsState, action: WevidsAction): WevidsS
     case 'ADD_CLIP':
       return { ...state, clips: [action.payload, ...state.clips.filter(c => c.id !== action.payload.id)] };
     case 'DELETE_CLIP':
-      return { ...state, clips: state.clips.filter(c => c.clipId !== action.payload.clipId) };
+      // Fixed: use c.id instead of c.clipId
+      return { ...state, clips: state.clips.filter(c => c.id !== action.payload.clipId) };
     case 'SET_CLIPS':
       return { ...state, clips: action.payload || [] };
     case 'ADD_LONG_VIDEO':
