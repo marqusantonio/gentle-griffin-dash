@@ -19,7 +19,13 @@ import {
   Sparkles,
   Gauge,
   Loader2,
-  Zap
+  Zap,
+  TimerReset,
+  Repeat2,
+  MoreHorizontal,
+  Copy,
+  ExternalLink,
+  X
 } from 'lucide-react';
 import { RichCommentInput } from '../comments/RichCommentInput';
 import { CreatePostModal } from '../feed/CreatePostModal';
@@ -29,7 +35,7 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { RELIABLE_VIDEO_STREAMS } from '../../lib/videoUtils';
 import { toast } from 'sonner';
 
-const SPEED_OPTIONS = [1, 1.25, 1.5, 2];
+const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
 
 const getClipStream = (clip: ShortClipItem, index: number): string => {
   const candidate = clip.videoUrl;
@@ -51,6 +57,7 @@ interface ShortCardProps {
   isActive: boolean;
   isMuted: boolean;
   playbackSpeed: number;
+  onSelectSpeed: (speed: number) => void;
   onToggleMute: () => void;
   onToggleLike: (id: string) => void;
   onToggleDislike: (id: string) => void;
@@ -61,7 +68,6 @@ interface ShortCardProps {
   onUploadClick: () => void;
   onFollowToggle: (userId: string) => void;
   onProfileClick: (user: any) => void;
-  onCycleSpeed: () => void;
   isFollowingUser: boolean;
   isMutualFriendUser: boolean;
   isMyClip: boolean;
@@ -75,6 +81,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   isActive,
   isMuted,
   playbackSpeed,
+  onSelectSpeed,
   onToggleMute,
   onToggleLike,
   onToggleDislike,
@@ -85,7 +92,6 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   onUploadClick,
   onFollowToggle,
   onProfileClick,
-  onCycleSpeed,
   isFollowingUser,
   isMutualFriendUser,
   isMyClip,
@@ -96,6 +102,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   const progressBarContainerRef = useRef<HTMLDivElement | null>(null);
   const timeLabelRef = useRef<HTMLSpanElement | null>(null);
   const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -103,6 +110,8 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   const [currentSrc, setCurrentSrc] = useState(() => getClipStream(clip, index));
   const [streamFailed, setStreamFailed] = useState(false);
   const [heartPulse, setHeartPulse] = useState(false);
+  const [isSpeedMenuOpen, setSpeedMenuOpen] = useState(false);
+  const [isMoreMenuOpen, setMoreMenuOpen] = useState(false);
 
   const clearLoadTimeout = () => {
     if (loadTimeoutRef.current) {
@@ -111,12 +120,33 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     }
   };
 
+  const closeMenus = () => {
+    setSpeedMenuOpen(false);
+    setMoreMenuOpen(false);
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        moreMenuRef.current &&
+        !moreMenuRef.current.contains(event.target as Node)
+      ) {
+        setSpeedMenuOpen(false);
+        setMoreMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handleClickOutside);
+    return () => document.removeEventListener('pointerdown', handleClickOutside);
+  }, []);
+
   useEffect(() => {
     setCurrentSrc(getClipStream(clip, index));
     setStreamFailed(false);
     setIsLoading(false);
     setIsPlaying(false);
     clearLoadTimeout();
+    closeMenus();
   }, [clip.id, clip.videoUrl, index]);
 
   useEffect(() => {
@@ -213,7 +243,22 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     }
   };
 
+  const handleRestartClip = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!videoRef.current) return;
+    videoRef.current.currentTime = 0;
+    if (videoRef.current.paused) {
+      videoRef.current.play()
+        .then(() => { setIsPlaying(true); setIsLoading(false); })
+        .catch(() => { setIsPlaying(false); setIsLoading(false); });
+    }
+    sounds.pop();
+    toast('Restarted clip');
+  };
+
   const handleDoubleTapLike = () => {
+    if (clip.isLiked) return;
+
     setShowHeartOverlay(true);
     setHeartPulse(true);
     onToggleLike(clip.id);
@@ -225,6 +270,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
 
   const handleLikePress = (e: React.MouseEvent) => {
     e.stopPropagation();
+
     if (!clip.isLiked) {
       setShowHeartOverlay(true);
       setHeartPulse(true);
@@ -232,19 +278,28 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         setShowHeartOverlay(false);
         setHeartPulse(false);
       }, 800);
+      sounds.pop();
+    } else {
+      sounds.click();
     }
+
     onToggleLike(clip.id);
   };
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
     if (!progressBarContainerRef.current || !videoRef.current) return;
+
     const rect = progressBarContainerRef.current.getBoundingClientRect();
     const clickX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
     const newPercent = clickX / rect.width;
     const newTime = newPercent * (videoRef.current.duration || 1);
+
     videoRef.current.currentTime = newTime;
-    if (progressBarFillRef.current) progressBarFillRef.current.style.width = `${newPercent * 100}%`;
+
+    if (progressBarFillRef.current) {
+      progressBarFillRef.current.style.width = `${newPercent * 100}%`;
+    }
   };
 
   const handleRetry = (e: React.MouseEvent) => {
@@ -252,9 +307,17 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     setStreamFailed(false);
     setCurrentSrc(RELIABLE_VIDEO_STREAMS[index % RELIABLE_VIDEO_STREAMS.length]);
     setIsLoading(true);
+
     if (videoRef.current) {
       videoRef.current.load();
     }
+  };
+
+  const handleCopyLink = () => {
+    sounds.click();
+    navigator.clipboard?.writeText(`https://wevids.app/clip/${clip.id}`).catch(() => {});
+    setMoreMenuOpen(false);
+    toast.success('Clip link copied');
   };
 
   return (
@@ -341,14 +404,49 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
           <Sparkles className="w-3 h-3 text-[#ff2d95]" />
           CLIP {index + 1}/{totalClips}
         </span>
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onCycleSpeed(); }}
-          className="px-2.5 py-1 rounded-full bg-slate-950/70 backdrop-blur-md text-[10px] font-bold text-[#fbbf24] border border-[#fbbf24]/40 font-orbitron flex items-center gap-1 hover:scale-105 transition-transform shadow-[0_0_12px_rgba(251,191,36,0.2)]"
-        >
-          <Gauge className="w-3 h-3" />
-          <span>{playbackSpeed}x</span>
-        </button>
+
+        <div className="relative">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              sounds.click();
+              setSpeedMenuOpen(prev => !prev);
+              setMoreMenuOpen(false);
+            }}
+            className={`px-2.5 py-1 rounded-full backdrop-blur-md text-[10px] font-bold border font-orbitron flex items-center gap-1 hover:scale-105 transition-transform shadow-[0_0_12px_rgba(0,229,255,0.2)] ${
+              playbackSpeed === 1
+                ? 'bg-slate-950/70 text-[#fbbf24] border-[#fbbf24]/40'
+                : 'bg-[#ff2d95]/25 text-[#ff2d95] border-[#ff2d95]/60'
+            }`}
+          >
+            <Gauge className="w-3 h-3" />
+            <span>{playbackSpeed}x</span>
+          </button>
+
+          {isSpeedMenuOpen && (
+            <div className="absolute left-0 top-10 w-36 rounded-2xl liquid-glass border border-white/20 p-2 space-y-1 shadow-2xl z-50">
+              {SPEED_OPTIONS.map(speed => (
+                <button
+                  key={speed}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectSpeed(speed);
+                    setSpeedMenuOpen(false);
+                  }}
+                  className={`w-full px-3 py-2 rounded-xl text-left text-xs font-orbitron font-bold transition-colors ${
+                    playbackSpeed === speed
+                      ? 'bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-950'
+                      : 'text-white hover:bg-white/10'
+                  }`}
+                >
+                  {speed}x {speed === 0.5 ? '· Slow' : speed === 3 ? '· Turbo' : ''}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Right controls */}
@@ -363,21 +461,82 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
             <Trash2 className="w-4 h-4" />
           </button>
         )}
+
+        <button
+          type="button"
+          onClick={handleRestartClip}
+          className="p-2.5 rounded-full bg-slate-950/60 backdrop-blur-md text-white hover:bg-[#10b981] transition-all border border-white/10 shadow-lg"
+          title="Restart Clip"
+        >
+          <TimerReset className="w-4 h-4 text-[#10b981]" />
+        </button>
+
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onUploadClick(); }}
           className="p-2.5 rounded-full bg-slate-950/60 backdrop-blur-md text-white hover:bg-[#00e5ff] hover:text-slate-950 transition-all border border-white/10 shadow-lg"
+          title="Upload Clip"
         >
           <Plus className="w-4 h-4" />
         </button>
+
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onToggleMute(); }}
           className="p-2.5 rounded-full bg-slate-950/60 backdrop-blur-md text-white hover:bg-[#ff2d95] transition-all border border-white/10 shadow-lg"
+          title={isMuted ? 'Unmute' : 'Mute'}
         >
           {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-[#00e5ff]" />}
         </button>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            sounds.click();
+            setMoreMenuOpen(prev => !prev);
+            setSpeedMenuOpen(false);
+          }}
+          className="p-2.5 rounded-full bg-slate-950/60 backdrop-blur-md text-white hover:bg-[#fbbf24] hover:text-slate-950 transition-all border border-white/10 shadow-lg"
+          title="More Options"
+        >
+          <MoreHorizontal className="w-4 h-4 text-[#fbbf24]" />
+        </button>
       </div>
+
+      {isMoreMenuOpen && (
+        <div ref={moreMenuRef} className="absolute top-16 right-4 z-50 w-52 rounded-2xl liquid-glass border border-white/20 p-2 space-y-1 shadow-2xl">
+          <button
+            type="button"
+            onClick={handleCopyLink}
+            className="w-full px-3 py-2 rounded-xl text-left text-xs text-white hover:bg-white/10 flex items-center gap-2"
+          >
+            <Copy className="w-3.5 h-3.5 text-[#00e5ff]" /> Copy Clip Link
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              window.open(getClipStream(clip, index), '_blank', 'noopener,noreferrer');
+              setMoreMenuOpen(false);
+            }}
+            className="w-full px-3 py-2 rounded-xl text-left text-xs text-white hover:bg-white/10 flex items-center gap-2"
+          >
+            <ExternalLink className="w-3.5 h-3.5 text-[#10b981]" /> Open Full Video
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onShare(clip.title, clip.id);
+              setMoreMenuOpen(false);
+            }}
+            className="w-full px-3 py-2 rounded-xl text-left text-xs text-white hover:bg-white/10 flex items-center gap-2"
+          >
+            <Share2 className="w-3.5 h-3.5 text-[#ff2d95]" /> Share Clip
+          </button>
+        </div>
+      )}
 
       {/* Bottom overlay */}
       <div className="absolute bottom-4 left-0 right-16 p-5 z-20 bg-gradient-to-t from-slate-950/95 via-slate-950/50 to-transparent space-y-2 pointer-events-none">
@@ -430,32 +589,44 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
           }`}>
             <Heart className={`w-5 h-5 ${clip.isLiked ? 'fill-current' : ''}`} />
           </div>
-          <span className="text-[10px] font-bold text-white mt-1 drop-shadow">{(Number(clip.likes) || 0).toLocaleString()}</span>
+          <span className="text-[10px] font-bold text-white mt-1 drop-shadow">
+            {(Number(clip.likes) || 0).toLocaleString()}
+          </span>
         </button>
+
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); onToggleDislike(clip.id); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            sounds.click();
+            onToggleDislike(clip.id);
+          }}
           className="flex flex-col items-center group"
         >
           <div className={`p-3 rounded-full backdrop-blur-md transition-all border border-white/10 shadow-lg ${
-            clip.isDisliked ? 'bg-slate-600 text-white' : 'bg-slate-950/65 text-white hover:bg-white/10'
+            clip.isDisliked ? 'bg-[#64748b] text-white border-[#64748b]' : 'bg-slate-950/65 text-white hover:bg-white/10'
           }`}>
-            <ThumbsDown className="w-5 h-5" />
+            <ThumbsDown className={`w-5 h-5 ${clip.isDisliked ? 'fill-current' : ''}`} />
           </div>
-          <span className="text-[10px] font-bold text-white mt-1 drop-shadow">{clip.dislikes || 0}</span>
+          <span className="text-[10px] font-bold text-white mt-1 drop-shadow">
+            {(Number(clip.dislikes) || 0).toLocaleString()}
+          </span>
         </button>
+
         <button type="button" onClick={(e) => { e.stopPropagation(); onOpenComments(clip); }} className="flex flex-col items-center group">
           <div className="p-3 rounded-full bg-slate-950/65 backdrop-blur-md text-white hover:bg-[#00e5ff]/40 transition-all border border-white/10 shadow-lg">
             <MessageCircle className="w-5 h-5" />
           </div>
           <span className="text-[10px] font-bold text-white mt-1 drop-shadow">{clip.comments?.length || 0}</span>
         </button>
+
         <button type="button" onClick={(e) => { e.stopPropagation(); onToggleBookmark(clip.id); }} className="flex flex-col items-center group">
           <div className={`p-3 rounded-full backdrop-blur-md transition-all border border-white/10 shadow-lg ${clip.isBookmarked ? 'bg-[#fbbf24] text-slate-950' : 'bg-slate-950/65 text-white hover:bg-white/10'}`}>
             <Bookmark className={`w-5 h-5 ${clip.isBookmarked ? 'fill-current' : ''}`} />
           </div>
           <span className="text-[10px] font-bold text-white mt-1 drop-shadow">Save</span>
         </button>
+
         <button type="button" onClick={(e) => { e.stopPropagation(); onShare(clip.title, clip.id); }} className="flex flex-col items-center group">
           <div className="p-3 rounded-full bg-slate-950/65 backdrop-blur-md text-white hover:bg-[#ff2d95]/40 transition-all border border-white/10 shadow-lg">
             <Share2 className="w-5 h-5" />
@@ -499,6 +670,7 @@ export const ShortsFeedView: React.FC = () => {
 
   const [reactionOverrides, setReactionOverrides] = useState<Record<string, ReactionState>>({});
   const reactionLockRef = useRef<Record<string, boolean>>({});
+  const pendingReactionIdsRef = useRef<Set<string>>(new Set());
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const wheelLockRef = useRef(false);
@@ -519,27 +691,32 @@ export const ShortsFeedView: React.FC = () => {
     });
   }, [clips, isBlocked]);
 
-  // Keep numeric counts from Supabase realtime in sync without losing the
-  // current user's reaction flags while a request is in flight.
+  // Server-side count sync must never overwrite a clip that has a local
+  // reaction in flight. This kills the stale-count bounce/multiplication bug.
   useEffect(() => {
     setReactionOverrides(prev => {
       const next = { ...prev };
+
       validClips.forEach(clip => {
+        if (pendingReactionIdsRef.current.has(clip.id)) return;
+        if (reactionLockRef.current[clip.id]) return;
+
         if (next[clip.id]) {
-          const current = next[clip.id];
           next[clip.id] = {
-            ...current,
+            ...next[clip.id],
             likes: Number(clip.likes) || 0,
             dislikes: Number(clip.dislikes) || 0
           };
         }
       });
+
       return next;
     });
   }, [validClips]);
 
   const getReactionState = useCallback((clipId: string): ReactionState => {
     const clip = validClips.find(c => c.id === clipId);
+
     return reactionOverrides[clipId] || {
       likes: Number(clip?.likes) || 0,
       dislikes: Number(clip?.dislikes) || 0,
@@ -548,22 +725,28 @@ export const ShortsFeedView: React.FC = () => {
     };
   }, [reactionOverrides, validClips]);
 
-  const persistReaction = useCallback(async (clipId: string, likes: number, dislikes: number) => {
+  const persistReaction = useCallback(async (clipId: string) => {
     if (!isSupabaseConfigured()) return;
+
+    const current = reactionOverrides[clipId];
+    if (!current) return;
 
     try {
       const { error } = await supabase
         .from('clips')
-        .update({ likes, dislikes })
+        .update({
+          likes: current.likes,
+          dislikes: current.dislikes
+        })
         .eq('id', clipId);
 
       if (error) {
-        console.warn('[ShortsFeed] Local reaction persisted in UI only:', error.message);
+        console.warn('[ShortsFeed] Reaction kept locally:', error.message);
       }
     } catch (err) {
-      console.warn('[ShortsFeed] Reaction persistence failed silently:', err);
+      console.warn('[ShortsFeed] Reaction persistence failed quietly:', err);
     }
-  }, []);
+  }, [reactionOverrides]);
 
   const handleToggleLike = useCallback(async (clipId: string) => {
     if (reactionLockRef.current[clipId]) return;
@@ -579,12 +762,19 @@ export const ShortsFeedView: React.FC = () => {
       isDisliked: false
     };
 
+    pendingReactionIdsRef.current.add(clipId);
     setReactionOverrides(prev => ({ ...prev, [clipId]: optimistic }));
 
-    // Keep the UI in sync across all clips — the lock prevents rapid spam.
-    await persistReaction(clipId, optimistic.likes, optimistic.dislikes);
-
-    delete reactionLockRef.current[clipId];
+    // Wait a tick so `persistReaction` reads the newest local state.
+    setTimeout(async () => {
+      await persistReaction(clipId);
+      setTimeout(() => {
+        if (!reactionLockRef.current[clipId]) {
+          pendingReactionIdsRef.current.delete(clipId);
+        }
+      }, 350);
+      delete reactionLockRef.current[clipId];
+    }, 30);
   }, [getReactionState, persistReaction]);
 
   const handleToggleDislike = useCallback(async (clipId: string) => {
@@ -601,11 +791,18 @@ export const ShortsFeedView: React.FC = () => {
       isDisliked: nextDisliked
     };
 
+    pendingReactionIdsRef.current.add(clipId);
     setReactionOverrides(prev => ({ ...prev, [clipId]: optimistic }));
 
-    await persistReaction(clipId, optimistic.likes, optimistic.dislikes);
-
-    delete reactionLockRef.current[clipId];
+    setTimeout(async () => {
+      await persistReaction(clipId);
+      setTimeout(() => {
+        if (!reactionLockRef.current[clipId]) {
+          pendingReactionIdsRef.current.delete(clipId);
+        }
+      }, 350);
+      delete reactionLockRef.current[clipId];
+    }, 30);
   }, [getReactionState, persistReaction]);
 
   const displayClips = useMemo(() => {
@@ -629,8 +826,10 @@ export const ShortsFeedView: React.FC = () => {
     const safeIndex = Math.max(0, Math.min(displayClips.length - 1, idx));
     const container = containerRef.current;
     if (!container) return;
+
     const items = container.querySelectorAll('.shorts-snap-item');
     const target = items[safeIndex] as HTMLElement;
+
     if (target) {
       container.scrollTo({ top: target.offsetTop, behavior: 'smooth' });
       setActiveIndex(safeIndex);
@@ -652,8 +851,23 @@ export const ShortsFeedView: React.FC = () => {
         e.preventDefault();
         setAutoAdvance(a => !a);
         sounds.click();
+      } else if (['0', '1', '2', '3', '4', '5', '6'].includes(e.key)) {
+        const speedMap: Record<string, number> = {
+          '0': 0.5,
+          '1': 1,
+          '2': 1.5,
+          '3': 2,
+          '4': 2.5,
+          '5': 3,
+          '6': 1
+        };
+        if (speedMap[e.key]) {
+          setPlaybackSpeed(speedMap[e.key]);
+          sounds.click();
+        }
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeIndex, scrollToIndex]);
@@ -663,31 +877,40 @@ export const ShortsFeedView: React.FC = () => {
     const interval = setInterval(() => {
       const container = containerRef.current;
       if (!container) return;
+
       const items = container.querySelectorAll('.shorts-snap-item');
       if (items.length === 0) return;
+
       const next = (activeIndex + 1) % items.length;
       const target = items[next] as HTMLElement;
+
       if (target) {
         container.scrollTo({ top: target.offsetTop, behavior: 'smooth' });
         setActiveIndex(next);
       }
     }, 5000);
+
     return () => clearInterval(interval);
   }, [autoAdvance, activeIndex, displayClips.length]);
 
   const handleWheelScroll = (e: React.WheelEvent<HTMLDivElement>) => {
     if (wheelLockRef.current) return;
+
     if (Math.abs(e.deltaY) > 20) {
       wheelLockRef.current = true;
       const direction = e.deltaY > 0 ? 1 : -1;
       scrollToIndex(activeIndex + direction);
-      setTimeout(() => { wheelLockRef.current = false; }, 450);
+
+      setTimeout(() => {
+        wheelLockRef.current = false;
+      }, 450);
     }
   };
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+
     const items = container.querySelectorAll('.shorts-snap-item');
     const observer = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
@@ -697,17 +920,16 @@ export const ShortsFeedView: React.FC = () => {
         }
       });
     }, { root: container, threshold: 0.5 });
+
     items.forEach(item => observer.observe(item));
+
     return () => observer.disconnect();
   }, [displayClips.length]);
 
-  const cyclePlaybackSpeed = () => {
+  const handleSelectSpeed = useCallback((speed: number) => {
     sounds.click();
-    setPlaybackSpeed(prev => {
-      const idx = SPEED_OPTIONS.indexOf(prev);
-      return SPEED_OPTIONS[(idx + 1) % SPEED_OPTIONS.length];
-    });
-  };
+    setPlaybackSpeed(speed);
+  }, []);
 
   const handleFollowToggle = useCallback(async (userId: string) => {
     if (!currentUser?.id || currentUser.id === userId) return;
@@ -715,7 +937,6 @@ export const ShortsFeedView: React.FC = () => {
     followLockRef.current[userId] = true;
 
     try {
-      // Context already handles the database persistence safely.
       await toggleFollowUser(userId);
     } finally {
       delete followLockRef.current[userId];
@@ -753,9 +974,13 @@ export const ShortsFeedView: React.FC = () => {
         >
           <ChevronUp className="w-5 h-5" />
         </button>
+
         <button
           type="button"
-          onClick={() => { sounds.click(); setAutoAdvance(a => !a); }}
+          onClick={() => {
+            sounds.click();
+            setAutoAdvance(a => !a);
+          }}
           className={`p-3 rounded-2xl transition-all border shadow-2xl backdrop-blur-md ${
             autoAdvance
               ? 'bg-[#00e5ff] text-slate-950 border-[#00e5ff] shadow-[0_0_20px_rgba(0,229,255,0.6)]'
@@ -763,8 +988,9 @@ export const ShortsFeedView: React.FC = () => {
           }`}
           title="Auto-advance every 5 seconds"
         >
-          <Zap className="w-5 h-5" />
+          <Repeat2 className="w-5 h-5" />
         </button>
+
         <button
           type="button"
           onClick={() => scrollToIndex(activeIndex + 1)}
@@ -795,6 +1021,7 @@ export const ShortsFeedView: React.FC = () => {
               isActive={index === activeIndex}
               isMuted={isMuted}
               playbackSpeed={playbackSpeed}
+              onSelectSpeed={handleSelectSpeed}
               onToggleMute={() => { sounds.pop(); setIsMuted(m => !m); }}
               onToggleLike={handleToggleLike}
               onToggleDislike={handleToggleDislike}
@@ -805,7 +1032,6 @@ export const ShortsFeedView: React.FC = () => {
               onUploadClick={() => setIsCreateOpen(true)}
               onFollowToggle={handleFollowToggle}
               onProfileClick={openUserProfileModal}
-              onCycleSpeed={cyclePlaybackSpeed}
               isFollowingUser={isFollowingUser}
               isMutualFriendUser={isMutualFriendUser}
               isMyClip={isMine}
@@ -825,6 +1051,7 @@ export const ShortsFeedView: React.FC = () => {
               </h3>
               <button type="button" onClick={() => setCommentingClipId(null)} className="p-1 rounded-lg text-[#94a3b8] hover:text-white hover:bg-white/10">✕</button>
             </div>
+
             <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
               {!activeCommentingClip.comments || activeCommentingClip.comments.length === 0 ? (
                 <div className="text-center py-16 text-xs text-[#94a3b8]">No comments yet! Be the first to share your reaction.</div>
@@ -845,6 +1072,7 @@ export const ShortsFeedView: React.FC = () => {
                 ))
               )}
             </div>
+
             <div className="pt-2 border-t border-white/10">
               <RichCommentInput
                 onSend={(comment) => {
