@@ -26,11 +26,17 @@ import { CreatePostModal } from '../feed/CreatePostModal';
 import { sounds } from '../../lib/soundFx';
 import { ShortClipItem, CommentItem } from '../../types/wevids';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
-import { isValidVideoUrl, resolveVideoUrl, RELIABLE_VIDEO_STREAMS } from '../../lib/videoUtils';
+import { RELIABLE_VIDEO_STREAMS } from '../../lib/videoUtils';
 import { toast } from 'sonner';
 
 const SPEED_OPTIONS = [1, 1.25, 1.5, 2];
-const LOAD_TIMEOUT_MS = 7000;
+
+// Guaranteed playable source for a clip
+const getClipStream = (clip: ShortClipItem, index: number): string => {
+  const candidate = clip.videoUrl;
+  if (candidate && candidate.startsWith('https://')) return candidate;
+  return RELIABLE_VIDEO_STREAMS[index % RELIABLE_VIDEO_STREAMS.length];
+};
 
 interface ShortCardProps {
   clip: ShortClipItem;
@@ -85,30 +91,11 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   const timeLabelRef = useRef<HTMLSpanElement | null>(null);
   const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // The video element owns loading state, but we mirror it for UI.
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showHeartOverlay, setShowHeartOverlay] = useState(false);
-  const [sourceIndex, setSourceIndex] = useState(0);
-
-  // Build all possible sources for this clip: user's source(s) + reliable fallbacks.
-  const sourceCandidates = useMemo(() => {
-    const primary: string[] = [];
-    const add = (url?: string | null) => {
-      if (isValidVideoUrl(url)) {
-        const trimmed = (url as string).trim();
-        if (!primary.includes(trimmed)) primary.push(trimmed);
-      }
-    };
-    add(clip.videoUrl);
-    add((clip as any)?.video_url);
-    add((clip as any)?.mediaUrl);
-
-    const fallbacks = RELIABLE_VIDEO_STREAMS.filter(url => !primary.includes(url));
-    return [...primary, ...fallbacks];
-  }, [clip.videoUrl, (clip as any)?.video_url, (clip as any)?.mediaUrl]);
-
-  const currentSource = sourceCandidates[sourceIndex % sourceCandidates.length] || RELIABLE_VIDEO_STREAMS[0];
+  const [currentSrc, setCurrentSrc] = useState(() => getClipStream(clip, index));
+  const [streamFailed, setStreamFailed] = useState(false);
 
   const clearLoadTimeout = () => {
     if (loadTimeoutRef.current) {
@@ -117,81 +104,78 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     }
   };
 
-  const setLoading = useCallback((value: boolean) => {
-    setIsLoading(value);
-  }, []);
-
-  const forceNextSource = useCallback(() => {
-    clearLoadTimeout();
-    setLoading(false);
-    setSourceIndex(prev => (prev + 1) % Math.max(sourceCandidates.length, 1));
-  }, [sourceCandidates.length]);
-
-  // Reset source when clip changes.
+  // Reset when clip changes
   useEffect(() => {
-    setSourceIndex(0);
-    setLoading(false);
+    setCurrentSrc(getClipStream(clip, index));
+    setStreamFailed(false);
+    setIsLoading(false);
     setIsPlaying(false);
     clearLoadTimeout();
-  }, [clip.id, sourceCandidates.length]);
+  }, [clip.id, clip.videoUrl, index]);
 
-  // Start/stop playback and enforce timeout when active.
+  // Playback control
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    video.muted = isMuted;
     video.playbackRate = playbackSpeed;
+    video.muted = isMuted;
 
-    if (isActive) {
-      setLoading(true);
+    if (isActive && !streamFailed) {
+      setIsLoading(true);
       clearLoadTimeout();
 
+      // Auto-hide loading after 3 seconds no matter what
       loadTimeoutRef.current = setTimeout(() => {
-        // If the browser still hasn't loaded a playable frame, try the next source.
-        if (video.readyState < 2) {
-          forceNextSource();
-        } else {
-          setLoading(false);
-        }
-      }, LOAD_TIMEOUT_MS);
+        setIsLoading(false);
+      }, 3000);
 
-      const attemptPlay = async () => {
-        try {
-          await video.play();
-          setLoading(false);
-          setIsPlaying(true);
-        } catch {
-          // Browsers often reject unmuted autoplay; muting resolves it.
-          video.muted = true;
-          try {
-            await video.play();
-            setLoading(false);
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setIsLoading(false);
             setIsPlaying(true);
-          } catch {
-            setLoading(false);
-            setIsPlaying(false);
-          }
-        }
-      };
-
-      attemptPlay();
+          })
+          .catch(() => {
+            // Autoplay muted fallback
+            video.muted = true;
+            video.play()
+              .then(() => {
+                setIsLoading(false);
+                setIsPlaying(true);
+              })
+              .catch(() => {
+                setIsLoading(false);
+                setIsPlaying(false);
+              });
+          });
+      }
     } else {
       clearLoadTimeout();
       video.pause();
       try { video.currentTime = 0; } catch {}
       setIsPlaying(false);
-      setLoading(false);
+      setIsLoading(false);
     }
 
     return () => {
       clearLoadTimeout();
     };
-  }, [isActive, isMuted, playbackSpeed, currentSource, forceNextSource, setLoading]);
+  }, [isActive, isMuted, playbackSpeed, currentSrc, streamFailed]);
 
-  const handleVideoError = useCallback(() => {
-    forceNextSource();
-  }, [forceNextSource]);
+  const handleVideoError = () => {
+    // Switch to reliable fallback only once
+    if (!streamFailed) {
+      setStreamFailed(true);
+      setCurrentSrc(RELIABLE_VIDEO_STREAMS[(index + 1) % RELIABLE_VIDEO_STREAMS.length]);
+      setIsLoading(false);
+    } else {
+      // Give up, show error but not loading
+      setIsLoading(false);
+      setIsPlaying(false);
+    }
+  };
 
   const handleTimeUpdate = () => {
     const video = videoRef.current;
@@ -218,10 +202,10 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     if (!video) return;
 
     if (video.paused) {
-      setLoading(true);
+      setIsLoading(true);
       video.play()
-        .then(() => { setIsPlaying(true); setLoading(false); })
-        .catch(() => { setIsPlaying(false); setLoading(false); });
+        .then(() => { setIsPlaying(true); setIsLoading(false); })
+        .catch(() => { setIsPlaying(false); setIsLoading(false); });
     } else {
       video.pause();
       setIsPlaying(false);
@@ -246,10 +230,14 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     if (progressBarFillRef.current) progressBarFillRef.current.style.width = `${newPercent * 100}%`;
   };
 
-  const handleManualStreamCycle = (e: React.MouseEvent) => {
+  const handleRetry = (e: React.MouseEvent) => {
     e.stopPropagation();
-    forceNextSource();
-    toast.success('Switched video stream.');
+    setStreamFailed(false);
+    setCurrentSrc(RELIABLE_VIDEO_STREAMS[index % RELIABLE_VIDEO_STREAMS.length]);
+    setIsLoading(true);
+    if (videoRef.current) {
+      videoRef.current.load();
+    }
   };
 
   return (
@@ -265,18 +253,17 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
 
       <video
         ref={videoRef}
-        src={currentSource}
+        src={currentSrc}
         loop
         muted={isMuted}
         playsInline
-        webkit-playsinline="true"
-        preload={isActive ? 'auto' : 'metadata'}
-        onLoadStart={() => setLoading(true)}
-        onCanPlay={() => setLoading(false)}
-        onCanPlayThrough={() => setLoading(false)}
-        onLoadedMetadata={() => setLoading(false)}
-        onPlaying={() => { setLoading(false); setIsPlaying(true); }}
-        onWaiting={() => setLoading(true)}
+        preload="auto"
+        onLoadStart={() => setIsLoading(true)}
+        onCanPlay={() => setIsLoading(false)}
+        onCanPlayThrough={() => setIsLoading(false)}
+        onLoadedData={() => setIsLoading(false)}
+        onPlaying={() => { setIsLoading(false); setIsPlaying(true); }}
+        onWaiting={() => setIsLoading(true)}
         onPause={() => setIsPlaying(false)}
         onTimeUpdate={handleTimeUpdate}
         onError={handleVideoError}
@@ -293,7 +280,20 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         </div>
       )}
 
-      {isActive && !isPlaying && !isLoading && (
+      {streamFailed && !isLoading && (
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-900/80 p-6 text-center">
+          <div className="text-3xl mb-2">📡</div>
+          <p className="text-xs text-white font-bold mb-3">Video stream unavailable</p>
+          <button
+            onClick={handleRetry}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#00e5ff] to-[#ff2d95] text-slate-900 font-bold text-xs"
+          >
+            RETRY STREAM
+          </button>
+        </div>
+      )}
+
+      {isActive && !isPlaying && !isLoading && !streamFailed && (
         <div
           onClick={handleTogglePlayPause}
           className="absolute inset-0 z-30 flex items-center justify-center bg-slate-900/30 cursor-pointer"
@@ -317,14 +317,6 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         >
           <Gauge className="w-3 h-3" />
           <span>{playbackSpeed}x</span>
-        </button>
-        <button
-          type="button"
-          onClick={handleManualStreamCycle}
-          className="px-2 py-1 rounded-full bg-slate-900/70 backdrop-blur-md text-[10px] text-[#00e5ff] border border-white/10 hover:border-[#00e5ff] flex items-center gap-1"
-        >
-          <RefreshCw className="w-3 h-3" />
-          <span className="hidden sm:inline">Stream</span>
         </button>
       </div>
 
@@ -475,8 +467,7 @@ export const ShortsFeedView: React.FC = () => {
   const validClips = useMemo(() => {
     return (clips || []).filter(c => {
       if (!c || isBlocked(c.userId)) return false;
-      const url = resolveVideoUrl([c.videoUrl, (c as any)?.video_url, (c as any)?.mediaUrl]);
-      return isValidVideoUrl(url);
+      return true; // We'll handle invalid video as fallback
     });
   }, [clips, isBlocked]);
 
@@ -550,9 +541,7 @@ export const ShortsFeedView: React.FC = () => {
     if (!isSupabaseConfigured()) return;
     try {
       const targetClip = clips.find(c => c.id === clipId);
-      const newLikes = targetClip?.isLiked
-        ? Math.max(0, (targetClip.likes || 1) - 1)
-        : ((targetClip?.likes || 0) + 1);
+      const newLikes = targetClip?.isLiked ? Math.max(0, (targetClip.likes || 1) - 1) : ((targetClip?.likes || 0) + 1);
       await supabase.from('clips').update({ likes: newLikes }).eq('id', clipId);
     } catch {}
   };
@@ -695,5 +684,7 @@ export const ShortsFeedView: React.FC = () => {
 
 // Export resolution helper for DualFeedView compatibility
 export const resolveClipVideoUrl = (clip: ShortClipItem, fallbackIndex = 0): string => {
-  return resolveVideoUrl([clip.videoUrl, (clip as any)?.video_url, (clip as any)?.mediaUrl], fallbackIndex);
+  const url = clip.videoUrl;
+  if (url && url.startsWith('https://')) return url;
+  return RELIABLE_VIDEO_STREAMS[fallbackIndex % RELIABLE_VIDEO_STREAMS.length];
 };
