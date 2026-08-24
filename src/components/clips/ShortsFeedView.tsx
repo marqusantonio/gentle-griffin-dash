@@ -19,13 +19,11 @@ import {
   Sparkles,
   Gauge,
   Loader2,
-  Zap,
   TimerReset,
   Repeat2,
   MoreHorizontal,
   Copy,
   ExternalLink,
-  X
 } from 'lucide-react';
 import { RichCommentInput } from '../comments/RichCommentInput';
 import { CreatePostModal } from '../feed/CreatePostModal';
@@ -50,6 +48,93 @@ type ReactionState = {
   isDisliked: boolean;
 };
 
+function useShortReaction(clip: ShortClipItem) {
+  const [reaction, setReaction] = useState<ReactionState>(() => ({
+    likes: Number(clip.likes) || 0,
+    dislikes: Number(clip.dislikes) || 0,
+    isLiked: Boolean(clip.isLiked),
+    isDisliked: Boolean(clip.isDisliked),
+  }));
+
+  const lockedRef = useRef(false);
+  const lastAppliedRef = useRef(
+    `${clip.id}-${clip.likes}-${clip.dislikes}-${clip.isLiked}-${clip.isDisliked}`
+  );
+
+  useEffect(() => {
+    const signature = `${clip.id}-${clip.likes}-${clip.dislikes}-${clip.isLiked}-${clip.isDisliked}`;
+    if (lockedRef.current || signature === lastAppliedRef.current) return;
+    lastAppliedRef.current = signature;
+    setReaction({
+      likes: Number(clip.likes) || 0,
+      dislikes: Number(clip.dislikes) || 0,
+      isLiked: Boolean(clip.isLiked),
+      isDisliked: Boolean(clip.isDisliked),
+    });
+  }, [clip.id, clip.likes, clip.dislikes, clip.isLiked, clip.isDisliked]);
+
+  const persist = useCallback(
+    async (next: ReactionState) => {
+      if (!isSupabaseConfigured()) return;
+      try {
+        await supabase
+          .from('clips')
+          .update({ likes: next.likes, dislikes: next.dislikes })
+          .eq('id', clip.id);
+      } catch (err) {
+        console.warn('[Shorts] Reaction save skipped:', err);
+      }
+    },
+    [clip.id]
+  );
+
+  const like = useCallback(async () => {
+    if (lockedRef.current) return;
+    lockedRef.current = true;
+
+    setReaction((prev) => {
+      const nextLiked = !prev.isLiked;
+      const next: ReactionState = {
+        likes: nextLiked ? prev.likes + 1 : Math.max(0, prev.likes - 1),
+        dislikes: nextLiked ? 0 : prev.dislikes,
+        isLiked: nextLiked,
+        isDisliked: false,
+      };
+
+      persist(next).finally(() => {
+        lastAppliedRef.current = `${clip.id}-${next.likes}-${next.dislikes}-${next.isLiked}-${next.isDisliked}`;
+        lockedRef.current = false;
+      });
+
+      return next;
+    });
+  }, [clip.id, persist]);
+
+  const dislike = useCallback(async () => {
+    if (lockedRef.current) return;
+    lockedRef.current = true;
+
+    setReaction((prev) => {
+      const nextDisliked = !prev.isDisliked;
+      const next: ReactionState = {
+        likes: nextDisliked ? 0 : prev.likes,
+        dislikes: nextDisliked ? prev.dislikes + 1 : Math.max(0, prev.dislikes - 1),
+        isLiked: false,
+        isDisliked: nextDisliked,
+      };
+
+      persist(next).finally(() => {
+        lastAppliedRef.current = `${clip.id}-${next.likes}-${next.dislikes}-${next.isLiked}-${next.isDisliked}`;
+        lockedRef.current = false;
+      });
+
+      return next;
+    });
+  }, [clip.id, persist]);
+
+  return { reaction, like, dislike };
+}
+
 interface ShortCardProps {
   clip: ShortClipItem;
   index: number;
@@ -59,8 +144,6 @@ interface ShortCardProps {
   playbackSpeed: number;
   onSelectSpeed: (speed: number) => void;
   onToggleMute: () => void;
-  onToggleLike: (id: string) => void;
-  onToggleDislike: (id: string) => void;
   onToggleBookmark: (id: string) => void;
   onShare: (title: string, id: string) => void;
   onOpenComments: (clip: ShortClipItem) => void;
@@ -83,8 +166,6 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   playbackSpeed,
   onSelectSpeed,
   onToggleMute,
-  onToggleLike,
-  onToggleDislike,
   onToggleBookmark,
   onShare,
   onOpenComments,
@@ -95,14 +176,16 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   isFollowingUser,
   isMutualFriendUser,
   isMyClip,
-  authorUser
+  authorUser,
 }) => {
+  const { reaction, like, dislike } = useShortReaction(clip);
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const progressBarFillRef = useRef<HTMLDivElement | null>(null);
   const progressBarContainerRef = useRef<HTMLDivElement | null>(null);
   const timeLabelRef = useRef<HTMLSpanElement | null>(null);
   const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -127,12 +210,8 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        moreMenuRef.current &&
-        !moreMenuRef.current.contains(event.target as Node)
-      ) {
-        setSpeedMenuOpen(false);
-        setMoreMenuOpen(false);
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        closeMenus();
       }
     };
 
@@ -243,8 +322,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     }
   };
 
-  const handleRestartClip = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleRestartClip = () => {
     if (!videoRef.current) return;
     videoRef.current.currentTime = 0;
     if (videoRef.current.paused) {
@@ -254,14 +332,15 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     }
     sounds.pop();
     toast('Restarted clip');
+    setMoreMenuOpen(false);
   };
 
   const handleDoubleTapLike = () => {
-    if (clip.isLiked) return;
+    if (reaction.isLiked) return;
 
     setShowHeartOverlay(true);
     setHeartPulse(true);
-    onToggleLike(clip.id);
+    like();
     setTimeout(() => {
       setShowHeartOverlay(false);
       setHeartPulse(false);
@@ -271,7 +350,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   const handleLikePress = (e: React.MouseEvent) => {
     e.stopPropagation();
 
-    if (!clip.isLiked) {
+    if (!reaction.isLiked) {
       setShowHeartOverlay(true);
       setHeartPulse(true);
       setTimeout(() => {
@@ -283,7 +362,13 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
       sounds.click();
     }
 
-    onToggleLike(clip.id);
+    like();
+  };
+
+  const handleDislikePress = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    sounds.click();
+    dislike();
   };
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -334,10 +419,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
       {showHeartOverlay && (
         <div className="absolute z-40 inset-0 flex items-center justify-center pointer-events-none">
           <div className="relative">
-            <Heart className={`w-28 h-28 text-[#ff2d95] fill-current drop-shadow-[0_0_35px_#ff2d95] ${heartPulse ? 'animate-spring-pop' : ''}`} />
-            <div className="absolute -top-8 -left-10 text-[#ff2d95]/80 text-2xl animate-float-up">✦</div>
-            <div className="absolute -bottom-6 -right-8 text-[#00e5ff]/80 text-xl animate-float-up">✦</div>
-            <div className="absolute top-2 -right-12 text-[#fbbf24]/80 text-lg animate-float-up">✦</div>
+            <Heart className={`w-24 h-24 text-[#ff2d95] fill-current drop-shadow-[0_0_35px_#ff2d95] ${heartPulse ? 'animate-spring-pop' : ''}`} />
           </div>
         </div>
       )}
@@ -392,32 +474,32 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
           onClick={handleTogglePlayPause}
           className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/30 cursor-pointer"
         >
-          <div className="w-16 h-16 rounded-full bg-slate-950/75 border border-[#00e5ff]/40 backdrop-blur-md flex items-center justify-center text-white shadow-[0_0_25px_rgba(0,229,255,0.35)] hover:scale-110 transition-transform">
-            <Play className="w-8 h-8 fill-current text-[#00e5ff] ml-1" />
+          <div className="w-14 h-14 rounded-full bg-slate-950/75 border border-[#00e5ff]/40 backdrop-blur-md flex items-center justify-center text-white shadow-[0_0_25px_rgba(0,229,255,0.35)] hover:scale-110 transition-transform">
+            <Play className="w-7 h-7 fill-current text-[#00e5ff] ml-1" />
           </div>
         </div>
       )}
 
-      {/* Top controls */}
-      <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
-        <span className="px-3 py-1 rounded-full bg-slate-950/70 backdrop-blur-md text-[10px] font-bold text-[#00e5ff] border border-[#00e5ff]/30 font-orbitron flex items-center gap-1 shadow-[0_0_15px_rgba(0,229,255,0.2)]">
-          <Sparkles className="w-3 h-3 text-[#ff2d95]" />
-          CLIP {index + 1}/{totalClips}
+      {/* Compact top left controls */}
+      <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5">
+        <span className="px-2.5 py-1 rounded-full bg-slate-950/70 backdrop-blur-md text-[10px] font-bold text-[#00e5ff] border border-[#00e5ff]/30 font-orbitron">
+          <Sparkles className="w-3 h-3 text-[#ff2d95] inline mr-1 -mt-0.5" />
+          {index + 1}/{totalClips}
         </span>
 
-        <div className="relative">
+        <div className="relative" ref={menuRef}>
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
               sounds.click();
-              setSpeedMenuOpen(prev => !prev);
+              setSpeedMenuOpen((prev) => !prev);
               setMoreMenuOpen(false);
             }}
-            className={`px-2.5 py-1 rounded-full backdrop-blur-md text-[10px] font-bold border font-orbitron flex items-center gap-1 hover:scale-105 transition-transform shadow-[0_0_12px_rgba(0,229,255,0.2)] ${
+            className={`px-2 py-1 rounded-full bg-slate-950/70 backdrop-blur-md text-[10px] font-bold border font-orbitron flex items-center gap-1 hover:scale-105 transition-transform shadow-[0_0_8px_rgba(0,229,255,0.2)] ${
               playbackSpeed === 1
-                ? 'bg-slate-950/70 text-[#fbbf24] border-[#fbbf24]/40'
-                : 'bg-[#ff2d95]/25 text-[#ff2d95] border-[#ff2d95]/60'
+                ? 'text-[#fbbf24] border-[#fbbf24]/40'
+                : 'text-[#ff2d95] border-[#ff2d95]/60'
             }`}
           >
             <Gauge className="w-3 h-3" />
@@ -425,8 +507,8 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
           </button>
 
           {isSpeedMenuOpen && (
-            <div className="absolute left-0 top-10 w-36 rounded-2xl liquid-glass border border-white/20 p-2 space-y-1 shadow-2xl z-50">
-              {SPEED_OPTIONS.map(speed => (
+            <div className="absolute left-0 top-8 w-32 rounded-2xl liquid-glass border border-white/20 p-1.5 space-y-1 shadow-2xl z-50">
+              {SPEED_OPTIONS.map((speed) => (
                 <button
                   key={speed}
                   type="button"
@@ -435,13 +517,13 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
                     onSelectSpeed(speed);
                     setSpeedMenuOpen(false);
                   }}
-                  className={`w-full px-3 py-2 rounded-xl text-left text-xs font-orbitron font-bold transition-colors ${
+                  className={`w-full px-2.5 py-1.5 rounded-xl text-left text-[11px] font-orbitron font-bold transition-colors ${
                     playbackSpeed === speed
                       ? 'bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-950'
                       : 'text-white hover:bg-white/10'
                   }`}
                 >
-                  {speed}x {speed === 0.5 ? '· Slow' : speed === 3 ? '· Turbo' : ''}
+                  {speed}x <span className="opacity-60">{speed === 0.5 ? 'slow' : speed === 3 ? 'turbo' : ''}</span>
                 </button>
               ))}
             </div>
@@ -449,197 +531,196 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         </div>
       </div>
 
-      {/* Right controls */}
-      <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+      {/* Compact top right controls */}
+      <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5">
         {isMyClip && (
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onDeleteClip(clip.id); }}
-            className="p-2.5 rounded-full bg-slate-950/60 backdrop-blur-md text-white hover:bg-red-500 transition-all border border-white/10 shadow-lg"
+            className="p-1.5 rounded-full bg-slate-950/60 backdrop-blur-md text-white hover:bg-red-500 transition-all border border-white/10"
             title="Delete My Clip"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-3.5 h-3.5" />
           </button>
         )}
 
         <button
           type="button"
-          onClick={handleRestartClip}
-          className="p-2.5 rounded-full bg-slate-950/60 backdrop-blur-md text-white hover:bg-[#10b981] transition-all border border-white/10 shadow-lg"
-          title="Restart Clip"
-        >
-          <TimerReset className="w-4 h-4 text-[#10b981]" />
-        </button>
-
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onUploadClick(); }}
-          className="p-2.5 rounded-full bg-slate-950/60 backdrop-blur-md text-white hover:bg-[#00e5ff] hover:text-slate-950 transition-all border border-white/10 shadow-lg"
-          title="Upload Clip"
-        >
-          <Plus className="w-4 h-4" />
-        </button>
-
-        <button
-          type="button"
           onClick={(e) => { e.stopPropagation(); onToggleMute(); }}
-          className="p-2.5 rounded-full bg-slate-950/60 backdrop-blur-md text-white hover:bg-[#ff2d95] transition-all border border-white/10 shadow-lg"
+          className="p-1.5 rounded-full bg-slate-950/60 backdrop-blur-md text-white hover:bg-[#ff2d95] transition-all border border-white/10"
           title={isMuted ? 'Unmute' : 'Mute'}
         >
-          {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-[#00e5ff]" />}
+          {isMuted ? <VolumeX className="w-3.5 h-3.5 text-red-400" /> : <Volume2 className="w-3.5 h-3.5 text-[#00e5ff]" />}
         </button>
 
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            sounds.click();
-            setMoreMenuOpen(prev => !prev);
-            setSpeedMenuOpen(false);
-          }}
-          className="p-2.5 rounded-full bg-slate-950/60 backdrop-blur-md text-white hover:bg-[#fbbf24] hover:text-slate-950 transition-all border border-white/10 shadow-lg"
-          title="More Options"
-        >
-          <MoreHorizontal className="w-4 h-4 text-[#fbbf24]" />
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              sounds.click();
+              setMoreMenuOpen((prev) => !prev);
+              setSpeedMenuOpen(false);
+            }}
+            className="p-1.5 rounded-full bg-slate-950/60 backdrop-blur-md text-white hover:bg-[#fbbf24] transition-all border border-white/10"
+            title="More Options"
+          >
+            <MoreHorizontal className="w-3.5 h-3.5 text-[#fbbf24]" />
+          </button>
+
+          {isMoreMenuOpen && (
+            <div className="absolute right-0 top-8 w-44 rounded-2xl liquid-glass border border-white/20 p-1.5 space-y-1 shadow-2xl z-50">
+              <button
+                type="button"
+                onClick={handleRestartClip}
+                className="w-full px-2.5 py-1.5 rounded-xl text-left text-[11px] text-white hover:bg-white/10 flex items-center gap-2"
+              >
+                <TimerReset className="w-3.5 h-3.5 text-[#10b981]" /> Restart Clip
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onUploadClick();
+                  setMoreMenuOpen(false);
+                }}
+                className="w-full px-2.5 py-1.5 rounded-xl text-left text-[11px] text-white hover:bg-white/10 flex items-center gap-2"
+              >
+                <Plus className="w-3.5 h-3.5 text-[#00e5ff]" /> Upload Clip
+              </button>
+              <button
+                type="button"
+                onClick={handleCopyLink}
+                className="w-full px-2.5 py-1.5 rounded-xl text-left text-[11px] text-white hover:bg-white/10 flex items-center gap-2"
+              >
+                <Copy className="w-3.5 h-3.5 text-[#00e5ff]" /> Copy Link
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(getClipStream(clip, index), '_blank', 'noopener,noreferrer');
+                  setMoreMenuOpen(false);
+                }}
+                className="w-full px-2.5 py-1.5 rounded-xl text-left text-[11px] text-white hover:bg-white/10 flex items-center gap-2"
+              >
+                <ExternalLink className="w-3.5 h-3.5 text-[#10b981]" /> Full Video
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onShare(clip.title, clip.id);
+                  setMoreMenuOpen(false);
+                }}
+                className="w-full px-2.5 py-1.5 rounded-xl text-left text-[11px] text-white hover:bg-white/10 flex items-center gap-2"
+              >
+                <Share2 className="w-3.5 h-3.5 text-[#ff2d95]" /> Share Clip
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {isMoreMenuOpen && (
-        <div ref={moreMenuRef} className="absolute top-16 right-4 z-50 w-52 rounded-2xl liquid-glass border border-white/20 p-2 space-y-1 shadow-2xl">
-          <button
-            type="button"
-            onClick={handleCopyLink}
-            className="w-full px-3 py-2 rounded-xl text-left text-xs text-white hover:bg-white/10 flex items-center gap-2"
-          >
-            <Copy className="w-3.5 h-3.5 text-[#00e5ff]" /> Copy Clip Link
-          </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              window.open(getClipStream(clip, index), '_blank', 'noopener,noreferrer');
-              setMoreMenuOpen(false);
-            }}
-            className="w-full px-3 py-2 rounded-xl text-left text-xs text-white hover:bg-white/10 flex items-center gap-2"
-          >
-            <ExternalLink className="w-3.5 h-3.5 text-[#10b981]" /> Open Full Video
-          </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onShare(clip.title, clip.id);
-              setMoreMenuOpen(false);
-            }}
-            className="w-full px-3 py-2 rounded-xl text-left text-xs text-white hover:bg-white/10 flex items-center gap-2"
-          >
-            <Share2 className="w-3.5 h-3.5 text-[#ff2d95]" /> Share Clip
-          </button>
-        </div>
-      )}
-
-      {/* Bottom overlay */}
-      <div className="absolute bottom-4 left-0 right-16 p-5 z-20 bg-gradient-to-t from-slate-950/95 via-slate-950/50 to-transparent space-y-2 pointer-events-none">
-        <div className="flex items-center gap-2.5 pointer-events-auto">
+      {/* Compact bottom info */}
+      <div className="absolute bottom-3 left-3 right-14 z-20 bg-gradient-to-t from-slate-950/90 via-slate-950/50 to-transparent px-3 pt-6 pb-2 rounded-b-[2rem] pointer-events-none">
+        <div className="flex items-center gap-2 pointer-events-auto">
           <div
             onClick={() => onProfileClick(authorUser)}
-            className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-950 text-xs shadow-md cursor-pointer hover:scale-105 transition-transform"
+            className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-slate-950 text-[10px] shadow-md cursor-pointer hover:scale-105 transition-transform shrink-0"
             style={{ background: authorUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
           >
             {authorUser?.avatarImage ? <img src={authorUser.avatarImage} alt="Avatar" className="w-full h-full object-cover rounded-full" /> : authorUser?.avatar || 'U'}
           </div>
-          <div className="flex-1 min-w-0">
-            <div onClick={() => onProfileClick(authorUser)} className="text-xs font-bold text-white flex items-center gap-1.5 cursor-pointer hover:text-[#00e5ff]">
-              <span>{authorUser?.name || 'Creator'}</span>
-              {authorUser?.verified && <CheckCircle2 className="w-3.5 h-3.5 text-[#00e5ff]" />}
+          <div className="min-w-0 flex-1">
+            <div onClick={() => onProfileClick(authorUser)} className="text-[11px] font-bold text-white flex items-center gap-1 cursor-pointer hover:text-[#00e5ff]">
+              <span className="truncate">{authorUser?.name || 'Creator'}</span>
+              {authorUser?.verified && <CheckCircle2 className="w-3 h-3 text-[#00e5ff] shrink-0" />}
             </div>
-            <div className="text-[10px] text-[#94a3b8]">{authorUser?.handle || '@creator'}</div>
+            <div className="text-[9px] text-[#94a3b8]">{authorUser?.handle || '@creator'}</div>
           </div>
           {!isMyClip && (
             <button
               type="button"
               onClick={() => onFollowToggle(authorUser.id)}
-              className={`px-3 py-1 rounded-xl text-[11px] font-bold font-orbitron transition-all shadow-md flex items-center gap-1 ${
-                isMutualFriendUser ? 'bg-gradient-to-r from-[#10b981] to-[#00e5ff] text-slate-950' : isFollowingUser ? 'bg-white/15 text-[#00e5ff] border border-[#00e5ff]/40' : 'bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-950'
+              className={`px-2 py-1 rounded-lg text-[10px] font-bold font-orbitron transition-all shadow-md shrink-0 ${
+                isMutualFriendUser
+                  ? 'bg-gradient-to-r from-[#10b981] to-[#00e5ff] text-slate-950'
+                  : isFollowingUser
+                  ? 'bg-white/15 text-[#00e5ff] border border-[#00e5ff]/40'
+                  : 'bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-950'
               }`}
             >
-              {isMutualFriendUser ? 'Friends 🤝' : isFollowingUser ? 'Following' : '+ Follow'}
+              {isMutualFriendUser ? 'Friends' : isFollowingUser ? 'Following' : 'Follow'}
             </button>
           )}
         </div>
-        <h2 className="text-sm font-bold text-white drop-shadow pointer-events-auto leading-snug">{clip.title}</h2>
-        <p className="text-xs text-[#e8e8f4]/90 line-clamp-2 drop-shadow pointer-events-auto">{clip.description}</p>
-        <div className="flex items-center gap-2 text-[11px] text-[#00e5ff] font-medium bg-slate-950/60 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 inline-flex pointer-events-auto">
-          <Music2 className="w-3 h-3 text-[#ff2d95] animate-pulse" />
-          <span className="truncate max-w-[180px]">{clip.audioTrack || 'Original Audio Track'}</span>
+
+        <h2 className="mt-1 text-xs font-bold text-white drop-shadow line-clamp-1 pointer-events-auto">{clip.title}</h2>
+        <p className="text-[10px] text-[#e8e8f4]/90 line-clamp-1 drop-shadow pointer-events-auto">{clip.description}</p>
+
+        <div className="mt-1 flex items-center gap-1.5 text-[9px] text-[#00e5ff] font-medium bg-slate-950/50 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/10 inline-flex pointer-events-auto">
+          <Music2 className="w-2.5 h-2.5 text-[#ff2d95] animate-pulse" />
+          <span className="truncate max-w-[150px]">{clip.audioTrack || 'Original Audio Track'}</span>
         </div>
       </div>
 
-      {/* Right action column */}
-      <div className="absolute right-3 bottom-8 z-20 flex flex-col items-center gap-3.5">
+      {/* Compact right action column */}
+      <div className="absolute right-2.5 bottom-10 z-20 flex flex-col items-center gap-2.5">
         <button
           type="button"
           onClick={handleLikePress}
           className="flex flex-col items-center group"
         >
-          <div className={`p-3 rounded-full backdrop-blur-md transition-all shadow-lg relative ${
-            clip.isLiked
-              ? 'bg-[#ff2d95]/90 text-white scale-110 shadow-[0_0_24px_rgba(255,45,149,0.85)] border border-[#ff2d95]'
+          <div className={`p-2.5 rounded-full backdrop-blur-md transition-all shadow-lg ${
+            reaction.isLiked
+              ? 'bg-[#ff2d95]/90 text-white scale-110 shadow-[0_0_18px_rgba(255,45,149,0.85)] border border-[#ff2d95]'
               : 'bg-slate-950/65 text-white hover:bg-[#ff2d95]/30 border border-white/15 hover:border-[#ff2d95]/60'
           }`}>
-            <Heart className={`w-5 h-5 ${clip.isLiked ? 'fill-current' : ''}`} />
+            <Heart className={`w-4 h-4 ${reaction.isLiked ? 'fill-current' : ''}`} />
           </div>
-          <span className="text-[10px] font-bold text-white mt-1 drop-shadow">
-            {(Number(clip.likes) || 0).toLocaleString()}
-          </span>
+          <span className="text-[9px] font-bold text-white mt-1 drop-shadow">{reaction.likes.toLocaleString()}</span>
         </button>
 
         <button
           type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            sounds.click();
-            onToggleDislike(clip.id);
-          }}
+          onClick={handleDislikePress}
           className="flex flex-col items-center group"
         >
-          <div className={`p-3 rounded-full backdrop-blur-md transition-all border border-white/10 shadow-lg ${
-            clip.isDisliked ? 'bg-[#64748b] text-white border-[#64748b]' : 'bg-slate-950/65 text-white hover:bg-white/10'
+          <div className={`p-2.5 rounded-full backdrop-blur-md transition-all border border-white/10 shadow-lg ${
+            reaction.isDisliked ? 'bg-[#64748b] text-white border-[#64748b]' : 'bg-slate-950/65 text-white hover:bg-white/10'
           }`}>
-            <ThumbsDown className={`w-5 h-5 ${clip.isDisliked ? 'fill-current' : ''}`} />
+            <ThumbsDown className={`w-4 h-4 ${reaction.isDisliked ? 'fill-current' : ''}`} />
           </div>
-          <span className="text-[10px] font-bold text-white mt-1 drop-shadow">
-            {(Number(clip.dislikes) || 0).toLocaleString()}
-          </span>
+          <span className="text-[9px] font-bold text-white mt-1 drop-shadow">{reaction.dislikes.toLocaleString()}</span>
         </button>
 
         <button type="button" onClick={(e) => { e.stopPropagation(); onOpenComments(clip); }} className="flex flex-col items-center group">
-          <div className="p-3 rounded-full bg-slate-950/65 backdrop-blur-md text-white hover:bg-[#00e5ff]/40 transition-all border border-white/10 shadow-lg">
-            <MessageCircle className="w-5 h-5" />
+          <div className="p-2.5 rounded-full bg-slate-950/65 backdrop-blur-md text-white hover:bg-[#00e5ff]/40 transition-all border border-white/10 shadow-lg">
+            <MessageCircle className="w-4 h-4" />
           </div>
-          <span className="text-[10px] font-bold text-white mt-1 drop-shadow">{clip.comments?.length || 0}</span>
+          <span className="text-[9px] font-bold text-white mt-1 drop-shadow">{clip.comments?.length || 0}</span>
         </button>
 
         <button type="button" onClick={(e) => { e.stopPropagation(); onToggleBookmark(clip.id); }} className="flex flex-col items-center group">
-          <div className={`p-3 rounded-full backdrop-blur-md transition-all border border-white/10 shadow-lg ${clip.isBookmarked ? 'bg-[#fbbf24] text-slate-950' : 'bg-slate-950/65 text-white hover:bg-white/10'}`}>
-            <Bookmark className={`w-5 h-5 ${clip.isBookmarked ? 'fill-current' : ''}`} />
+          <div className={`p-2.5 rounded-full backdrop-blur-md transition-all border border-white/10 shadow-lg ${clip.isBookmarked ? 'bg-[#fbbf24] text-slate-950' : 'bg-slate-950/65 text-white hover:bg-white/10'}`}>
+            <Bookmark className={`w-4 h-4 ${clip.isBookmarked ? 'fill-current' : ''}`} />
           </div>
-          <span className="text-[10px] font-bold text-white mt-1 drop-shadow">Save</span>
+          <span className="text-[9px] font-bold text-white mt-1 drop-shadow">Save</span>
         </button>
 
         <button type="button" onClick={(e) => { e.stopPropagation(); onShare(clip.title, clip.id); }} className="flex flex-col items-center group">
-          <div className="p-3 rounded-full bg-slate-950/65 backdrop-blur-md text-white hover:bg-[#ff2d95]/40 transition-all border border-white/10 shadow-lg">
-            <Share2 className="w-5 h-5" />
+          <div className="p-2.5 rounded-full bg-slate-950/65 backdrop-blur-md text-white hover:bg-[#ff2d95]/40 transition-all border border-white/10 shadow-lg">
+            <Share2 className="w-4 h-4" />
           </div>
-          <span className="text-[10px] font-bold text-white mt-1 drop-shadow">Share</span>
+          <span className="text-[9px] font-bold text-white mt-1 drop-shadow">Share</span>
         </button>
       </div>
 
       {/* Progress bar */}
-      <div ref={progressBarContainerRef} onClick={handleSeek} className="absolute bottom-0 left-0 right-0 h-2 bg-white/20 hover:h-3 cursor-pointer z-30 transition-all flex items-end">
-        <div ref={progressBarFillRef} className="h-full bg-gradient-to-r from-[#ff2d95] via-[#00e5ff] to-[#10b981] transition-all duration-75 shadow-[0_0_12px_#00e5ff]" style={{ width: '0%' }} />
+      <div ref={progressBarContainerRef} onClick={handleSeek} className="absolute bottom-0 left-0 right-0 h-1.5 bg-white/20 hover:h-2.5 cursor-pointer z-30 transition-all flex items-end">
+        <div ref={progressBarFillRef} className="h-full bg-gradient-to-r from-[#ff2d95] via-[#00e5ff] to-[#10b981] transition-all duration-75 shadow-[0_0_8px_#00e5ff]" style={{ width: '0%' }} />
       </div>
-      <span ref={timeLabelRef} className="absolute bottom-3 right-4 text-[9px] font-mono text-white/70 bg-slate-950/50 px-2 py-0.5 rounded backdrop-blur z-20 pointer-events-none">0:00 / 0:00</span>
+      <span ref={timeLabelRef} className="absolute bottom-2 right-3 text-[8px] font-mono text-white/70 bg-slate-950/50 px-1.5 py-0.5 rounded backdrop-blur z-20 pointer-events-none">0:00 / 0:00</span>
     </div>
   );
 };
@@ -658,7 +739,7 @@ export const ShortsFeedView: React.FC = () => {
     isMutualFriend,
     openUserProfileModal,
     isBlocked,
-    syncWithSupabase
+    syncWithSupabase,
   } = useWevids();
 
   const [activeIndex, setActiveIndex] = useState(0);
@@ -668,162 +749,30 @@ export const ShortsFeedView: React.FC = () => {
   const [commentingClipId, setCommentingClipId] = useState<string | null>(null);
   const [autoAdvance, setAutoAdvance] = useState(false);
 
-  const [reactionOverrides, setReactionOverrides] = useState<Record<string, ReactionState>>({});
-  const reactionLockRef = useRef<Record<string, boolean>>({});
-  const pendingReactionIdsRef = useRef<Set<string>>(new Set());
-
   const containerRef = useRef<HTMLDivElement | null>(null);
   const wheelLockRef = useRef(false);
   const followLockRef = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
-    const channel = supabase.channel('realtime_clips_feed')
+    const channel = supabase
+      .channel('realtime_clips_feed')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'clips' }, () => syncWithSupabase(true))
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [syncWithSupabase]);
 
   const validClips = useMemo(() => {
-    return (clips || []).filter(c => {
+    return (clips || []).filter((c) => {
       if (!c || isBlocked(c.userId)) return false;
       return true;
     });
   }, [clips, isBlocked]);
 
-  // Server-side count sync must never overwrite a clip that has a local
-  // reaction in flight. This kills the stale-count bounce/multiplication bug.
-  useEffect(() => {
-    setReactionOverrides(prev => {
-      const next = { ...prev };
-
-      validClips.forEach(clip => {
-        if (pendingReactionIdsRef.current.has(clip.id)) return;
-        if (reactionLockRef.current[clip.id]) return;
-
-        if (next[clip.id]) {
-          next[clip.id] = {
-            ...next[clip.id],
-            likes: Number(clip.likes) || 0,
-            dislikes: Number(clip.dislikes) || 0
-          };
-        }
-      });
-
-      return next;
-    });
-  }, [validClips]);
-
-  const getReactionState = useCallback((clipId: string): ReactionState => {
-    const clip = validClips.find(c => c.id === clipId);
-
-    return reactionOverrides[clipId] || {
-      likes: Number(clip?.likes) || 0,
-      dislikes: Number(clip?.dislikes) || 0,
-      isLiked: !!clip?.isLiked,
-      isDisliked: !!clip?.isDisliked
-    };
-  }, [reactionOverrides, validClips]);
-
-  const persistReaction = useCallback(async (clipId: string) => {
-    if (!isSupabaseConfigured()) return;
-
-    const current = reactionOverrides[clipId];
-    if (!current) return;
-
-    try {
-      const { error } = await supabase
-        .from('clips')
-        .update({
-          likes: current.likes,
-          dislikes: current.dislikes
-        })
-        .eq('id', clipId);
-
-      if (error) {
-        console.warn('[ShortsFeed] Reaction kept locally:', error.message);
-      }
-    } catch (err) {
-      console.warn('[ShortsFeed] Reaction persistence failed quietly:', err);
-    }
-  }, [reactionOverrides]);
-
-  const handleToggleLike = useCallback(async (clipId: string) => {
-    if (reactionLockRef.current[clipId]) return;
-    reactionLockRef.current[clipId] = true;
-
-    const previous = getReactionState(clipId);
-    const nextLiked = !previous.isLiked;
-
-    const optimistic: ReactionState = {
-      likes: nextLiked ? previous.likes + 1 : Math.max(0, previous.likes - 1),
-      dislikes: nextLiked ? 0 : previous.dislikes,
-      isLiked: nextLiked,
-      isDisliked: false
-    };
-
-    pendingReactionIdsRef.current.add(clipId);
-    setReactionOverrides(prev => ({ ...prev, [clipId]: optimistic }));
-
-    // Wait a tick so `persistReaction` reads the newest local state.
-    setTimeout(async () => {
-      await persistReaction(clipId);
-      setTimeout(() => {
-        if (!reactionLockRef.current[clipId]) {
-          pendingReactionIdsRef.current.delete(clipId);
-        }
-      }, 350);
-      delete reactionLockRef.current[clipId];
-    }, 30);
-  }, [getReactionState, persistReaction]);
-
-  const handleToggleDislike = useCallback(async (clipId: string) => {
-    if (reactionLockRef.current[clipId]) return;
-    reactionLockRef.current[clipId] = true;
-
-    const previous = getReactionState(clipId);
-    const nextDisliked = !previous.isDisliked;
-
-    const optimistic: ReactionState = {
-      likes: nextDisliked ? 0 : previous.likes,
-      dislikes: nextDisliked ? previous.dislikes + 1 : Math.max(0, previous.dislikes - 1),
-      isLiked: false,
-      isDisliked: nextDisliked
-    };
-
-    pendingReactionIdsRef.current.add(clipId);
-    setReactionOverrides(prev => ({ ...prev, [clipId]: optimistic }));
-
-    setTimeout(async () => {
-      await persistReaction(clipId);
-      setTimeout(() => {
-        if (!reactionLockRef.current[clipId]) {
-          pendingReactionIdsRef.current.delete(clipId);
-        }
-      }, 350);
-      delete reactionLockRef.current[clipId];
-    }, 30);
-  }, [getReactionState, persistReaction]);
-
-  const displayClips = useMemo(() => {
-    return validClips.map(clip => {
-      const override = reactionOverrides[clip.id];
-      if (!override) return clip;
-
-      return {
-        ...clip,
-        likes: override.likes,
-        dislikes: override.dislikes,
-        isLiked: override.isLiked,
-        isDisliked: override.isDisliked
-      };
-    });
-  }, [reactionOverrides, validClips]);
-
-  const activeCommentingClip = displayClips.find(c => c.id === commentingClipId) || null;
+  const activeCommentingClip = validClips.find((c) => c.id === commentingClipId) || null;
 
   const scrollToIndex = useCallback((idx: number) => {
-    const safeIndex = Math.max(0, Math.min(displayClips.length - 1, idx));
+    const safeIndex = Math.max(0, Math.min(validClips.length - 1, idx));
     const container = containerRef.current;
     if (!container) return;
 
@@ -834,7 +783,7 @@ export const ShortsFeedView: React.FC = () => {
       container.scrollTo({ top: target.offsetTop, behavior: 'smooth' });
       setActiveIndex(safeIndex);
     }
-  }, [displayClips.length]);
+  }, [validClips.length]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -845,11 +794,11 @@ export const ShortsFeedView: React.FC = () => {
         e.preventDefault();
         scrollToIndex(activeIndex - 1);
       } else if (['m', 'M'].includes(e.key)) {
-        setIsMuted(m => !m);
+        setIsMuted((m) => !m);
         sounds.pop();
       } else if ([' ', 'Spacebar'].includes(e.key)) {
         e.preventDefault();
-        setAutoAdvance(a => !a);
+        setAutoAdvance((a) => !a);
         sounds.click();
       } else if (['0', '1', '2', '3', '4', '5', '6'].includes(e.key)) {
         const speedMap: Record<string, number> = {
@@ -859,9 +808,9 @@ export const ShortsFeedView: React.FC = () => {
           '3': 2,
           '4': 2.5,
           '5': 3,
-          '6': 1
+          '6': 1,
         };
-        if (speedMap[e.key]) {
+        if (speedMap[e.key] !== undefined) {
           setPlaybackSpeed(speedMap[e.key]);
           sounds.click();
         }
@@ -877,13 +826,10 @@ export const ShortsFeedView: React.FC = () => {
     const interval = setInterval(() => {
       const container = containerRef.current;
       if (!container) return;
-
       const items = container.querySelectorAll('.shorts-snap-item');
       if (items.length === 0) return;
-
       const next = (activeIndex + 1) % items.length;
       const target = items[next] as HTMLElement;
-
       if (target) {
         container.scrollTo({ top: target.offsetTop, behavior: 'smooth' });
         setActiveIndex(next);
@@ -891,40 +837,36 @@ export const ShortsFeedView: React.FC = () => {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [autoAdvance, activeIndex, displayClips.length]);
+  }, [autoAdvance, activeIndex, validClips.length]);
 
   const handleWheelScroll = (e: React.WheelEvent<HTMLDivElement>) => {
     if (wheelLockRef.current) return;
-
     if (Math.abs(e.deltaY) > 20) {
       wheelLockRef.current = true;
       const direction = e.deltaY > 0 ? 1 : -1;
       scrollToIndex(activeIndex + direction);
-
-      setTimeout(() => {
-        wheelLockRef.current = false;
-      }, 450);
+      setTimeout(() => { wheelLockRef.current = false; }, 450);
     }
   };
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-
     const items = container.querySelectorAll('.shorts-snap-item');
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          const index = Array.from(items).indexOf(entry.target);
-          if (index !== -1) setActiveIndex(index);
-        }
-      });
-    }, { root: container, threshold: 0.5 });
-
-    items.forEach(item => observer.observe(item));
-
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const index = Array.from(items).indexOf(entry.target);
+            if (index !== -1) setActiveIndex(index);
+          }
+        });
+      },
+      { root: container, threshold: 0.5 }
+    );
+    items.forEach((item) => observer.observe(item));
     return () => observer.disconnect();
-  }, [displayClips.length]);
+  }, [validClips.length]);
 
   const handleSelectSpeed = useCallback((speed: number) => {
     sounds.click();
@@ -935,7 +877,6 @@ export const ShortsFeedView: React.FC = () => {
     if (!currentUser?.id || currentUser.id === userId) return;
     if (followLockRef.current[userId]) return;
     followLockRef.current[userId] = true;
-
     try {
       await toggleFollowUser(userId);
     } finally {
@@ -943,7 +884,7 @@ export const ShortsFeedView: React.FC = () => {
     }
   }, [currentUser?.id, toggleFollowUser]);
 
-  if (displayClips.length === 0) {
+  if (validClips.length === 0) {
     return (
       <div className="max-w-md mx-auto py-20 text-center space-y-5">
         <div className="w-20 h-20 rounded-3xl liquid-glass border border-[#ff2d95]/40 flex items-center justify-center mx-auto text-[#ff2d95] shadow-2xl">
@@ -965,39 +906,36 @@ export const ShortsFeedView: React.FC = () => {
 
   return (
     <div className="relative flex justify-center items-center pb-12 max-w-5xl mx-auto">
-      <div className="flex flex-col gap-3.5 absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 z-30">
+      <div className="flex flex-col gap-2 absolute right-1.5 sm:right-4 top-1/2 -translate-y-1/2 z-30">
         <button
           type="button"
           onClick={() => scrollToIndex(activeIndex - 1)}
           disabled={activeIndex === 0}
-          className="p-3 rounded-2xl bg-slate-950/80 hover:bg-[#00e5ff] text-white hover:text-slate-950 transition-all disabled:opacity-30 border border-white/20 shadow-2xl backdrop-blur-md"
+          className="p-1.5 rounded-xl bg-slate-950/80 hover:bg-[#00e5ff] text-white hover:text-slate-950 transition-all disabled:opacity-30 border border-white/20 shadow-xl backdrop-blur-md"
         >
-          <ChevronUp className="w-5 h-5" />
+          <ChevronUp className="w-4 h-4" />
         </button>
 
         <button
           type="button"
-          onClick={() => {
-            sounds.click();
-            setAutoAdvance(a => !a);
-          }}
-          className={`p-3 rounded-2xl transition-all border shadow-2xl backdrop-blur-md ${
+          onClick={() => { sounds.click(); setAutoAdvance((a) => !a); }}
+          className={`p-1.5 rounded-xl transition-all border shadow-xl backdrop-blur-md ${
             autoAdvance
-              ? 'bg-[#00e5ff] text-slate-950 border-[#00e5ff] shadow-[0_0_20px_rgba(0,229,255,0.6)]'
+              ? 'bg-[#00e5ff] text-slate-950 border-[#00e5ff] shadow-[0_0_16px_rgba(0,229,255,0.6)]'
               : 'bg-slate-950/80 text-white border-white/20 hover:bg-[#fbbf24] hover:text-slate-950'
           }`}
           title="Auto-advance every 5 seconds"
         >
-          <Repeat2 className="w-5 h-5" />
+          <Repeat2 className="w-4 h-4" />
         </button>
 
         <button
           type="button"
           onClick={() => scrollToIndex(activeIndex + 1)}
-          disabled={activeIndex === displayClips.length - 1}
-          className="p-3 rounded-2xl bg-slate-950/80 hover:bg-[#ff2d95] text-white hover:text-slate-950 transition-all disabled:opacity-30 border border-white/20 shadow-2xl backdrop-blur-md"
+          disabled={activeIndex === validClips.length - 1}
+          className="p-1.5 rounded-xl bg-slate-950/80 hover:bg-[#ff2d95] text-white hover:text-slate-950 transition-all disabled:opacity-30 border border-white/20 shadow-xl backdrop-blur-md"
         >
-          <ChevronDown className="w-5 h-5" />
+          <ChevronDown className="w-4 h-4" />
         </button>
       </div>
 
@@ -1006,7 +944,7 @@ export const ShortsFeedView: React.FC = () => {
         onWheel={handleWheelScroll}
         className="shorts-snap-container no-scrollbar w-full max-w-[420px] h-[calc(100vh-8rem)] max-h-[750px] min-h-[480px] overflow-y-auto relative rounded-[2rem]"
       >
-        {displayClips.map((clip, index) => {
+        {validClips.map((clip, index) => {
           const authorUser = allUsers[clip.userId] || currentUser;
           const isMine = clip.userId === currentUser?.id;
           const isFollowingUser = isFollowing(clip.userId);
@@ -1017,14 +955,12 @@ export const ShortsFeedView: React.FC = () => {
               key={clip.id}
               clip={clip}
               index={index}
-              totalClips={displayClips.length}
+              totalClips={validClips.length}
               isActive={index === activeIndex}
               isMuted={isMuted}
               playbackSpeed={playbackSpeed}
               onSelectSpeed={handleSelectSpeed}
-              onToggleMute={() => { sounds.pop(); setIsMuted(m => !m); }}
-              onToggleLike={handleToggleLike}
-              onToggleDislike={handleToggleDislike}
+              onToggleMute={() => { sounds.pop(); setIsMuted((m) => !m); }}
               onToggleBookmark={toggleClipBookmark}
               onShare={(title, id) => openShareModal(title, `https://wevids.app/clip/${id}`)}
               onOpenComments={(c) => setCommentingClipId(c.id)}
@@ -1083,7 +1019,7 @@ export const ShortsFeedView: React.FC = () => {
                     userColor: currentUser.color,
                     text: comment.text,
                     media: comment.media,
-                    mediaType: comment.mediaType
+                    mediaType: comment.mediaType,
                   });
                 }}
                 placeholder="Write a comment..."
