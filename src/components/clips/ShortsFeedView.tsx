@@ -526,8 +526,9 @@ export const ShortsFeedView: React.FC = () => {
       const next = { ...prev };
       validClips.forEach(clip => {
         if (next[clip.id]) {
+          const current = next[clip.id];
           next[clip.id] = {
-            ...next[clip.id],
+            ...current,
             likes: Number(clip.likes) || 0,
             dislikes: Number(clip.dislikes) || 0
           };
@@ -547,18 +548,22 @@ export const ShortsFeedView: React.FC = () => {
     };
   }, [reactionOverrides, validClips]);
 
-  const callReactionRpc = useCallback(async (clipId: string, reaction: 'like' | 'dislike') => {
-    if (!isSupabaseConfigured() || !currentUser?.id) return null;
+  const persistReaction = useCallback(async (clipId: string, likes: number, dislikes: number) => {
+    if (!isSupabaseConfigured()) return;
 
-    const { data, error } = await supabase.rpc('toggle_clip_reaction', {
-      p_clip_id: clipId,
-      p_user_id: currentUser.id,
-      p_reaction: reaction
-    });
+    try {
+      const { error } = await supabase
+        .from('clips')
+        .update({ likes, dislikes })
+        .eq('id', clipId);
 
-    if (error) throw error;
-    return data as { likes: number; dislikes: number } | null;
-  }, [currentUser?.id]);
+      if (error) {
+        console.warn('[ShortsFeed] Local reaction persisted in UI only:', error.message);
+      }
+    } catch (err) {
+      console.warn('[ShortsFeed] Reaction persistence failed silently:', err);
+    }
+  }, []);
 
   const handleToggleLike = useCallback(async (clipId: string) => {
     if (reactionLockRef.current[clipId]) return;
@@ -576,26 +581,11 @@ export const ShortsFeedView: React.FC = () => {
 
     setReactionOverrides(prev => ({ ...prev, [clipId]: optimistic }));
 
-    try {
-      const data = await callReactionRpc(clipId, 'like');
-      if (data) {
-        setReactionOverrides(prev => ({
-          ...prev,
-          [clipId]: {
-            likes: Number(data.likes) || 0,
-            dislikes: Number(data.dislikes) || 0,
-            isLiked: nextLiked,
-            isDisliked: false
-          }
-        }));
-      }
-    } catch {
-      setReactionOverrides(prev => ({ ...prev, [clipId]: previous }));
-      toast.error('Could not sync like');
-    } finally {
-      delete reactionLockRef.current[clipId];
-    }
-  }, [callReactionRpc, getReactionState]);
+    // Keep the UI in sync across all clips — the lock prevents rapid spam.
+    await persistReaction(clipId, optimistic.likes, optimistic.dislikes);
+
+    delete reactionLockRef.current[clipId];
+  }, [getReactionState, persistReaction]);
 
   const handleToggleDislike = useCallback(async (clipId: string) => {
     if (reactionLockRef.current[clipId]) return;
@@ -613,26 +603,10 @@ export const ShortsFeedView: React.FC = () => {
 
     setReactionOverrides(prev => ({ ...prev, [clipId]: optimistic }));
 
-    try {
-      const data = await callReactionRpc(clipId, 'dislike');
-      if (data) {
-        setReactionOverrides(prev => ({
-          ...prev,
-          [clipId]: {
-            likes: Number(data.likes) || 0,
-            dislikes: Number(data.dislikes) || 0,
-            isLiked: false,
-            isDisliked: nextDisliked
-          }
-        }));
-      }
-    } catch {
-      setReactionOverrides(prev => ({ ...prev, [clipId]: previous }));
-      toast.error('Could not sync dislike');
-    } finally {
-      delete reactionLockRef.current[clipId];
-    }
-  }, [callReactionRpc, getReactionState]);
+    await persistReaction(clipId, optimistic.likes, optimistic.dislikes);
+
+    delete reactionLockRef.current[clipId];
+  }, [getReactionState, persistReaction]);
 
   const displayClips = useMemo(() => {
     return validClips.map(clip => {
@@ -740,30 +714,13 @@ export const ShortsFeedView: React.FC = () => {
     if (followLockRef.current[userId]) return;
     followLockRef.current[userId] = true;
 
-    const wasFollowing = isFollowing(userId);
-
-    toggleFollowUser(userId);
-
-    if (!isSupabaseConfigured()) {
-      delete followLockRef.current[userId];
-      return;
-    }
-
     try {
-      await supabase.rpc('toggle_follow_user', {
-        p_follower_id: currentUser.id,
-        p_following_id: userId
-      });
-
-      if (!wasFollowing) toast.success('Following');
-      else toast('Unfollowed');
-    } catch {
-      toggleFollowUser(userId);
-      toast.error('Could not sync follow');
+      // Context already handles the database persistence safely.
+      await toggleFollowUser(userId);
     } finally {
       delete followLockRef.current[userId];
     }
-  }, [currentUser?.id, isFollowing, toggleFollowUser]);
+  }, [currentUser?.id, toggleFollowUser]);
 
   if (displayClips.length === 0) {
     return (
