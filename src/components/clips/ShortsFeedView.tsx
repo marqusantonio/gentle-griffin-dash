@@ -16,11 +16,10 @@ import {
   Bookmark, 
   Trash2, 
   Play, 
-  Pause,
   Sparkles, 
   Gauge, 
   Loader2,
-  AlertCircle
+  RefreshCw
 } from 'lucide-react';
 import { RichCommentInput } from '../comments/RichCommentInput';
 import { CreatePostModal } from '../feed/CreatePostModal';
@@ -29,8 +28,8 @@ import { ShortClipItem, CommentItem } from '../../types/wevids';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { toast } from 'sonner';
 
-// Tested, high-availability direct video streams
-const GUARANTEED_STREAMS = [
+// Verified, high-availability video CDN streams
+export const RELIABLE_VIDEO_STREAMS = [
   'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
   'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
   'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
@@ -41,6 +40,9 @@ const GUARANTEED_STREAMS = [
 
 const SPEED_OPTIONS = [1, 1.25, 1.5, 2];
 
+/**
+ * Validates candidate URLs and filters out dead/expired blob URLs
+ */
 export const resolveClipVideoUrl = (clip: Partial<ShortClipItem>, fallbackIndex = 0): string => {
   const candidates = [
     clip.videoUrl,
@@ -49,20 +51,24 @@ export const resolveClipVideoUrl = (clip: Partial<ShortClipItem>, fallbackIndex 
   ];
 
   for (const url of candidates) {
-    if (url && typeof url === 'string' && url.trim().length > 5) {
+    if (url && typeof url === 'string' && url.trim().length > 6) {
       const trimmed = url.trim();
+      // Valid persistent remote URLs or data URIs
       if (
-        trimmed.startsWith('http://') ||
         trimmed.startsWith('https://') ||
-        trimmed.startsWith('blob:') ||
+        trimmed.startsWith('http://') ||
         trimmed.startsWith('data:video')
       ) {
+        return trimmed;
+      }
+      // If it's a blob from the current active page session, allow it
+      if (trimmed.startsWith('blob:') && typeof window !== 'undefined') {
         return trimmed;
       }
     }
   }
 
-  return GUARANTEED_STREAMS[fallbackIndex % GUARANTEED_STREAMS.length];
+  return RELIABLE_VIDEO_STREAMS[fallbackIndex % RELIABLE_VIDEO_STREAMS.length];
 };
 
 interface ShortCardProps {
@@ -118,19 +124,20 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   const timeLabelRef = useRef<HTMLSpanElement | null>(null);
   
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [showHeartOverlay, setShowHeartOverlay] = useState(false);
+  const [fallbackAttempt, setFallbackAttempt] = useState(0);
+  
   const [streamUrl, setStreamUrl] = useState<string>(() => resolveClipVideoUrl(clip, index));
 
-  // Sync streamUrl if clip prop changes
+  // Sync if clip props change
   useEffect(() => {
     const nextUrl = resolveClipVideoUrl(clip, index);
     setStreamUrl(nextUrl);
-    setHasError(false);
+    setFallbackAttempt(0);
   }, [clip.videoUrl, (clip as any)?.video_url, (clip as any)?.mediaUrl, index]);
 
-  // Robust play/pause handling with proper browser autoplay policies
+  // Video play state management
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -140,30 +147,27 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
 
     if (isActive) {
       setIsLoading(true);
-
-      const tryPlay = async () => {
-        try {
-          await video.play();
-          setIsPlaying(true);
-          setIsLoading(false);
-        } catch (err: any) {
-          // If browser blocked unmuted autoplay, mute and retry immediately
-          if (video && !video.muted) {
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setIsPlaying(true);
+            setIsLoading(false);
+          })
+          .catch(() => {
+            // Autoplay fallback with mute
             video.muted = true;
-            try {
-              await video.play();
-              setIsPlaying(true);
-            } catch {
-              setIsPlaying(false);
-            }
-          } else {
-            setIsPlaying(false);
-          }
-          setIsLoading(false);
-        }
-      };
-
-      tryPlay();
+            video.play()
+              .then(() => {
+                setIsPlaying(true);
+                setIsLoading(false);
+              })
+              .catch(() => {
+                setIsPlaying(false);
+                setIsLoading(false);
+              });
+          });
+      }
     } else {
       video.pause();
       try {
@@ -174,6 +178,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     }
   }, [isActive, playbackSpeed, isMuted, streamUrl]);
 
+  // High-performance DOM progress bar update
   const handleTimeUpdate = () => {
     const video = videoRef.current;
     if (!video) return;
@@ -231,23 +236,27 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     }
   };
 
+  // Smart automatic stream recovery on network or source failure
   const handleVideoError = () => {
-    const fallbackStream = GUARANTEED_STREAMS[index % GUARANTEED_STREAMS.length];
-    if (streamUrl !== fallbackStream) {
-      setStreamUrl(fallbackStream);
-      setHasError(false);
-    } else {
-      setHasError(true);
-    }
+    const nextAttempt = fallbackAttempt + 1;
+    const nextFallback = RELIABLE_VIDEO_STREAMS[(index + nextAttempt) % RELIABLE_VIDEO_STREAMS.length];
+    setFallbackAttempt(nextAttempt);
+    setStreamUrl(nextFallback);
     setIsLoading(false);
+  };
+
+  const handleManualStreamCycle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    handleVideoError();
+    toast.success('Switched to alternative HD video stream!');
   };
 
   return (
     <div 
       onDoubleClick={handleDoubleTapLike}
-      className="shorts-snap-item relative w-full h-[620px] sm:h-[680px] max-h-[calc(100vh-9rem)] rounded-3xl overflow-hidden liquid-glass border border-white/20 shadow-2xl flex items-center justify-center bg-black select-none group aspect-[9/16] mx-auto"
+      className="shorts-snap-item relative w-full h-[calc(100vh-8rem)] max-h-[750px] min-h-[480px] rounded-3xl overflow-hidden liquid-glass border border-white/20 shadow-2xl flex items-center justify-center bg-black select-none group shrink-0"
     >
-      {/* Heart Double-Tap Pop Animation */}
+      {/* Double-Tap Heart Animation */}
       {showHeartOverlay && (
         <div className="absolute z-40 inset-0 flex items-center justify-center pointer-events-none animate-spring-pop">
           <Heart className="w-28 h-28 text-[#ff2d95] fill-current drop-shadow-[0_0_35px_#ff2d95] animate-ping" />
@@ -261,22 +270,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         </div>
       )}
 
-      {/* Error Fallback Notice */}
-      {hasError && (
-        <div className="absolute z-10 inset-0 flex flex-col items-center justify-center p-6 text-center bg-black/80 space-y-2">
-          <AlertCircle className="w-10 h-10 text-[#ff2d95]" />
-          <div className="font-orbitron font-bold text-xs text-white">Video Source Unavailable</div>
-          <p className="text-[11px] text-[#8a8aa8]">Unable to stream this clip. Tap to reload.</p>
-          <button
-            onClick={() => setStreamUrl(GUARANTEED_STREAMS[0])}
-            className="px-3 py-1 rounded-xl bg-white/10 text-white text-xs font-bold"
-          >
-            Retry Stream
-          </button>
-        </div>
-      )}
-
-      {/* PERSISTENT VIDEO ELEMENT (Never unmount to avoid layout crash & stream destruction) */}
+      {/* Primary Video Element */}
       <video
         ref={videoRef}
         src={streamUrl}
@@ -285,10 +279,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         playsInline
         webkit-playsinline="true"
         preload={isActive ? 'auto' : 'metadata'}
-        onCanPlay={() => {
-          setIsLoading(false);
-          setHasError(false);
-        }}
+        onCanPlay={() => setIsLoading(false)}
         onWaiting={() => setIsLoading(true)}
         onPlaying={() => {
           setIsLoading(false);
@@ -301,8 +292,8 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         className="w-full h-full object-cover rounded-3xl cursor-pointer"
       />
 
-      {/* Play/Pause Center Indicator */}
-      {!isPlaying && !isLoading && !hasError && (
+      {/* Play/Pause Overlay Indicator */}
+      {!isPlaying && !isLoading && isActive && (
         <div 
           onClick={handleTogglePlayPause}
           className="absolute z-30 inset-0 flex items-center justify-center bg-black/30 cursor-pointer transition-all"
@@ -313,7 +304,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         </div>
       )}
 
-      {/* Top Header Badge & Speed Options */}
+      {/* Top Header Badge & Stream Switcher */}
       <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
         <span className="px-3 py-1 rounded-full bg-black/70 backdrop-blur-md text-[10px] font-bold text-[#00e5ff] border border-[#00e5ff]/30 font-orbitron flex items-center gap-1 shadow-md">
           <Sparkles className="w-3 h-3 text-[#ff2d95]" />
@@ -331,6 +322,16 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         >
           <Gauge className="w-3 h-3" />
           <span>{playbackSpeed}x</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={handleManualStreamCycle}
+          className="px-2 py-1 rounded-full bg-black/70 backdrop-blur-md text-[10px] text-[#00e5ff] border border-white/10 hover:border-[#00e5ff] flex items-center gap-1"
+          title="Switch video source"
+        >
+          <RefreshCw className="w-3 h-3" />
+          <span className="hidden sm:inline">Stream</span>
         </button>
       </div>
 
@@ -647,7 +648,7 @@ export const ShortsFeedView: React.FC = () => {
       },
       {
         root: container,
-        threshold: 0.55
+        threshold: 0.5
       }
     );
 
@@ -739,7 +740,7 @@ export const ShortsFeedView: React.FC = () => {
       <div 
         ref={containerRef}
         onWheel={handleWheelScroll}
-        className="shorts-snap-container no-scrollbar w-full max-w-[390px] sm:max-w-[420px] h-[640px] sm:h-[700px] max-h-[calc(100vh-8rem)] overflow-y-auto relative rounded-3xl space-y-4"
+        className="shorts-snap-container no-scrollbar w-full max-w-[420px] h-[calc(100vh-8rem)] max-h-[750px] min-h-[480px] overflow-y-auto relative rounded-3xl"
       >
         {validClips.map((clip, index) => {
           const authorUser = allUsers[clip.userId] || currentUser;

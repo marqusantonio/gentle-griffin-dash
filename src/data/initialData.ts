@@ -161,7 +161,7 @@ export const MOCK_USERS: Record<string, UserProfile> = {
 
 export const INITIAL_POSTS: PostItem[] = [];
 
-// Curated high-uptime video clips for instant HD playback with Supabase sync
+// Curated reliable video clips with CORS support for seamless playback
 export const INITIAL_CLIPS: ShortClipItem[] = [
   {
     id: 'clip-hyperos-overclock',
