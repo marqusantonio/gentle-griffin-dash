@@ -146,7 +146,12 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     video.muted = isMuted;
 
     if (isActive) {
-      setIsLoading(true);
+      // Start loading only if no metadata loaded yet
+      if (!video.src || video.readyState <= 0) {
+        setIsLoading(true);
+      }
+
+      // Attempt to play with autoplay fallback
       const playPromise = video.play();
       if (playPromise !== undefined) {
         playPromise
@@ -155,7 +160,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
             setIsLoading(false);
           })
           .catch(() => {
-            // Autoplay fallback with mute
+            // Autoplay may be blocked; use muted as fallback and try again
             video.muted = true;
             video.play()
               .then(() => {
@@ -251,6 +256,11 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
     toast.success('Switched to alternative HD video stream!');
   };
 
+  // Clear loading state when metadata is available
+  const handleLoadedMetadata = () => {
+    setIsLoading(false);
+  };
+
   return (
     <div 
       onDoubleClick={handleDoubleTapLike}
@@ -280,6 +290,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         webkit-playsinline="true"
         preload={isActive ? 'auto' : 'metadata'}
         onCanPlay={() => setIsLoading(false)}
+        onLoadedMetadata={handleLoadedMetadata}
         onWaiting={() => setIsLoading(true)}
         onPlaying={() => {
           setIsLoading(false);
@@ -439,9 +450,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
           className="flex flex-col items-center group"
         >
           <div className={`p-3 rounded-full backdrop-blur-md transition-all shadow-lg ${
-            clip.isLiked 
-              ? 'bg-[#ff2d95] text-white scale-110 shadow-[0_0_20px_rgba(255,45,149,0.8)]' 
-              : 'bg-black/60 text-white hover:bg-[#ff2d95]/40 border border-white/10'
+            clip.isLiked ? 'bg-[#ff2d95] text-white scale-110 shadow-[0_0_20px_rgba(255,45,149,0.8)]' : 'bg-black/60 text-white hover:bg-[#ff2d95]/40 border border-white/10'
           }`}>
             <Heart className={`w-5 h-5 ${clip.isLiked ? 'fill-current' : ''}`} />
           </div>
@@ -456,9 +465,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
           }} 
           className="flex flex-col items-center group"
         >
-          <div className={`p-3 rounded-full backdrop-blur-md transition-all shadow-lg ${
-            clip.isDisliked ? 'bg-slate-700 text-white' : 'bg-black/60 text-white hover:bg-white/10 border border-white/10'
-          }`}>
+          <div className={`p-3 rounded-full backdrop-blur-md transition-all shadow-lg ${clip.isDisliked ? 'bg-slate-700 text-white' : 'bg-black/60 text-white hover:bg-white/10 border border-white/10'}`}>
             <ThumbsDown className="w-5 h-5" />
           </div>
           <span className="text-[10px] font-bold text-white mt-1 drop-shadow">{clip.dislikes || 0}</span>
