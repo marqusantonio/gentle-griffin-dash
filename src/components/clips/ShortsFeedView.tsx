@@ -107,7 +107,6 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
 
     if (isActive) {
       setIsLoading(true);
-      // Start loading timeout
       if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
       loadTimeoutRef.current = setTimeout(() => {
         if (isLoading) {
@@ -631,4 +630,9 @@ export const ShortsFeedView: React.FC = () => {
       <CreatePostModal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} defaultTarget="clips" />
     </div>
   );
+};
+
+// Export resolution helper for DualFeedView compatibility
+export const resolveClipVideoUrl = (clip: ShortClipItem, fallbackIndex = 0): string => {
+  return resolveVideoUrl([clip.videoUrl, (clip as any)?.video_url, (clip as any)?.mediaUrl], fallbackIndex);
 };
