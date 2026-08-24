@@ -19,7 +19,7 @@ import {
   Sparkles,
   Gauge,
   Loader2,
-  RefreshCw
+  Zap
 } from 'lucide-react';
 import { RichCommentInput } from '../comments/RichCommentInput';
 import { CreatePostModal } from '../feed/CreatePostModal';
@@ -96,6 +96,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   const [showHeartOverlay, setShowHeartOverlay] = useState(false);
   const [currentSrc, setCurrentSrc] = useState(() => getClipStream(clip, index));
   const [streamFailed, setStreamFailed] = useState(false);
+  const [heartPulse, setHeartPulse] = useState(false);
 
   const clearLoadTimeout = () => {
     if (loadTimeoutRef.current) {
@@ -213,10 +214,26 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   };
 
   const handleDoubleTapLike = () => {
-    sounds.like();
     setShowHeartOverlay(true);
-    if (!clip.isLiked) onToggleLike(clip.id);
-    setTimeout(() => setShowHeartOverlay(false), 800);
+    setHeartPulse(true);
+    onToggleLike(clip.id);
+    setTimeout(() => {
+      setShowHeartOverlay(false);
+      setHeartPulse(false);
+    }, 800);
+  };
+
+  const handleLikePress = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!clip.isLiked) {
+      setShowHeartOverlay(true);
+      setHeartPulse(true);
+      setTimeout(() => {
+        setShowHeartOverlay(false);
+        setHeartPulse(false);
+      }, 800);
+    }
+    onToggleLike(clip.id);
   };
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -243,11 +260,23 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
   return (
     <div
       onDoubleClick={handleDoubleTapLike}
-      className="shorts-snap-item relative w-full h-[calc(100vh-8rem)] max-h-[750px] min-h-[480px] rounded-3xl overflow-hidden liquid-glass border border-white/20 shadow-2xl flex items-center justify-center bg-slate-900 select-none group shrink-0"
+      className="shorts-snap-item relative w-full h-[calc(100vh-8rem)] max-h-[750px] min-h-[480px] rounded-[2rem] overflow-hidden liquid-glass border border-white/15 shadow-[0_0_60px_rgba(0,229,255,0.18)] flex items-center justify-center bg-slate-950 select-none group shrink-0"
     >
+      {/* Futuristic active ring */}
+      {isActive && (
+        <div className="absolute -inset-1 rounded-[2.1rem] pointer-events-none z-0 opacity-60">
+          <div className="absolute inset-0 rounded-[2.1rem] bg-[conic-gradient(from_0deg,#ff2d95,#00e5ff,#10b981,#ff2d95)] blur-lg animate-spin-slow" />
+        </div>
+      )}
+
       {showHeartOverlay && (
-        <div className="absolute z-40 inset-0 flex items-center justify-center pointer-events-none animate-spring-pop">
-          <Heart className="w-28 h-28 text-[#ff2d95] fill-current drop-shadow-[0_0_35px_#ff2d95] animate-ping" />
+        <div className="absolute z-40 inset-0 flex items-center justify-center pointer-events-none">
+          <div className="relative">
+            <Heart className={`w-28 h-28 text-[#ff2d95] fill-current drop-shadow-[0_0_35px_#ff2d95] ${heartPulse ? 'animate-spring-pop' : ''}`} />
+            <div className="absolute -top-8 -left-10 text-[#ff2d95]/80 text-2xl animate-float-up">✦</div>
+            <div className="absolute -bottom-6 -right-8 text-[#00e5ff]/80 text-xl animate-float-up">✦</div>
+            <div className="absolute top-2 -right-12 text-[#fbbf24]/80 text-lg animate-float-up">✦</div>
+          </div>
         </div>
       )}
 
@@ -268,25 +297,28 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         onTimeUpdate={handleTimeUpdate}
         onError={handleVideoError}
         onClick={handleTogglePlayPause}
-        className="absolute inset-0 w-full h-full object-cover rounded-3xl cursor-pointer"
+        className="absolute inset-0 w-full h-full object-cover rounded-[2rem] cursor-pointer"
       />
 
       {isLoading && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-900/55 pointer-events-none">
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-950/60 pointer-events-none">
           <div className="flex flex-col items-center gap-3">
-            <Loader2 className="w-10 h-10 text-[#00e5ff] animate-spin drop-shadow" />
+            <div className="relative">
+              <Loader2 className="w-10 h-10 text-[#00e5ff] animate-spin drop-shadow-[0_0_12px_#00e5ff]" />
+              <div className="absolute inset-0 rounded-full border border-[#00e5ff]/30 animate-ping" />
+            </div>
             <span className="text-[10px] font-orbitron text-white/70 tracking-widest">LOADING FEED</span>
           </div>
         </div>
       )}
 
       {streamFailed && !isLoading && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-900/80 p-6 text-center">
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/85 p-6 text-center">
           <div className="text-3xl mb-2">📡</div>
           <p className="text-xs text-white font-bold mb-3">Video stream unavailable</p>
           <button
             onClick={handleRetry}
-            className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#00e5ff] to-[#ff2d95] text-slate-900 font-bold text-xs"
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#00e5ff] to-[#ff2d95] text-slate-950 font-bold text-xs shadow-[0_0_20px_rgba(0,229,255,0.4)] hover:scale-105 transition-transform"
           >
             RETRY STREAM
           </button>
@@ -296,9 +328,9 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
       {isActive && !isPlaying && !isLoading && !streamFailed && (
         <div
           onClick={handleTogglePlayPause}
-          className="absolute inset-0 z-30 flex items-center justify-center bg-slate-900/30 cursor-pointer"
+          className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/30 cursor-pointer"
         >
-          <div className="w-16 h-16 rounded-full bg-slate-900/75 border border-white/30 backdrop-blur-md flex items-center justify-center text-white shadow-2xl hover:scale-110 transition-transform">
+          <div className="w-16 h-16 rounded-full bg-slate-950/75 border border-[#00e5ff]/40 backdrop-blur-md flex items-center justify-center text-white shadow-[0_0_25px_rgba(0,229,255,0.35)] hover:scale-110 transition-transform">
             <Play className="w-8 h-8 fill-current text-[#00e5ff] ml-1" />
           </div>
         </div>
@@ -306,14 +338,14 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
 
       {/* Top controls */}
       <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
-        <span className="px-3 py-1 rounded-full bg-slate-900/70 backdrop-blur-md text-[10px] font-bold text-[#00e5ff] border border-[#00e5ff]/30 font-orbitron flex items-center gap-1 shadow-md">
+        <span className="px-3 py-1 rounded-full bg-slate-950/70 backdrop-blur-md text-[10px] font-bold text-[#00e5ff] border border-[#00e5ff]/30 font-orbitron flex items-center gap-1 shadow-[0_0_15px_rgba(0,229,255,0.2)]">
           <Sparkles className="w-3 h-3 text-[#ff2d95]" />
           CLIP {index + 1}/{totalClips}
         </span>
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onCycleSpeed(); }}
-          className="px-2.5 py-1 rounded-full bg-slate-900/70 backdrop-blur-md text-[10px] font-bold text-[#fbbf24] border border-[#fbbf24]/40 font-orbitron flex items-center gap-1 hover:scale-105 transition-transform"
+          className="px-2.5 py-1 rounded-full bg-slate-950/70 backdrop-blur-md text-[10px] font-bold text-[#fbbf24] border border-[#fbbf24]/40 font-orbitron flex items-center gap-1 hover:scale-105 transition-transform shadow-[0_0_12px_rgba(251,191,36,0.2)]"
         >
           <Gauge className="w-3 h-3" />
           <span>{playbackSpeed}x</span>
@@ -326,7 +358,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onDeleteClip(clip.id); }}
-            className="p-2.5 rounded-full bg-slate-900/60 backdrop-blur-md text-white hover:bg-red-500 transition-all border border-white/10 shadow-lg"
+            className="p-2.5 rounded-full bg-slate-950/60 backdrop-blur-md text-white hover:bg-red-500 transition-all border border-white/10 shadow-lg"
             title="Delete My Clip"
           >
             <Trash2 className="w-4 h-4" />
@@ -335,25 +367,25 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onUploadClick(); }}
-          className="p-2.5 rounded-full bg-slate-900/60 backdrop-blur-md text-white hover:bg-[#00e5ff] hover:text-slate-900 transition-all border border-white/10 shadow-lg"
+          className="p-2.5 rounded-full bg-slate-950/60 backdrop-blur-md text-white hover:bg-[#00e5ff] hover:text-slate-950 transition-all border border-white/10 shadow-lg"
         >
           <Plus className="w-4 h-4" />
         </button>
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onToggleMute(); }}
-          className="p-2.5 rounded-full bg-slate-900/60 backdrop-blur-md text-white hover:bg-[#ff2d95] transition-all border border-white/10 shadow-lg"
+          className="p-2.5 rounded-full bg-slate-950/60 backdrop-blur-md text-white hover:bg-[#ff2d95] transition-all border border-white/10 shadow-lg"
         >
           {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-[#00e5ff]" />}
         </button>
       </div>
 
       {/* Bottom overlay */}
-      <div className="absolute bottom-4 left-0 right-16 p-5 z-20 bg-gradient-to-t from-slate-900/95 via-slate-900/50 to-transparent space-y-2 pointer-events-none">
+      <div className="absolute bottom-4 left-0 right-16 p-5 z-20 bg-gradient-to-t from-slate-950/95 via-slate-950/50 to-transparent space-y-2 pointer-events-none">
         <div className="flex items-center gap-2.5 pointer-events-auto">
           <div
             onClick={() => onProfileClick(authorUser)}
-            className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-900 text-xs shadow-md cursor-pointer hover:scale-105 transition-transform"
+            className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-slate-950 text-xs shadow-md cursor-pointer hover:scale-105 transition-transform"
             style={{ background: authorUser?.color || 'linear-gradient(135deg, #ff2d95, #00e5ff)' }}
           >
             {authorUser?.avatarImage ? <img src={authorUser.avatarImage} alt="Avatar" className="w-full h-full object-cover rounded-full" /> : authorUser?.avatar || 'U'}
@@ -370,7 +402,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
               type="button"
               onClick={() => onFollowToggle(authorUser.id)}
               className={`px-3 py-1 rounded-xl text-[11px] font-bold font-orbitron transition-all shadow-md flex items-center gap-1 ${
-                isMutualFriendUser ? 'bg-gradient-to-r from-[#10b981] to-[#00e5ff] text-slate-900' : isFollowingUser ? 'bg-white/15 text-[#00e5ff] border border-[#00e5ff]/40' : 'bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900'
+                isMutualFriendUser ? 'bg-gradient-to-r from-[#10b981] to-[#00e5ff] text-slate-950' : isFollowingUser ? 'bg-white/15 text-[#00e5ff] border border-[#00e5ff]/40' : 'bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-950'
               }`}
             >
               {isMutualFriendUser ? 'Friends 🤝' : isFollowingUser ? 'Following' : '+ Follow'}
@@ -379,7 +411,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
         </div>
         <h2 className="text-sm font-bold text-white drop-shadow pointer-events-auto leading-snug">{clip.title}</h2>
         <p className="text-xs text-[#e8e8f4]/90 line-clamp-2 drop-shadow pointer-events-auto">{clip.description}</p>
-        <div className="flex items-center gap-2 text-[11px] text-[#00e5ff] font-medium bg-slate-900/60 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 inline-flex pointer-events-auto">
+        <div className="flex items-center gap-2 text-[11px] text-[#00e5ff] font-medium bg-slate-950/60 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 inline-flex pointer-events-auto">
           <Music2 className="w-3 h-3 text-[#ff2d95] animate-pulse" />
           <span className="truncate max-w-[180px]">{clip.audioTrack || 'Original Audio Track'}</span>
         </div>
@@ -387,32 +419,46 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
 
       {/* Right action column */}
       <div className="absolute right-3 bottom-8 z-20 flex flex-col items-center gap-3.5">
-        <button type="button" onClick={(e) => { e.stopPropagation(); onToggleLike(clip.id); }} className="flex flex-col items-center group">
-          <div className={`p-3 rounded-full backdrop-blur-md transition-all shadow-lg ${clip.isLiked ? 'bg-[#ff2d95] text-white scale-110 shadow-[0_0_20px_rgba(255,45,149,0.8)]' : 'bg-slate-900/60 text-white hover:bg-[#ff2d95]/40 border border-white/10'}`}>
+        <button
+          type="button"
+          onClick={handleLikePress}
+          className="flex flex-col items-center group"
+        >
+          <div className={`p-3 rounded-full backdrop-blur-md transition-all shadow-lg relative ${
+            clip.isLiked
+              ? 'bg-[#ff2d95]/90 text-white scale-110 shadow-[0_0_24px_rgba(255,45,149,0.85)] border border-[#ff2d95]'
+              : 'bg-slate-950/65 text-white hover:bg-[#ff2d95]/30 border border-white/15 hover:border-[#ff2d95]/60'
+          }`}>
             <Heart className={`w-5 h-5 ${clip.isLiked ? 'fill-current' : ''}`} />
           </div>
           <span className="text-[10px] font-bold text-white mt-1 drop-shadow">{(Number(clip.likes) || 0).toLocaleString()}</span>
         </button>
-        <button type="button" onClick={(e) => { e.stopPropagation(); onToggleDislike(clip.id); }} className="flex flex-col items-center group">
-          <div className={`p-3 rounded-full backdrop-blur-md transition-all shadow-lg ${clip.isDisliked ? 'bg-slate-700 text-white' : 'bg-slate-900/60 text-white hover:bg-white/10 border border-white/10'}`}>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onToggleDislike(clip.id); }}
+          className="flex flex-col items-center group"
+        >
+          <div className={`p-3 rounded-full backdrop-blur-md transition-all border border-white/10 shadow-lg ${
+            clip.isDisliked ? 'bg-slate-600 text-white' : 'bg-slate-950/65 text-white hover:bg-white/10'
+          }`}>
             <ThumbsDown className="w-5 h-5" />
           </div>
           <span className="text-[10px] font-bold text-white mt-1 drop-shadow">{clip.dislikes || 0}</span>
         </button>
         <button type="button" onClick={(e) => { e.stopPropagation(); onOpenComments(clip); }} className="flex flex-col items-center group">
-          <div className="p-3 rounded-full bg-slate-900/60 backdrop-blur-md text-white hover:bg-[#00e5ff]/40 transition-all border border-white/10 shadow-lg">
+          <div className="p-3 rounded-full bg-slate-950/65 backdrop-blur-md text-white hover:bg-[#00e5ff]/40 transition-all border border-white/10 shadow-lg">
             <MessageCircle className="w-5 h-5" />
           </div>
           <span className="text-[10px] font-bold text-white mt-1 drop-shadow">{clip.comments?.length || 0}</span>
         </button>
         <button type="button" onClick={(e) => { e.stopPropagation(); onToggleBookmark(clip.id); }} className="flex flex-col items-center group">
-          <div className={`p-3 rounded-full backdrop-blur-md transition-all border border-white/10 shadow-lg ${clip.isBookmarked ? 'bg-[#fbbf24] text-slate-900' : 'bg-slate-900/60 text-white hover:bg-white/10'}`}>
+          <div className={`p-3 rounded-full backdrop-blur-md transition-all border border-white/10 shadow-lg ${clip.isBookmarked ? 'bg-[#fbbf24] text-slate-950' : 'bg-slate-950/65 text-white hover:bg-white/10'}`}>
             <Bookmark className={`w-5 h-5 ${clip.isBookmarked ? 'fill-current' : ''}`} />
           </div>
           <span className="text-[10px] font-bold text-white mt-1 drop-shadow">Save</span>
         </button>
         <button type="button" onClick={(e) => { e.stopPropagation(); onShare(clip.title, clip.id); }} className="flex flex-col items-center group">
-          <div className="p-3 rounded-full bg-slate-900/60 backdrop-blur-md text-white hover:bg-[#ff2d95]/40 transition-all border border-white/10 shadow-lg">
+          <div className="p-3 rounded-full bg-slate-950/65 backdrop-blur-md text-white hover:bg-[#ff2d95]/40 transition-all border border-white/10 shadow-lg">
             <Share2 className="w-5 h-5" />
           </div>
           <span className="text-[10px] font-bold text-white mt-1 drop-shadow">Share</span>
@@ -423,7 +469,7 @@ const SingleShortCard: React.FC<ShortCardProps> = ({
       <div ref={progressBarContainerRef} onClick={handleSeek} className="absolute bottom-0 left-0 right-0 h-2 bg-white/20 hover:h-3 cursor-pointer z-30 transition-all flex items-end">
         <div ref={progressBarFillRef} className="h-full bg-gradient-to-r from-[#ff2d95] via-[#00e5ff] to-[#10b981] transition-all duration-75 shadow-[0_0_12px_#00e5ff]" style={{ width: '0%' }} />
       </div>
-      <span ref={timeLabelRef} className="absolute bottom-3 right-4 text-[9px] font-mono text-white/70 bg-slate-900/50 px-2 py-0.5 rounded backdrop-blur z-20 pointer-events-none">0:00 / 0:00</span>
+      <span ref={timeLabelRef} className="absolute bottom-3 right-4 text-[9px] font-mono text-white/70 bg-slate-950/50 px-2 py-0.5 rounded backdrop-blur z-20 pointer-events-none">0:00 / 0:00</span>
     </div>
   );
 };
@@ -452,9 +498,13 @@ export const ShortsFeedView: React.FC = () => {
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [commentingClipId, setCommentingClipId] = useState<string | null>(null);
+  const [autoAdvance, setAutoAdvance] = useState(false);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const wheelLockRef = useRef(false);
+  const likeLockRef = useRef<Record<string, boolean>>({});
+  const dislikeLockRef = useRef<Record<string, boolean>>({});
+  const followLockRef = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
@@ -467,7 +517,7 @@ export const ShortsFeedView: React.FC = () => {
   const validClips = useMemo(() => {
     return (clips || []).filter(c => {
       if (!c || isBlocked(c.userId)) return false;
-      return true; // We'll handle invalid video as fallback
+      return true;
     });
   }, [clips, isBlocked]);
 
@@ -485,6 +535,7 @@ export const ShortsFeedView: React.FC = () => {
     }
   }, [validClips.length]);
 
+  // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['ArrowDown', 'j', 'J'].includes(e.key)) {
@@ -496,11 +547,33 @@ export const ShortsFeedView: React.FC = () => {
       } else if (['m', 'M'].includes(e.key)) {
         setIsMuted(m => !m);
         sounds.pop();
+      } else if ([' ', 'Spacebar'].includes(e.key)) {
+        e.preventDefault();
+        setAutoAdvance(a => !a);
+        sounds.click();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeIndex, scrollToIndex]);
+
+  // Auto-advance shorts
+  useEffect(() => {
+    if (!autoAdvance) return;
+    const interval = setInterval(() => {
+      const container = containerRef.current;
+      if (!container) return;
+      const items = container.querySelectorAll('.shorts-snap-item');
+      if (items.length === 0) return;
+      const next = (activeIndex + 1) % items.length;
+      const target = items[next] as HTMLElement;
+      if (target) {
+        container.scrollTo({ top: target.offsetTop, behavior: 'smooth' });
+        setActiveIndex(next);
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [autoAdvance, activeIndex, validClips.length]);
 
   const handleWheelScroll = (e: React.WheelEvent<HTMLDivElement>) => {
     if (wheelLockRef.current) return;
@@ -536,14 +609,74 @@ export const ShortsFeedView: React.FC = () => {
     });
   };
 
-  const handleToggleLikeWithCloudSync = async (clipId: string) => {
+  // Atomic local + DB toggles with rapid-click locks
+  const handleToggleLike = async (clipId: string) => {
+    if (likeLockRef.current[clipId]) return;
+    likeLockRef.current[clipId] = true;
+    setTimeout(() => { delete likeLockRef.current[clipId]; }, 650);
+
     toggleClipLike(clipId);
-    if (!isSupabaseConfigured()) return;
+
+    if (!isSupabaseConfigured() || !currentUser?.id) return;
+
     try {
-      const targetClip = clips.find(c => c.id === clipId);
-      const newLikes = targetClip?.isLiked ? Math.max(0, (targetClip.likes || 1) - 1) : ((targetClip?.likes || 0) + 1);
-      await supabase.from('clips').update({ likes: newLikes }).eq('id', clipId);
-    } catch {}
+      await (supabase as any).rpc('toggle_clip_reaction', {
+        p_clip_id: clipId,
+        p_user_id: currentUser.id,
+        p_reaction: 'like'
+      });
+    } catch {
+      // Rollback local state if DB rejected the atomic toggle
+      toggleClipLike(clipId);
+      toast.error('Could not sync like');
+    }
+  };
+
+  const handleToggleDislike = async (clipId: string) => {
+    if (dislikeLockRef.current[clipId]) return;
+    dislikeLockRef.current[clipId] = true;
+    setTimeout(() => { delete dislikeLockRef.current[clipId]; }, 650);
+
+    toggleClipDislike(clipId);
+
+    if (!isSupabaseConfigured() || !currentUser?.id) return;
+
+    try {
+      await (supabase as any).rpc('toggle_clip_reaction', {
+        p_clip_id: clipId,
+        p_user_id: currentUser.id,
+        p_reaction: 'dislike'
+      });
+    } catch {
+      toggleClipDislike(clipId);
+      toast.error('Could not sync dislike');
+    }
+  };
+
+  const handleFollowToggle = async (userId: string) => {
+    if (!currentUser?.id || currentUser.id === userId) return;
+    if (followLockRef.current[userId]) return;
+    followLockRef.current[userId] = true;
+    setTimeout(() => { delete followLockRef.current[userId]; }, 700);
+
+    toggleFollowUser(userId);
+
+    if (!isSupabaseConfigured()) return;
+
+    try {
+      await (supabase as any).rpc('toggle_follow_user', {
+        p_follower_id: currentUser.id,
+        p_following_id: userId
+      });
+      if (isFollowing(userId)) {
+        toast.success('Following');
+      } else {
+        toast('Unfollowed');
+      }
+    } catch {
+      toggleFollowUser(userId);
+      toast.error('Could not sync follow');
+    }
   };
 
   if (validClips.length === 0) {
@@ -557,7 +690,7 @@ export const ShortsFeedView: React.FC = () => {
         <button
           type="button"
           onClick={() => { sounds.pop(); setIsCreateOpen(true); }}
-          className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-900 font-orbitron font-bold text-xs shadow-lg hover:scale-105 transition-transform inline-flex items-center gap-2"
+          className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#ff2d95] to-[#00e5ff] text-slate-950 font-orbitron font-bold text-xs shadow-lg hover:scale-105 transition-transform inline-flex items-center gap-2"
         >
           <Plus className="w-4 h-4" /> UPLOAD FIRST SHORT CLIP
         </button>
@@ -573,15 +706,27 @@ export const ShortsFeedView: React.FC = () => {
           type="button"
           onClick={() => scrollToIndex(activeIndex - 1)}
           disabled={activeIndex === 0}
-          className="p-3 rounded-2xl bg-slate-900/80 hover:bg-[#00e5ff] text-white hover:text-slate-900 transition-all disabled:opacity-30 border border-white/20 shadow-2xl backdrop-blur-md"
+          className="p-3 rounded-2xl bg-slate-950/80 hover:bg-[#00e5ff] text-white hover:text-slate-950 transition-all disabled:opacity-30 border border-white/20 shadow-2xl backdrop-blur-md"
         >
           <ChevronUp className="w-5 h-5" />
         </button>
         <button
           type="button"
+          onClick={() => { sounds.click(); setAutoAdvance(a => !a); }}
+          className={`p-3 rounded-2xl transition-all border shadow-2xl backdrop-blur-md ${
+            autoAdvance
+              ? 'bg-[#00e5ff] text-slate-950 border-[#00e5ff] shadow-[0_0_20px_rgba(0,229,255,0.6)]'
+              : 'bg-slate-950/80 text-white border-white/20 hover:bg-[#fbbf24] hover:text-slate-950'
+          }`}
+          title="Auto-advance every 5 seconds"
+        >
+          <Zap className="w-5 h-5" />
+        </button>
+        <button
+          type="button"
           onClick={() => scrollToIndex(activeIndex + 1)}
           disabled={activeIndex === validClips.length - 1}
-          className="p-3 rounded-2xl bg-slate-900/80 hover:bg-[#ff2d95] text-white hover:text-slate-900 transition-all disabled:opacity-30 border border-white/20 shadow-2xl backdrop-blur-md"
+          className="p-3 rounded-2xl bg-slate-950/80 hover:bg-[#ff2d95] text-white hover:text-slate-950 transition-all disabled:opacity-30 border border-white/20 shadow-2xl backdrop-blur-md"
         >
           <ChevronDown className="w-5 h-5" />
         </button>
@@ -590,7 +735,7 @@ export const ShortsFeedView: React.FC = () => {
       <div
         ref={containerRef}
         onWheel={handleWheelScroll}
-        className="shorts-snap-container no-scrollbar w-full max-w-[420px] h-[calc(100vh-8rem)] max-h-[750px] min-h-[480px] overflow-y-auto relative rounded-3xl"
+        className="shorts-snap-container no-scrollbar w-full max-w-[420px] h-[calc(100vh-8rem)] max-h-[750px] min-h-[480px] overflow-y-auto relative rounded-[2rem]"
       >
         {validClips.map((clip, index) => {
           const authorUser = allUsers[clip.userId] || currentUser;
@@ -608,14 +753,14 @@ export const ShortsFeedView: React.FC = () => {
               isMuted={isMuted}
               playbackSpeed={playbackSpeed}
               onToggleMute={() => { sounds.pop(); setIsMuted(m => !m); }}
-              onToggleLike={handleToggleLikeWithCloudSync}
-              onToggleDislike={toggleClipDislike}
+              onToggleLike={handleToggleLike}
+              onToggleDislike={handleToggleDislike}
               onToggleBookmark={toggleClipBookmark}
               onShare={(title, id) => openShareModal(title, `https://wevids.app/clip/${id}`)}
               onOpenComments={(c) => setCommentingClipId(c.id)}
               onDeleteClip={deleteClip}
               onUploadClick={() => setIsCreateOpen(true)}
-              onFollowToggle={toggleFollowUser}
+              onFollowToggle={handleFollowToggle}
               onProfileClick={openUserProfileModal}
               onCycleSpeed={cyclePlaybackSpeed}
               isFollowingUser={isFollowingUser}
@@ -628,7 +773,7 @@ export const ShortsFeedView: React.FC = () => {
       </div>
 
       {activeCommentingClip && (
-        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-md flex items-end sm:items-center justify-center p-2 sm:p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-end sm:items-center justify-center p-2 sm:p-4">
           <div className="w-full max-w-md liquid-glass rounded-3xl p-5 border border-white/20 shadow-2xl flex flex-col h-[520px] animate-spring-pop">
             <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-3">
               <h3 className="font-orbitron font-bold text-sm text-white flex items-center gap-2">
